@@ -27,6 +27,10 @@ Format:
 | 2026-08-12 | experiment | Keep people, tools, models, CI, product standards, and release controls common across treatments | The process should be the main intended difference | At every environment change |
 | 2026-08-12 | experiment | Assign matched items before detailed work and retain killed/failed items | Prevent favorable post-hoc assignment and survivor bias | At cohort freeze |
 | 2026-08-12 | experiment | Tracer 0002 tests feasibility and instrumentation but is excluded from comparative evidence | One setup item cannot demonstrate relative SDLC performance | After tracer |
+| 2026-08-12 | environment | Preserve the pre-readiness repository as baseline commit `3abf612`; keep setup hardening in a later revision | Make the initial state and the reason for every environment change auditable | Never delete; supersede if provenance moves |
+| 2026-08-12 | environment | Pin Python 3.12 and Node 20; manage Python with `uv` | Match the architecture contract and avoid accidental use of globally newer runtimes | At a measured runtime upgrade |
+| 2026-08-12 | environment | Bind the project Postgres container to `127.0.0.1:55432` | Port 5432 is already owned by another project; loopback isolation prevents collision and unintended network exposure | If a shared database replaces local Compose |
+| 2026-08-12 | environment | Declare Bash for setup gates and test that discovery does not mutate `PATH` | zsh reserves `path` and `status`; ad-hoc probes produced false failures | If setup becomes shell-independent |
 
 Rules of the log:
 - If you ruled on it out loud (or in your head) and it changes future behavior, it goes here.

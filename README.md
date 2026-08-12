@@ -64,3 +64,13 @@ SAM.gov is the live-notice system of record. USAspending award data provides his
 - Gate 2: exam drafted; implementation has not started.
 
 Start with [the experiment charter](steer/EXPERIMENT-CHARTER.md), then review [the product charter](docs/product/PRODUCT-CHARTER.md), complete [the company profile](docs/product/COMPANY-PROFILE.md), and approve the first real brief.
+
+Before any product implementation, bootstrap and verify the shared environment:
+
+```bash
+./scripts/bootstrap-environment.sh
+./scripts/gauntlet.sh
+```
+
+The readiness levels, evidence, and remaining delivery blockers are recorded in
+[`steer/ENVIRONMENT-READINESS.md`](steer/ENVIRONMENT-READINESS.md).

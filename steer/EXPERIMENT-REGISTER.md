@@ -4,7 +4,7 @@
 
 | Phase | Status | Evidence |
 |---|---|---|
-| Project setup | Complete | Repository structure and project guardrails |
+| Project setup | In progress | Baseline commit `3abf612`; local readiness evidence in `ENVIRONMENT-READINESS.md`; governed remote and staging remain open |
 | STEER feasibility tracer | Not started | Brief/exam `0002`; excluded from comparative results |
 | Control calibration | Not started | One non-scored item using `CONTROL-WORKFLOW.md` |
 | Candidate cohort freeze | Not started | 10–20 candidate cards and matched blocks |
@@ -16,7 +16,7 @@
 
 - People and role availability:
 - Models and agent tools:
-- Repository/environment/CI baseline:
+- Repository/environment/CI baseline: pre-hardening repository `3abf612`; local tool versions and post-hardening revision to be frozen after the readiness exam; remote CI not yet proven
 - Product guardrails:
 - Control workflow revision:
 - Experiment charter revision:
@@ -38,4 +38,3 @@ Populate before detailed design or implementation.
 | Date | Change | Affected items | Reason | Analysis treatment |
 |---|---|---|---|---|
 | | | | | |
-

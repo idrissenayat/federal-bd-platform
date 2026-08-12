@@ -1,0 +1,32 @@
+[project]
+name = "federal-bd-platform"
+version = "0.0.0"
+description = "STEER Agentic SDLC validation project and federal BD test vehicle"
+requires-python = "==3.12.*"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "mypy>=1.17",
+  "pytest>=8.4",
+  "ruff>=0.12",
+]
+
+[tool.uv]
+exclude-newer = "7 days"
+package = false
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
