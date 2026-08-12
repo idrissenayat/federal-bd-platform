@@ -7,8 +7,12 @@
 ## Expected outcome and measurement
 
 - Primary outcome: prove that Minimum Viable STEER can take one real setup item from written intent through a pre-code exam, implementation, verification, and learning with complete process evidence.
-- Baseline / denominator: no runnable project health path exists; denominator is every configured source adapter.
-- Observation window: first local setup session and every CI run thereafter.
+- Baseline / denominator: no runnable project health path exists. This tracer's
+  denominator is the single configured SAM.gov adapter exercised in fixture mode;
+  future source adapters are separate work and do not expand this brief's scope.
+- Observation window: begins when Gate 1 is approved and ends after the merged tracer
+  passes its first required `main` CI run and the resulting setup/process evidence is
+  recorded in a Learning Review.
 - Minimum meaningful signal: the source-health behavior passes its exam, all three decision points are evidence-backed, human active minutes and gate latency are captured, and the resulting process defects are recorded.
 - Guardrail measure: zero secret values in logs, test output, stored evidence, or error messages; no claim that this single tracer proves STEER superiority.
 
@@ -25,7 +29,9 @@ The repository needs a small tracer that crosses configuration, adapter contract
 - A documented command runs an offline source-health check against committed fixtures and exits successfully.
 - A missing SAM.gov key is reported as `not_configured`, not as a stack trace or false healthy result.
 - A live check is opt-in, bounded by a timeout, and never prints the API key.
-- The output is structured and distinguishes configuration, connectivity, schema, freshness, and degraded status.
+- The output is structured and distinguishes configuration, connectivity, schema,
+  freshness, and degraded status. Fixture mode reports freshness as `not_evaluated`;
+  it never presents fixture age as live-source freshness.
 - CI runs the offline check without external network access.
 
 ## Design intent
@@ -48,7 +54,10 @@ The SAM.gov key is a secret. The live path defaults off, redacts query strings a
 
 ## Chosen approach
 
-Use a small Python command and a source-adapter protocol. Begin with a SAM.gov fixture adapter and an optional live `HEAD`/minimal-search probe; avoid introducing a queue, web UI, or database for the tracer.
+Use a small Python command and a source-adapter protocol. Begin with a SAM.gov fixture
+adapter and an optional, minimal authenticated `GET` search probe with a strict timeout;
+do not issue a network request when the API key is absent. Avoid introducing a queue,
+web UI, or database for the tracer.
 
 ---
 
