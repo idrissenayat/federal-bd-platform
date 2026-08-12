@@ -46,6 +46,30 @@ Separate signed huddle events were accepted from Builder
 Critic `6584e98758024ef0396ecb4f07edaa2bf10aecbce51a72379d67b006a8e7dd75`,
 and Test Agent `836f72debf208acbc823e6d1fa8b2476ce7c78b576ed26376ff16cd63af4e0c0`.
 
+## Full reference fleet expansion
+
+The project elected to enroll the complete seven-role reference fleet. The four added
+identities are relay members and channel bots with unique signing keys:
+
+| Agent | Public key | Profile event | Huddle introduction | Role-specific proof |
+|---|---|---|---|---|
+| Scout | `f66f2459a92b793fd40bbf7f38553df37c6674bf273d85dbf85787290cc2237a` | `1a9e70e501502aa535cd53809a1a6e3ac8e7f75abacf03c17f7bedda07f4d30c` | `75f1c6e8cae7e3d55775903f069071a776b2795209807638ff9c3bc8e617f8cd` | `signals` event `8e461a1539216328ea24ef4e617ccaf046798b82f7fceae3776aedce1ae031b0` |
+| Architect | `9c764661a78b480a324c8da9a5b86cf0224ad992467c324358e88fab4b85b2ea` | `03c2d4357f1c19a5d39b61973cdf25e0ece97cd1535b1ca68a53037eead9c6a0` | `1cd0967c48aacfd90cdfa71f0f0facc56b90ae34dc361fd306ad119896598df0` | escalation event `ce1546c95467ccf4e994fa5b014a3a0e5d9d8c7f11bea24fbcb1e26dc89f37fc` |
+| Docs Agent | `2680575df454cefd26835487860724a805502f6285dfe8191251bf7d2bfcbf4d` | `a27735951de2e32cf8b9e827066b6c6c6cea29ceca660de4982231ff9878729e` | `aa2ecc2d9c6f8f990525214f1f2753497d1baf129329c92dd9d87486f8397518` | escalation event `c02021e64b35f9a2703b26e9394b6869920148770d3e67d28d0ee0aded62ff01` |
+| Ops Agent | `8ebe6f6dfcedc9c867a1083772a4f40d83da100d663d300ecd99562ebbf05349` | `4b1a5ee7d8747bc72a82a015061402c1d785cc71b22b1ec7a9e29716ea03d44c` | `066724620edc682896a7f6cdd9f37db277a4e9efed3438394abb0a7dceb17461` | `release-watch` event `530ea1404715cf056f7cdb5372aaf6ea7f55914275cd8458f907e3b143a01ecd` |
+
+All four can read and publish in `steer-huddle`, route ambiguity through
+`agent-escalations`, and participate in `learning-review`. Scout is an explicit
+`signals` bot; Ops Agent is an explicit `release-watch` bot. Architect and Docs Agent
+were not added to `release-watch`; Scout and Ops Agent were not added to
+`critic-findings`. Unauthorized reads of those private spaces returned an empty result
+while the owner observed one Critic event and two release-watch events. This is private
+channel non-disclosure, not an HTTP-error assertion.
+
+The temporary SSH key used to run the relay administration command was removed from
+Railway and the workstation immediately after membership verification. No Railway SSH
+key remains registered.
+
 An unregistered disposable identity received exit code 3 and
 `403 relay_membership_required`. Disposable member
 `0f17c7a2d1b7a295a60431fbc7be211585044ab05548f65b5963d77a7b5081ad`
@@ -79,8 +103,12 @@ Private keys were generated without display and stored only in macOS Keychain se
 | Builder | member / channel bot | `1bcd9d68ce9a04cd17bf7e96d71e237654d38eeb26dd8ea5a08ba1259a6baf12` |
 | Fresh-context Critic | member / channel bot | `873eacdb79becf6b5e18f4aec79decad3c80bcce3d3c6c690e6dd773256f12c1` |
 | Test Agent | member / channel bot | `692f22559c40755774615c070956134867995f07f54c1f2507b905d3b9bb0a52` |
+| Scout | member / channel bot | `f66f2459a92b793fd40bbf7f38553df37c6674bf273d85dbf85787290cc2237a` |
+| Architect | member / channel bot | `9c764661a78b480a324c8da9a5b86cf0224ad992467c324358e88fab4b85b2ea` |
+| Docs Agent | member / channel bot | `2680575df454cefd26835487860724a805502f6285dfe8191251bf7d2bfcbf4d` |
+| Ops Agent | member / channel bot | `8ebe6f6dfcedc9c867a1083772a4f40d83da100d663d300ecd99562ebbf05349` |
 
-Signed profile events were accepted for all four identities. No private key appears in
+Signed profile events were accepted for all eight identities. No private key appears in
 this file, tool output, repository history, or Buzz messages.
 
 ## Spaces and signed-event proof
@@ -130,8 +158,9 @@ STEER communication architecture.
 
 ## Remaining work
 
-1. Enter OpenAI and Anthropic service credentials directly into Railway and deploy
-   persistent Builder, Critic, and Test Agent workers; repeat owner-only ACP proofs.
+1. Select an approved runtime lane for each activated role, enter the corresponding
+   provider service credentials directly into Railway, and deploy persistent workers;
+   repeat owner-only ACP proofs for every activated identity.
 2. Enroll each human teammate using their own key and GitHub identity; do not mint or
    retain human private keys on their behalf.
 3. Rehearse PostgreSQL restore and define backup coverage for the Railway object bucket;

@@ -36,6 +36,9 @@ human owner + uniquely keyed agents
   secrets; no private key is committed or copied into evidence.
 - Relay membership is enforced. The owner is configured through
   `RELAY_OWNER_PUBKEY`; agents are explicit members and private-channel bots.
+- All seven reference roles are enrolled as distinct identities: Scout, Architect,
+  Builder, Test Agent, Critic, Docs Agent, and Ops Agent. Enrollment does not imply that
+  an always-on model worker is running.
 - Codex and Claude connect through the official ACP adapters. Inbound agent work is
   owner-only by default.
 - GitHub and `/steer` remain authoritative for work, code, experiments, gates,
@@ -49,10 +52,11 @@ Public keys and signed event IDs from both local and remote proofs live in
 
 The shared relay B1 communication slice is proven, including TLS reachability,
 enrollment, signed messages, denial, revocation, and restart retention. It is ready for
-controlled human onboarding. Always-on Builder, Critic, and Test Agent workers remain
-default-closed until OpenAI and Anthropic service credentials are supplied directly to
-Railway and their remote ACP proofs pass. Backup restore, external alerting, GitHub B2
-reconciliation, and a custom-domain decision remain open production controls.
+controlled human onboarding. All seven reference agent identities are enrolled, profiled,
+and channel-scoped. Always-on workers remain default-closed until approved provider
+service credentials are supplied directly to Railway, each role has an assigned runtime,
+and remote ACP proofs pass. Backup restore, external alerting, GitHub B2 reconciliation,
+and a custom-domain decision remain open production controls.
 
 ## Superseded implementation
 

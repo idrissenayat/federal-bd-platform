@@ -11,17 +11,26 @@ ruling, and route an escalation. They may not approve a STEER gate, change exper
 treatment, make a final bid/no-bid decision, authorize external communication, or grant
 themselves permissions.
 
-## Minimum viable fleet
+## Enrolled reference fleet
 
-| Buzz identity | STEER role | Runtime | Boundary |
+The project elected to enroll all seven reference roles in Buzz even though Minimum
+Viable STEER requires only Builder, Test, and fresh-context Critic. Enrollment establishes
+identity, provenance, and channel boundaries; it does not justify running every worker or
+incurring provider cost before a role is needed.
+
+| Buzz identity | STEER role | Runtime state | Boundary |
 |---|---|---|---|
-| `builder` | Builder | Codex through `codex-acp` | Signed brief and assigned branch only |
-| `critic` | Critic | Claude through `claude-agent-acp` | Fresh context; findings only |
-| `test-agent` | Test Agent | Codex through `codex-acp` | Exam and verification evidence only |
+| `scout` | Scout | Enrolled; lane selected at activation | Evidence-backed signals and candidate briefs only |
+| `architect` | Architect | Enrolled; lane selected at activation | Options and trade-offs; no production code |
+| `builder` | Builder | Enrolled; Codex worker not hosted | Signed brief and assigned branch only |
+| `test-agent` | Test Agent | Enrolled; Codex worker not hosted | Exam and verification evidence only |
+| `critic` | Critic | Enrolled; Claude worker not hosted | Fresh context; findings only |
+| `docs-agent` | Docs Agent | Enrolled; lane selected at activation | Evidence-bounded docs and release notes |
+| `ops-agent` | Ops Agent | Enrolled; lane selected at activation | Deployment, telemetry, rollback, and release-watch evidence |
 
-Scout, Architect, Docs, Ops, and specialist roles are prompts activated by the triggers
-in `agents/agent-roles.md`; they are not day-one accounts. The Critic is always a fresh
-session and never a continuation of the Builder conversation.
+Role activation still follows the triggers in `agents/agent-roles.md`; dormant identities
+do not count as running capacity. The Critic is always a fresh session and never a
+continuation of the Builder conversation.
 
 ## Buzz identity rules
 

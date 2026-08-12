@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 3
 platform:
   name: Block Buzz
   upstream: https://github.com/block/buzz
@@ -6,6 +6,7 @@ platform:
   relay_url: wss://blockbuzzmain-production-5bcb.up.railway.app
   railway_project: steer-block-buzz
   hosted_agent_workers: blocked-pending-provider-service-credentials
+  reference_agent_identities: enrolled-7-of-7
   authority: github-and-versioned-steer
 
 relay_policy:
@@ -16,6 +17,11 @@ relay_policy:
 
 authority:
   human_decision_owner: idriss-enayat
+  human_role_hats:
+    product-lead: idriss-enayat
+    tech-lead: idriss-enayat-interim-solo
+    product-designer: idriss-enayat-interim-solo
+    platform-engineer: idriss-enayat-interim-solo
   agent_gate_approval: denied
   agent_final_bid_no_bid: denied
   agent_external_action: denied
@@ -50,22 +56,71 @@ identities:
   - id: owner
     kind: human
     buzz_role: owner
+    public_key: 16e9720b67509b1dfce7372312f551097704f1a2ec4950ae826a6b729414bf91
   - id: builder
     kind: agent
     steer_role: builder
     adapter: codex-acp
     buzz_role: bot
+    public_key: 1bcd9d68ce9a04cd17bf7e96d71e237654d38eeb26dd8ea5a08ba1259a6baf12
+    enrollment_status: enrolled
+    worker_status: blocked-pending-provider-service-credentials
+    channels: [steer-huddle, signals, agent-escalations, learning-review]
   - id: critic
     kind: agent
     steer_role: critic
     adapter: claude-agent-acp
     buzz_role: bot
+    public_key: 873eacdb79becf6b5e18f4aec79decad3c80bcce3d3c6c690e6dd773256f12c1
+    enrollment_status: enrolled
+    worker_status: blocked-pending-provider-service-credentials
+    channels: [steer-huddle, signals, agent-escalations, critic-findings, learning-review]
     fresh_context_required: true
   - id: test-agent
     kind: agent
     steer_role: test
     adapter: codex-acp
     buzz_role: bot
+    public_key: 692f22559c40755774615c070956134867995f07f54c1f2507b905d3b9bb0a52
+    enrollment_status: enrolled
+    worker_status: blocked-pending-provider-service-credentials
+    channels: [steer-huddle, signals, agent-escalations, release-watch, learning-review]
+  - id: scout
+    kind: agent
+    steer_role: scout
+    adapter: pending-approved-lane
+    buzz_role: bot
+    public_key: f66f2459a92b793fd40bbf7f38553df37c6674bf273d85dbf85787290cc2237a
+    enrollment_status: enrolled
+    worker_status: not-activated
+    channels: [steer-huddle, signals, agent-escalations, learning-review]
+  - id: architect
+    kind: agent
+    steer_role: architect
+    adapter: pending-approved-lane
+    buzz_role: bot
+    public_key: 9c764661a78b480a324c8da9a5b86cf0224ad992467c324358e88fab4b85b2ea
+    enrollment_status: enrolled
+    worker_status: not-activated
+    channels: [steer-huddle, agent-escalations, learning-review]
+  - id: docs-agent
+    kind: agent
+    steer_role: docs
+    adapter: pending-approved-lane
+    buzz_role: bot
+    public_key: 2680575df454cefd26835487860724a805502f6285dfe8191251bf7d2bfcbf4d
+    enrollment_status: enrolled
+    worker_status: not-activated
+    channels: [steer-huddle, agent-escalations, learning-review]
+  - id: ops-agent
+    kind: agent
+    steer_role: ops
+    adapter: pending-approved-lane
+    buzz_role: bot
+    public_key: 8ebe6f6dfcedc9c867a1083772a4f40d83da100d663d300ecd99562ebbf05349
+    enrollment_status: enrolled
+    worker_status: not-activated
+    channels: [steer-huddle, agent-escalations, release-watch, learning-review]
 
 universal_agent_denies:
   - approve_gate
