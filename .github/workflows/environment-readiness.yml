@@ -17,24 +17,38 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-      - name: Install uv and static workflow tools
+      - name: Install uv and verified static tools
         run: |
           python -m pip install uv==0.12.3 semgrep==1.172.0
           sudo apt-get update
           sudo apt-get install --yes shellcheck
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          go install github.com/zricethezav/gitleaks/v8@v8.30.1
-          go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.5.0
+          tool_dir="$RUNNER_TEMP/steer-tools"
+          mkdir -p "$tool_dir"
+          curl --fail --location --silent --show-error --retry 3 \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            --output "$tool_dir/actionlint.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $tool_dir/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$tool_dir/actionlint.tar.gz" -C "$tool_dir" actionlint
+          curl --fail --location --silent --show-error --retry 3 \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            --output "$tool_dir/gitleaks.tar.gz"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $tool_dir/gitleaks.tar.gz" | sha256sum --check
+          tar -xzf "$tool_dir/gitleaks.tar.gz" -C "$tool_dir" gitleaks
+          curl --fail --location --silent --show-error --retry 3 \
+            https://github.com/google/osv-scanner/releases/download/v2.5.0/osv-scanner_linux_amd64 \
+            --output "$tool_dir/osv-scanner"
+          echo "edcfc41d257db36148f065055655fe3fcfc434b0b423ea67468a84c207524e0c  $tool_dir/osv-scanner" | sha256sum --check
+          chmod +x "$tool_dir/osv-scanner"
+          echo "$tool_dir" >> "$GITHUB_PATH"
       - name: Validate shell and workflow syntax
         run: |
           bash -n scripts/*.sh
           shellcheck scripts/*.sh
-          "$(go env GOPATH)/bin/actionlint"
+          actionlint
       - name: Validate container configuration
         run: docker compose config --quiet
       - name: Scan repository for secrets
-        run: >-
-          "$(go env GOPATH)/bin/gitleaks" dir . --no-banner --redact --exit-code 1
+        run: gitleaks dir . --no-banner --redact --exit-code 1
       - name: Run repository contract checks
         run: |
           uv sync --locked
@@ -44,5 +58,5 @@ jobs:
           ./scripts/prove-gauntlet-blocks.sh
       - name: Scan dependencies and source
         run: |
-          "$(go env GOPATH)/bin/osv-scanner" scan source --lockfile uv.lock .
+          osv-scanner scan source --lockfile uv.lock .
           ./scripts/run-semgrep.sh

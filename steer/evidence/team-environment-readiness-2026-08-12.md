@@ -27,7 +27,7 @@ prerequisite, not a team-environment prerequisite.
 | Communication | GitHub Discussions enabled; team huddle and signals inbox created | Pass |
 | Security | Private repository, vulnerability alerts, automated security fixes, security policy, private-advisory route | Pass |
 | Coding | Pinned Python/Node, `uv`, Docker Compose/Postgres, bootstrap, branch/worktree conventions | Pass |
-| Testing | Local gauntlet, negative controls, CI workflow, immutable action pins, Dependabot cooldown | Local pass; corrected CI rerun pending branch publication |
+| Testing | Local gauntlet, negative controls, CI workflow, immutable action pins, Dependabot cooldown | Local pass; corrected GitHub runner passed in 4m34s; verified-binary optimization pending rerun |
 
 ## Live defects and constraints found
 
@@ -35,6 +35,9 @@ prerequisite, not a team-environment prerequisite.
    module path `github.com/zricethezav/gitleaks/v8`. The workflow used the newer
    organization name. The setup branch corrects the module path and upgrades the
    official GitHub actions to immutable Node 24-compatible release SHAs.
+   The corrected runner passed all jobs. Scanner installation was then changed from
+   repeated Go compilation to checksum-verified official release binaries to reduce the
+   4m34s feedback cycle; that optimization requires its own green rerun.
 2. GitHub rejected branch protection for the private repository with HTTP 403 and the
    explicit requirement to upgrade the personal account to GitHub Pro or make the
    repository public. The repository remains private; visibility was not weakened.
