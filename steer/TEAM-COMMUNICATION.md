@@ -5,9 +5,9 @@ decisions must land in an auditable shared surface.
 
 | Communication | Destination | Response expectation | Durable outcome |
 |---|---|---|---|
-| Daily asynchronous huddle | Buzz `#huddle`; GitHub Discussion until Buzz B1 | By the team's working-day midpoint | Blockers linked to issues; decisions moved to the log |
+| Daily asynchronous huddle | Block Buzz `steer-huddle`; GitHub Discussion until shared B1 | By the team's working-day midpoint | Blockers linked to issues; decisions moved to the log |
 | Signal or observation | Buzz `#signals`; signal issue form is durable fallback | Triage within two working days | Digest in `steer/signals/`; candidate if evidence warrants |
-| Agent ambiguity/escalation | Buzz `#escalations` plus linked escalation issue | Same working day for in-flight work | Ruling in issue and decision log when reusable |
+| Agent ambiguity/escalation | Block Buzz `agent-escalations` plus linked escalation issue | Same working day for in-flight work | Ruling in issue and decision log when reusable |
 | Build/review question | Pull-request thread | One working day; urgent blocker same day | Resolved thread or linked decision |
 | Critic finding | Buzz `#critic-findings` plus pull-request review | Same day for a blocker; otherwise one working day | Human ruling or verified change on the pull request |
 | Security concern | Private Security Advisory | Immediate acknowledgement | Remediation issue without sensitive details |

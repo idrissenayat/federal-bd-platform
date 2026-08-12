@@ -1,95 +1,67 @@
-schema_version: 1
-workspace:
-  slug: steer-federal-bd-platform
-  name: STEER Federal BD Platform
-  preserve_workspaces:
-    - agentic-end2end-sdlc
+schema_version: 2
+platform:
+  name: Block Buzz
+  upstream: https://github.com/block/buzz
+  deployment_stage: local-pilot
+  authority: github-and-versioned-steer
+
+relay_policy:
+  membership_required: true
+  stable_signing_key_required: true
+  owner_attested_agents_allowed: true
+  production_rest_auth_required: true
 
 authority:
-  human_product_lead: idriss-enayat
+  human_decision_owner: idriss-enayat
   agent_gate_approval: denied
   agent_final_bid_no_bid: denied
-  system_of_record: github
+  agent_external_action: denied
 
 spaces:
-  - huddle
-  - signals
-  - escalations
-  - critic-findings
-  - release-watch
-  - learning-review
+  - id: steer-huddle
+    type: stream
+    visibility: private
+  - id: signals
+    type: forum
+    visibility: open-to-relay-members
+  - id: agent-escalations
+    type: stream
+    visibility: private
 
-permission_classes:
-  observe:
-    can: [read]
-  evidence:
-    can: [read, comment, attach_evidence]
-  build:
-    can: [read, comment, attach_evidence, update_assigned_branch]
-  coordinate:
-    can: [read, comment, attach_evidence, route, update_coordination_metadata]
-  human_approver:
-    can: [read, comment, record_revision_bound_gate_ruling]
-
-  # Applies to every non-human permission class even when an integration's native
-  # role model is broader. Enforcement is verified with negative tests.
-  universal_agent_denies:
-    - approve_gate
-    - change_experiment_treatment
-    - final_bid_no_bid
-    - merge
-    - push_main
-    - manage_members
-    - issue_credentials
-    - delete_audit_events
-
-agents:
-  - id: agent-scout
-    existing_account: Scout
-    steer_role: scout
-    permission_class: evidence
-    spaces: [huddle, signals, escalations]
-    initial: true
-  - id: agent-bolt
-    existing_account: Bolt
+identities:
+  - id: owner
+    kind: human
+    buzz_role: owner
+  - id: builder
+    kind: agent
     steer_role: builder
-    permission_class: build
-    spaces: [huddle, escalations]
-    initial: true
-  - id: agent-bugsy
-    existing_account: Bugsy
-    steer_role: test
-    permission_class: evidence
-    spaces: [huddle, escalations, critic-findings]
-    initial: true
-  - id: agent-critic-steer
-    existing_account: null
+    adapter: codex-acp
+    buzz_role: bot
+  - id: critic
+    kind: agent
     steer_role: critic
-    permission_class: evidence
-    spaces: [huddle, escalations, critic-findings]
+    adapter: claude-agent-acp
+    buzz_role: bot
     fresh_context_required: true
-    initial: true
-  - id: agent-tempo
-    existing_account: Tempo
-    steer_role: flow_steward
-    permission_class: coordinate
-    spaces: [huddle, signals, escalations, critic-findings, release-watch, learning-review]
-    initial: true
+  - id: test-agent
+    kind: agent
+    steer_role: test
+    adapter: codex-acp
+    buzz_role: bot
 
-inactive_mappings:
-  Archie: architect
-  Beacon: ops_reliability
-  Dottie: builder_data
-  Glimmer: builder_frontend
-  Nova: builder_ai_automation
-  Pixel: design_accessibility
-  Poppy: product_analysis_no_approval
-  Quill: docs
-  Rocket: ops_delivery
-  Sentry: security_specialist
+universal_agent_denies:
+  - approve_gate
+  - change_experiment_treatment
+  - final_bid_no_bid
+  - merge
+  - push_main
+  - manage_relay_members
+  - issue_credentials
+  - delete_audit_events
 
 credential_policy:
   unique_per_identity: true
+  secret_store_required: true
   committed: false
   displayed_in_logs_or_evidence: false
   rotation_and_revocation_test_required: true

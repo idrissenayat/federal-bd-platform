@@ -1,47 +1,52 @@
-# Buzz integration boundary
+# Block Buzz integration boundary
 
-This directory versions the configuration contract between STEER and Buzz. It contains
-no credentials and does not make the older Buzz Scrum pilot authoritative.
+This directory versions STEER's non-secret configuration contract for
+[Block Buzz](https://github.com/block/buzz). Buzz is the human/agent communication
+plane; it is not a replacement for GitHub, `/steer`, the flight board, or human gate
+authority.
 
-## Target topology
+## Implemented pilot topology
 
 ```text
-humans + uniquely identified agents
+human owner + uniquely keyed agents
                  |
                  v
-          Buzz communication
-          /        |         \
-         v         v          v
- GitHub /steer  OpenProject   XWiki
-  authority       mirror     read copy
+       self-hosted Block Buzz relay
+        (Nostr signed event log)
+                 |
+        +--------+---------+
+        |        |         |
+     huddle   signals  escalations
+        |
+        v
+ GitHub issues / PRs / versioned /steer
+       (authoritative outcomes)
 ```
 
-- GitHub and `/steer` own work, code, contracts, gates, evidence, and decisions.
-- Buzz owns room membership, messages, routing, and communication audit events.
-- OpenProject may mirror coordination state. It must not overwrite GitHub state during
-  the pilot.
-- XWiki may publish onboarding copies. Every page must show its repository source and
-  commit SHA; the repository wins on disagreement.
+- The relay, `buzz` CLI, and `buzz-acp` harness come from the official `block/buzz`
+  repository. We do not maintain a separate application called Buzz.
+- Every human and agent has a distinct Nostr keypair. Local pilot secrets are held in
+  macOS Keychain and are never committed or copied into evidence.
+- Relay membership is enforced. The owner is configured through
+  `RELAY_OWNER_PUBKEY`; agents are explicit members and private-channel bots.
+- Codex and Claude connect through the official ACP adapters. Inbound agent work is
+  owner-only by default.
+- GitHub and `/steer` remain authoritative for work, code, experiments, gates,
+  evidence, and decisions. Buzz messages link to those records.
 
-`agent-roster.yaml` is the non-secret desired-state manifest. Provisioning automation
-must be idempotent, emit no credentials, preserve the existing `Agentic End2End SDLC`
-project, and target a distinct `STEER Federal BD Platform` workspace.
+`agent-roster.yaml` is desired state only. Public keys and signed event IDs from the
+local proof live in `steer/evidence/buzz-agent-readiness-2026-08-12.md`.
 
-`provision_openproject.rb` implements the B0 workspace boundary. It creates no API token
-and does not make an agent operational; credential issuance and positive/negative B1
-tests remain separate, reviewable actions.
+## Promotion boundary
 
-## Implementation order
+The local B1 communication slice is proven, including enrollment, denial, revocation,
+restart retention, and a live Codex reply. It does not authorize a production or hosted
+deployment. Production promotion still requires a deployment brief, durable secret
+store, TLS, backups/restore, monitoring, and production auth checks.
 
-1. Preserve the existing Buzz prototype as a tagged or committed baseline in its own
-   repository after its current untracked files are reviewed by their owner.
-2. Provision the separate STEER workspace and unique minimum-fleet identities.
-3. Add authenticated sessions, workspace/channel membership, and append-only message
-   events to Buzz; remove fake seed data from the STEER workspace only.
-4. Add read-only GitHub artifact unfurling, then an idempotent coordination projection.
-5. Publish revision-labelled onboarding pages to XWiki.
-6. Execute B1 negative and positive proofs before declaring Buzz the default huddle.
+## Superseded implementation
 
-The local Buzz UI is intentionally not modified from this repository. Its current
-working tree contains unversioned prior work, so preserving that baseline is a
-prerequisite to adaptation.
+Commits `b34e499` and `3b343dc` recorded an app built after the word “Buzz” was
+misread as a product request. That app is preserved as historical evidence but is not
+Block Buzz and cannot satisfy this contract. This correction is additive; history is
+not rewritten.

@@ -13,7 +13,7 @@ operating model.
 | Review | Pull request + fresh-context Critic | Diff, Critic findings, human rulings, and required checks are preserved |
 | Release decision | Gate 3 evidence | Human decision is distinct from green CI and merge permission |
 | Documentation | Repository Markdown | Intent, design, decisions, operations, and learning are versioned with code |
-| Team communication | Buzz pilot + GitHub fallback | Named human/agent identities, spaces, routing, retention, revocation, and durable write-through pass B1 proofs |
+| Team communication | Block Buzz pilot + GitHub fallback | Named Nostr identities, signed events, spaces, routing, retention, revocation, and durable write-through pass B1 proofs |
 | Learning | Metrics ledger + weekly Learning Review | Flow, quality, outcome, cost, and human attention are reviewed and changes are limited |
 
 ## Shared GitHub surfaces
@@ -26,9 +26,9 @@ operating model.
 - **Discussions:** the asynchronous huddle and signals inbox. Durable decisions graduate
   to the decision log; product evidence graduates to a brief or signal digest. This is
   the operational fallback until Buzz passes B1.
-- **Buzz:** the target shared human-agent huddle, signals, findings, and escalation plane.
-  It remains non-authoritative and default-closed under `BUZZ-OPERATING-CONTRACT.md`
-  until identity and audit proofs pass.
+- **Block Buzz:** the target shared human-agent huddle, signals, findings, and escalation
+  plane. The local communication slice has passed; shared/production promotion remains
+  default-closed under `BUZZ-OPERATING-CONTRACT.md`.
 - **Security Advisories:** confidential vulnerability reporting.
 
 ## Work states and WIP

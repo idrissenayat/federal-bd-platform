@@ -33,7 +33,7 @@ test (Handbook); every AI-connected tool must pass the /steer canary tripwire.
 
 | Tool | Status | Role | Notes |
 |---|---|---|---|
-| Buzz (Block) | PILOT | Target huddle, signals, findings, and escalation plane for humans and uniquely identified agents | Current local prototype has not yet proven authenticated agent identities or a tamper-evident event log. B1 makes it the default huddle; B2 permits flight-board projection; B3 is required before any gate-co-sign experiment. See `BUZZ-OPERATING-CONTRACT.md`. GitHub is the fallback and authority. |
+| Buzz (Block) | PILOT | Signed huddle, signals, findings, and escalation plane for humans and uniquely keyed agents | Official `block/buzz` local proof passed identity, membership denial, revocation, restart retention, and Codex ACP reply. Production/shared deployment is still default-closed. B2 permits flight-board projection; B3 is required before any gate experiment. GitHub remains authority. |
 | GitHub Projects | ADOPT | Flight board (until Buzz promotion) | One surface, phase columns, gate markers |
 | /steer (this kit) | ADOPT | The written contract — briefs, exams, guardrails, logs | The coordination mechanism itself; agents read it natively |
 
