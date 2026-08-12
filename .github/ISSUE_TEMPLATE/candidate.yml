@@ -1,0 +1,47 @@
+name: STEER candidate
+description: Capture evidence-backed candidate work before a brief is approved.
+title: "[Candidate] "
+labels: ["kind/candidate", "phase/sense"]
+body:
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and source links
+      description: Link observations, user evidence, or operating data. Do not invent demand.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: User or operating problem
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Observable outcome and guardrail
+      description: State the desired measure, baseline if known, observation window, and one must-not-worsen measure.
+    validations:
+      required: true
+  - type: dropdown
+    id: size
+    attributes:
+      label: Initial size
+      options: [XS, S, M, L, Unknown]
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Initial risk
+      options: [Default-open, Default-closed, Unknown]
+    validations:
+      required: true
+  - type: dropdown
+    id: workflow
+    attributes:
+      label: Workflow assignment
+      description: Experimental items must be assigned before detailed work; do not change after observing difficulty.
+      options: [Unassigned, STEER, Control, Setup / excluded]
+    validations:
+      required: true
