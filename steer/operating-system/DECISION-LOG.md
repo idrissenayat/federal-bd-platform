@@ -31,6 +31,9 @@ Format:
 | 2026-08-12 | environment | Pin Python 3.12 and Node 20; manage Python with `uv` | Match the architecture contract and avoid accidental use of globally newer runtimes | At a measured runtime upgrade |
 | 2026-08-12 | environment | Bind the project Postgres container to `127.0.0.1:55432` | Port 5432 is already owned by another project; loopback isolation prevents collision and unintended network exposure | If a shared database replaces local Compose |
 | 2026-08-12 | environment | Declare Bash for setup gates and test that discovery does not mutate `PATH` | zsh reserves `path` and `status`; ad-hoc probes produced false failures | If setup becomes shell-independent |
+| 2026-08-12 | collaboration | Buzz is the target communication plane; GitHub and `/steer` remain the authority plane until Buzz passes explicit B1–B3 proofs | Chat improves human-agent coordination but must not silently become gate or contract authority | At each Buzz promotion level |
+| 2026-08-12 | collaboration | Preserve the existing Scrum-oriented Buzz/OpenProject/XWiki pilot; provision STEER in a separate workspace | Maintain provenance and avoid presenting relabelled Scrum configuration as evidence for STEER | Never delete; supersede with linked evidence |
+| 2026-08-12 | agents | Poppy is a product-analysis agent and Tempo is a flow steward; neither is a human gate approver | Existing persona names must not confer decision authority that STEER reserves for authenticated humans | If human/agent authority model changes |
 
 Rules of the log:
 - If you ruled on it out loud (or in your head) and it changes future behavior, it goes here.

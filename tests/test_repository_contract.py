@@ -13,6 +13,11 @@ def test_steer_control_artifacts_exist() -> None:
         "steer/operating-system/GUARDRAIL-LIBRARY.md",
         "steer/TEAM-ENVIRONMENT.md",
         "steer/TEAM-COMMUNICATION.md",
+        "steer/AGENT-ONBOARDING.md",
+        "steer/BUZZ-OPERATING-CONTRACT.md",
+        "integrations/buzz/README.md",
+        "integrations/buzz/agent-roster.yaml",
+        "integrations/buzz/provision_openproject.rb",
         "CONTRIBUTING.md",
         "SECURITY.md",
         ".github/CODEOWNERS",
@@ -29,6 +34,18 @@ def test_steer_control_artifacts_exist() -> None:
     missing = [path for path in required_paths if not (REPO_ROOT / path).is_file()]
 
     assert not missing, f"Missing STEER control artifacts: {missing}"
+
+
+def test_buzz_roster_contains_no_credentials() -> None:
+    roster = (REPO_ROOT / "integrations/buzz/agent-roster.yaml").read_text().lower()
+
+    forbidden_assignments = ("api_key:", "token:", "password:", "secret:")
+    assert not any(name in roster for name in forbidden_assignments)
+    assert "agent-critic-steer" in roster
+    assert "agent_gate_approval: denied" in roster
+
+    provisioner = (REPO_ROOT / "integrations/buzz/provision_openproject.rb").read_text()
+    assert "Token::API.create!" not in provisioner
 
 
 def test_runtime_versions_are_pinned() -> None:
