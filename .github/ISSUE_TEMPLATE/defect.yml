@@ -1,0 +1,41 @@
+name: Defect
+description: Report a reproducible product, process, or gauntlet defect.
+title: "[Defect] "
+labels: ["kind/defect"]
+body:
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options: [S1 critical, S2 high, S3 moderate, S4 low, Unknown]
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and evidence
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: input
+    id: contract
+    attributes:
+      label: Related brief, exam, guardrail, or workflow
+  - type: checkboxes
+    id: sensitive
+    attributes:
+      label: Security routing
+      options:
+        - label: This issue contains no sensitive exploit detail or credential; sensitive reports use a private Security Advisory.
+          required: true

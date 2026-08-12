@@ -1,0 +1,38 @@
+name: Agent or team escalation
+description: Stop and request a consequential ruling instead of guessing.
+title: "[Escalation] "
+labels: ["kind/escalation", "state/blocked"]
+body:
+  - type: input
+    id: item
+    attributes:
+      label: Blocked item, branch, or pull request
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: Raising role
+      options: [Scout, Product Lead, Architect, Builder, Test, Critic, Docs, Ops, Human reviewer]
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Specific decision or missing fact
+    validations:
+      required: true
+  - type: textarea
+    id: checked
+    attributes:
+      label: Contracts and evidence already checked
+      description: Link the brief, exam, decision log, guardrails, and relevant evidence.
+    validations:
+      required: true
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: Needed by
+      options: [Same working day, Next working day, Before next replenishment, Not time-sensitive]
+    validations:
+      required: true

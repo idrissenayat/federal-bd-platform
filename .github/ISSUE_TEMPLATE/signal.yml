@@ -1,0 +1,30 @@
+name: Signal or observation
+description: Record a user observation, error pattern, source change, or operating signal.
+title: "[Signal] "
+labels: ["kind/signal", "phase/sense"]
+body:
+  - type: textarea
+    id: observation
+    attributes:
+      label: What was observed?
+      description: Separate observation from interpretation.
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Evidence link or reproducible source
+    validations:
+      required: true
+  - type: textarea
+    id: interpretation
+    attributes:
+      label: Possible interpretation
+      description: Mark uncertainty and alternatives.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Data safety
+      options:
+        - label: This report contains no credentials, CUI, FCI, proprietary proposal material, export-controlled data, or classified information.
+          required: true

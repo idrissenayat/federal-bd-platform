@@ -74,3 +74,7 @@ Before any product implementation, bootstrap and verify the shared environment:
 
 The readiness levels, evidence, and remaining delivery blockers are recorded in
 [`steer/ENVIRONMENT-READINESS.md`](steer/ENVIRONMENT-READINESS.md).
+
+Team delivery uses the shared surfaces and rules in
+[`steer/TEAM-ENVIRONMENT.md`](steer/TEAM-ENVIRONMENT.md), with communication and
+escalation routing in [`steer/TEAM-COMMUNICATION.md`](steer/TEAM-COMMUNICATION.md).

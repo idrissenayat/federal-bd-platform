@@ -11,6 +11,19 @@ def test_steer_control_artifacts_exist() -> None:
         "steer/EXPERIMENT-REGISTER.md",
         "steer/operating-system/GATES.md",
         "steer/operating-system/GUARDRAIL-LIBRARY.md",
+        "steer/TEAM-ENVIRONMENT.md",
+        "steer/TEAM-COMMUNICATION.md",
+        "CONTRIBUTING.md",
+        "SECURITY.md",
+        ".github/CODEOWNERS",
+        ".github/pull_request_template.md",
+        ".github/ISSUE_TEMPLATE/candidate.yml",
+        ".github/ISSUE_TEMPLATE/escalation.yml",
+        ".github/branch-protection.json",
+        "scripts/configure-github.sh",
+        "scripts/check-team-environment.sh",
+        "scripts/run-semgrep.sh",
+        "scripts/prove-lane-isolation.sh",
     )
 
     missing = [path for path in required_paths if not (REPO_ROOT / path).is_file()]

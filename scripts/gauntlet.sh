@@ -17,4 +17,4 @@ uv run mypy tests
 uv run pytest -q
 gitleaks dir . --no-banner --redact --exit-code 1
 osv-scanner scan source --lockfile uv.lock .
-semgrep scan --config auto --error --exclude .venv .
+"${script_dir}/run-semgrep.sh"
