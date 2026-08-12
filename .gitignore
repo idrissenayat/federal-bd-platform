@@ -1,0 +1,24 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+node_modules/
+.next/
+dist/
+build/
+coverage/
+htmlcov/
+*.log
+
+# Local contractor information and downloaded source evidence
+config/company-profile.yaml
+data/raw/
+data/quarantine/
+data/exports/
+

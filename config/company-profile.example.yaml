@@ -1,0 +1,44 @@
+profile_id: example-contractor
+revision: 1
+effective_at: 2026-08-12T00:00:00Z
+
+identity:
+  legal_name: REPLACE_ME
+  uei: REPLACE_ME
+  cage_code: REPLACE_ME
+
+eligibility:
+  business_size_by_naics: []
+  certifications: []
+  exclusions: []
+
+market_focus:
+  priority_agencies: []
+  priority_naics: []
+  priority_psc: []
+  preferred_contract_types: []
+  preferred_value_usd:
+    minimum: null
+    maximum: null
+  allowed_geographies: []
+  minimum_response_lead_days: 21
+
+capabilities:
+  core: []
+  explicit_non_capabilities: []
+  partner_required_for: []
+  contract_vehicles: []
+  public_clearance_posture: []
+
+past_performance: []
+
+strategy:
+  priorities: []
+  risk_constraints: []
+  maximum_simultaneous_pursuits: null
+  weekly_proposal_capacity_hours: null
+
+data_handling:
+  classification: public-unclassified-only
+  notes: Do not place CUI, FCI, classified, export-controlled, or proprietary proposal data in this profile.
+
