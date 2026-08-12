@@ -13,6 +13,7 @@ does not substitute for Gates 1–3, and does not count as a comparative STEER o
 ## Preserved baseline
 
 - Pre-hardening repository commit: `3abf612`
+- Environment hardening commit: `605c9f6`
 - Baseline secret scan: no findings
 - Environment hardening is intentionally maintained as a later revision so the initial
   state and the reason for each change remain inspectable.

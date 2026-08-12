@@ -16,7 +16,7 @@
 
 - People and role availability:
 - Models and agent tools:
-- Repository/environment/CI baseline: pre-hardening repository `3abf612`; local tool versions and post-hardening revision to be frozen after the readiness exam; remote CI not yet proven
+- Repository/environment/CI baseline: pre-hardening repository `3abf612`; local hardening `605c9f6`; dated inventory in `evidence/environment-readiness-2026-08-12.md`; remote CI not yet proven
 - Product guardrails:
 - Control workflow revision:
 - Experiment charter revision:
