@@ -39,6 +39,10 @@ prerequisite, not a team-environment prerequisite.
    repeated Go compilation to checksum-verified official release binaries to reduce the
    4m34s feedback cycle. The checksum-verified revision passed the complete GitHub runner
    in 47 seconds on pull request `#7`.
+4. A documentation-only rerun then failed before checks because the anonymous GitHub
+   release CDN returned HTTP 503 for actionlint across all curl retries. Tool downloads
+   now use the workflow's read-only GitHub token through `gh release download`, while
+   preserving SHA-256 verification.
 2. GitHub rejected branch protection for the private repository with HTTP 403 and the
    explicit requirement to upgrade the personal account to GitHub Pro or make the
    repository public. The repository remains private; visibility was not weakened.
