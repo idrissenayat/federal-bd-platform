@@ -2,13 +2,56 @@
 
 ## Decision
 
-**Official Block Buzz local B1 communication proof: PASS.**
+**Official Block Buzz shared B1 communication proof: PASS for controlled onboarding.**
 
-**Shared/production deployment: NOT AUTHORIZED / NOT YET PROVEN.**
+**Always-on hosted agent workers: BLOCKED pending provider service credentials.**
+
+**Production operations beyond B1: PARTIAL / DEFAULT-CLOSED.**
 
 The earlier claim that a custom owner-only Sites application was “Buzz B1” is
 superseded. That application is not Block Buzz. Commits `b34e499` and `3b343dc` remain
 in history to show the initial misunderstanding and why this correction was necessary.
+
+## Shared Railway environment
+
+| Component | Observation | Result |
+|---|---|---|
+| Railway project | Isolated project `steer-block-buzz`; existing `bdp` project untouched | PASS |
+| Relay | `wss://blockbuzzmain-production-5bcb.up.railway.app`; HTTPS liveness, readiness, and health all returned 200 | PASS |
+| Image | `ghcr.io/block/buzz:sha-788b3c0`, the image pinned by Block's official Railway template | PASS |
+| Data services | Managed PostgreSQL, Redis with persistent volume, and Railway S3-compatible bucket | PASS |
+| Relay controls | TLS, auth token requirement, closed relay membership, owner bootstrap, migrations, audit service, and object-store conformance probe | PASS |
+| PostgreSQL recovery | Railway point-in-time recovery enabled and wired to a backup bucket | PARTIAL; scheduled backups and restore rehearsal unavailable/unproven |
+| Hosted agents | No OpenAI or Anthropic service credential is configured | BLOCKED; no local login is treated as a production credential |
+| Local workstation | STEER relay and six supporting containers stopped after remote cutover; containers and volumes retained, Buzz Desktop untouched | PASS; shared service no longer depends on the workstation |
+
+An initial empty Railway project was deleted before receiving members or data after a
+diagnostic command surfaced its generated credentials. The replacement project generated
+an entirely new secret set. No exposed value was reused, committed, or copied into this
+evidence.
+
+## Shared spaces and events
+
+| Space | Channel ID | Signed proof event |
+|---|---|---|
+| `steer-huddle` | `908db895-ff7b-43d1-8b0a-b261503bd523` | Owner `349c8ffe160020f2014fa7becab18f267b1fcf590dc428c492cfa725077addce` |
+| `signals` | `3894392d-3876-4932-9f18-89d39358c10c` | `839b48b37e7d6d8ac3437a722dd43a02ef19ebc6c40c26aab388e7c6da02a68c` |
+| `agent-escalations` | `49138dfb-7fc2-4436-8583-c2f958cb7fa0` | Test Agent `e16ea45131e1a0ec231caa2da8f18c37e14cbb6cc39bb24a063cda8aac6c479b` |
+| `critic-findings` | `07b04d3a-56ea-4533-8192-a7ebffd5a4ed` | Critic `1d740550be08af8969bcc8656f97a9fac5761d3da71d59248ce39320a97c7e8f` |
+| `release-watch` | `b037c21f-1e7c-42ad-83e0-ac13479cc450` | Test Agent `0cac456ff940e98ba7453b766abf22c4bb6bb3c627b648245013b4c58bcf1258` |
+| `learning-review` | `b35c0804-3d73-4cb1-b2dd-b91bd6e07723` | Owner `0bcc1d0a34b2ce9a2e7293f6f6028f3e91aaac66784890182a147ffb1a970df5` |
+
+Separate signed huddle events were accepted from Builder
+`24f4d20e0e5432baf42f567de9aa5a984eaf19c0a8131b185bfacbe12f915e13`,
+Critic `6584e98758024ef0396ecb4f07edaa2bf10aecbce51a72379d67b006a8e7dd75`,
+and Test Agent `836f72debf208acbc823e6d1fa8b2476ce7c78b576ed26376ff16cd63af4e0c0`.
+
+An unregistered disposable identity received exit code 3 and
+`403 relay_membership_required`. Disposable member
+`0f17c7a2d1b7a295a60431fbc7be211585044ab05548f65b5963d77a7b5081ad`
+could read before revocation and received the same denial after removal. After a Railway
+relay restart, the owner and three agents remained enrolled, and all four signed huddle
+events remained queryable by Builder.
 
 ## Observed official environment
 
@@ -87,12 +130,15 @@ STEER communication architecture.
 
 ## Remaining work
 
-1. Write and approve a production deployment brief: TLS, stable secrets, backup/restore,
-   monitoring, upgrades, and explicit production REST auth.
-2. Decide whether to connect the already-running desktop session to this relay without
-   disrupting its existing managed agents.
-3. Configure persistent supervision for only the activated STEER agents.
-4. Prove GitHub write-through/reconciliation before any B2 promotion.
+1. Enter OpenAI and Anthropic service credentials directly into Railway and deploy
+   persistent Builder, Critic, and Test Agent workers; repeat owner-only ACP proofs.
+2. Enroll each human teammate using their own key and GitHub identity; do not mint or
+   retain human private keys on their behalf.
+3. Rehearse PostgreSQL restore and define backup coverage for the Railway object bucket;
+   scheduled backup commands are not authorized by the current account capability.
+4. Configure external availability/error alerting and an explicit Railway cost limit.
+5. Decide whether to use a custom domain and document the desktop-client connection path.
+6. Prove GitHub write-through/reconciliation before any B2 promotion.
 
-GitHub and `/steer` remain authoritative. This local pass does not authorize Buzz to
-hold gates or final bid/no-bid decisions.
+GitHub and `/steer` remain authoritative. This shared B1 pass does not authorize Buzz
+to hold gates or final bid/no-bid decisions.

@@ -2,7 +2,10 @@ schema_version: 2
 platform:
   name: Block Buzz
   upstream: https://github.com/block/buzz
-  deployment_stage: local-pilot
+  deployment_stage: railway-shared-b1
+  relay_url: wss://blockbuzzmain-production-5bcb.up.railway.app
+  railway_project: steer-block-buzz
+  hosted_agent_workers: blocked-pending-provider-service-credentials
   authority: github-and-versioned-steer
 
 relay_policy:
@@ -19,13 +22,28 @@ authority:
 
 spaces:
   - id: steer-huddle
+    channel_id: 908db895-ff7b-43d1-8b0a-b261503bd523
     type: stream
     visibility: private
   - id: signals
+    channel_id: 3894392d-3876-4932-9f18-89d39358c10c
     type: forum
     visibility: open-to-relay-members
   - id: agent-escalations
+    channel_id: 49138dfb-7fc2-4436-8583-c2f958cb7fa0
     type: stream
+    visibility: private
+  - id: critic-findings
+    channel_id: 07b04d3a-56ea-4533-8192-a7ebffd5a4ed
+    type: forum
+    visibility: private
+  - id: release-watch
+    channel_id: b037c21f-1e7c-42ad-83e0-ac13479cc450
+    type: stream
+    visibility: private
+  - id: learning-review
+    channel_id: b35c0804-3d73-4cb1-b2dd-b91bd6e07723
+    type: forum
     visibility: private
 
 identities:
@@ -65,3 +83,5 @@ credential_policy:
   committed: false
   displayed_in_logs_or_evidence: false
   rotation_and_revocation_test_required: true
+  hosted_provider_credentials_configured: false
+  hosted_secret_destination: railway-service-variables

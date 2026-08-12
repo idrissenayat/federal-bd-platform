@@ -23,12 +23,13 @@ operating model.
 - **Issues:** candidate work, defects, signals requiring action, and agent escalations.
 - **Pull requests:** implementation evidence, Critic review, CI, and authenticated human
   review. They are not substitutes for Gate 3.
-- **Discussions:** the asynchronous huddle and signals inbox. Durable decisions graduate
-  to the decision log; product evidence graduates to a brief or signal digest. This is
-  the operational fallback until Buzz passes B1.
+- **Discussions:** the asynchronous fallback when Buzz or its identity/audit controls are
+  unavailable. Durable decisions graduate to the decision log; product evidence
+  graduates to a brief or signal digest.
 - **Block Buzz:** the target shared human-agent huddle, signals, findings, and escalation
-  plane. The local communication slice has passed; shared/production promotion remains
-  default-closed under `BUZZ-OPERATING-CONTRACT.md`.
+  plane. The Railway-hosted communication slice has passed B1 for controlled onboarding.
+  Hosted agent workers, backup restore, external alerting, and B2 GitHub reconciliation
+  remain default-closed under `BUZZ-OPERATING-CONTRACT.md`.
 - **Security Advisories:** confidential vulnerability reporting.
 
 ## Work states and WIP
