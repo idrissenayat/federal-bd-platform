@@ -43,6 +43,9 @@ prerequisite, not a team-environment prerequisite.
    release CDN returned HTTP 503 for actionlint across all curl retries. Tool downloads
    now use the workflow's read-only GitHub token through `gh release download`, while
    preserving SHA-256 verification.
+5. The first authenticated-download run verified actionlint and gitleaks, then failed
+   because OSV Scanner's release asset retained its platform-qualified filename. The
+   workflow now verifies that original asset before renaming it to the executable name.
 2. GitHub rejected branch protection for the private repository with HTTP 403 and the
    explicit requirement to upgrade the personal account to GitHub Pro or make the
    repository public. The repository remains private; visibility was not weakened.

@@ -36,7 +36,8 @@ jobs:
           tar -xzf "$tool_dir/gitleaks_8.30.1_linux_x64.tar.gz" -C "$tool_dir" gitleaks
           gh release download v2.5.0 --repo google/osv-scanner \
             --pattern osv-scanner_linux_amd64 --dir "$tool_dir"
-          echo "edcfc41d257db36148f065055655fe3fcfc434b0b423ea67468a84c207524e0c  $tool_dir/osv-scanner" | sha256sum --check
+          echo "edcfc41d257db36148f065055655fe3fcfc434b0b423ea67468a84c207524e0c  $tool_dir/osv-scanner_linux_amd64" | sha256sum --check
+          mv "$tool_dir/osv-scanner_linux_amd64" "$tool_dir/osv-scanner"
           chmod +x "$tool_dir/osv-scanner"
           echo "$tool_dir" >> "$GITHUB_PATH"
       - name: Validate shell and workflow syntax
