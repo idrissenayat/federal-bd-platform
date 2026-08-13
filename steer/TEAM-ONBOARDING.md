@@ -155,11 +155,18 @@ Before creating credentials, record:
 The initial roster is Scout, Architect, Builder, Test Agent, Critic, Docs Agent, and Ops
 Agent. Add another identity only when the role has a distinct bounded purpose.
 
-In the current Buzz workspace, the approved profiles are displayed as `Scout`,
-`Architect`, `STEER Builder`, `STEER Test Agent`, `STEER Critic`, `Docs Agent`, and
-`Ops Agent`. Do not substitute Buzz starter agents such as Fizz, Honey, or Bumble, or
-project/domain specialists, for these STEER control roles. Project-specific agents are
-added separately only when their boundary and project channel have been approved.
+In the current Buzz workspace, the managed profiles are displayed as `STEER Scout`,
+`STEER Architect`, `STEER Builder`, `STEER Test Agent`, `STEER Critic`,
+`STEER Docs Agent`, and `STEER Ops Agent`. Do not substitute Buzz starter agents such
+as Fizz, Honey, or Bumble, relay-only identities, or project/domain specialists for
+these STEER control roles. Project-specific agents are added separately only when their
+boundary and project channel have been approved.
+
+A relay identity or channel-member row is not by itself an operational agent. A managed
+Buzz agent must also show the **agent** badge, its own public key, a configured model and
+instructions, runtime status, Start/Stop controls, and an activity feed. If those are
+absent, the identity cannot receive work or communicate autonomously even though its
+name appears in the channel.
 
 ### 2. Create a separate agent identity
 
@@ -216,12 +223,26 @@ The agent is onboarded only when:
 
 - its exact public key appears in `buzz-admin list-members` as `member`;
 - it discovers at least one approved channel rather than `0 channel(s)`;
-- it appears under its own agent profile, not the human owner's profile;
+- it appears under its own managed agent profile with an **agent** badge, model,
+  runtime controls, and activity feed—not only as a relay identity;
+- the runtime reports online/running and can read the assigned repository context;
 - an authorized human can mention it in a working channel;
 - it replies in the same thread with its role and limitation;
 - its activity is visible in the signed Buzz record;
 - its Flight Board roster entry matches its Buzz role and human owner;
 - it cannot approve or impersonate a human gate ruling.
+
+### 7. Make coordination visible
+
+Use one parent message per huddle, work item, or handoff. Mention only the agents needed
+for that thread. Each participating agent replies in the same thread with its role,
+status, blocker or required input, evidence link, and hard boundary. A handing-off agent
+mentions the receiving agent in its reply; the receiver acknowledges in that thread.
+
+Use `#steer-team` for cross-project readiness, fleet health, and shared blockers. Use the
+project channel for project-specific execution. Do not create agent chatter merely to
+look busy, and do not allow hidden agent-to-agent discussion to become the only record
+of a dependency, scope question, requested ruling, or handoff.
 
 ## Baseline channel map
 
