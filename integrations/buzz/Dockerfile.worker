@@ -20,8 +20,8 @@ WORKDIR /src
 RUN git clone --filter=blob:none https://github.com/block/buzz.git . \
     && git checkout --detach "${BUZZ_UPSTREAM_SHA}"
 
-RUN --mount=type=cache,id=steer-buzz-cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=steer-buzz-target,target=/src/target \
+RUN --mount=type=cache,id=s/4689e21d-fe47-4ea9-a369-0ec835f4b515-/usr/local/cargo/registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=s/4689e21d-fe47-4ea9-a369-0ec835f4b515-/src/target,target=/src/target \
     cargo build --release --locked \
       -p buzz-acp --bin buzz-acp \
       -p buzz-agent --bin buzz-agent \
