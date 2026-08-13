@@ -58,6 +58,26 @@ service credentials are supplied directly to Railway, each role has an assigned 
 and remote ACP proofs pass. Backup restore, external alerting, GitHub B2 reconciliation,
 and a custom-domain decision remain open production controls.
 
+## Railway worker deployment
+
+`Dockerfile.worker` builds the official `buzz-acp`, `buzz-agent`, `buzz-dev-mcp`,
+and `buzz` binaries at the same pinned Block Buzz commit as the hosted relay. The
+worker uses Buzz's built-in OpenAI-compatible runtime so it does not depend on an
+interactive Codex or Claude login.
+
+Deploy one Railway service per activated identity from this repository and branch.
+Set `RAILWAY_DOCKERFILE_PATH=/integrations/buzz/Dockerfile.worker`, then copy the
+non-secret settings from `railway-worker.env.example`. Add the identity's unique
+`BUZZ_PRIVATE_KEY`, its provider key, and its role-specific
+`BUZZ_AGENT_SYSTEM_PROMPT` only as sealed Railway service variables. Do not reuse a
+Buzz identity key between services.
+
+Start with one owner-only Builder proof before activating the remaining roles. A
+successful deployment must connect to the shared relay, discover only its assigned
+channels, respond to an owner mention, reject a non-owner mention, and preserve the
+signed reply after restart. Promotion evidence records event IDs and timestamps only;
+it never records secret values.
+
 ## Superseded implementation
 
 Commits `b34e499` and `3b343dc` recorded an app built after the word “Buzz” was
