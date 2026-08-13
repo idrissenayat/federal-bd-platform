@@ -1,7 +1,7 @@
 # Intent Brief — 0004 Open-source multi-POD STEER platform
 
-**Status:** draft
-**Tags:** #security #privacy #a11y #legal #reliability #design-system
+**Status:** Gate 1 rework after authenticated Product Lead change request
+**Tags:** #security #privacy #a11y #legal #reliability #design-system #money
 **Date opened:** 2026-08-13
 **Work item:** [GitHub issue 16](https://github.com/idrissenayat/federal-bd-platform/issues/16)
 
@@ -32,7 +32,7 @@ and integrations are coupled to one pilot. That prevents credible external adopt
 makes adding another internal project ambiguous. Publishing the code without an
 installable organizational model would create an open repository, not an open system.
 
-## What “done and correct” means
+## What "done and correct" means
 
 1. An administrator can install a versioned STEER distribution and create an organization
    without modifying source code.
@@ -87,6 +87,40 @@ Legal review must confirm the project license, third-party dependency/license in
 contributor terms, name/trademark policy, privacy disclosure, and adapter terms before a
 1.0 distribution.
 
+## Specialist guardrails and default-closed cooling-off plan
+
+This item is default-closed because it introduces authentication and authorization,
+personal membership data, schema migrations, external adapters, and a future boundary
+where paid capabilities could be connected. Billing and movement of money remain out of
+scope for this brief; any later money-handling capability requires its own brief, exam,
+named commercial authority, and explicit human gates.
+
+- **Named decision authorities:** the Product Lead rules on Gate 1; the Tech Lead rules on
+  Gate 2 in a different session; Gate 3 requires the Product Lead, Tech Lead, an independent
+  reader, and the named owners for security, privacy, accessibility, legal, reliability,
+  design system, and money. An open owner seat blocks Gate 3 rather than transferring
+  authority to an agent.
+- **Bounded specialists:** every human or agent specialist receives an explicit organization,
+  POD, project, work-item, capability, owner, expiry/review date, and revocation path.
+  Default permissions are empty. Delegation, privilege expansion, and gate approval are
+  prohibited unless a later approved artifact expressly authorizes the specific action;
+  human gates can never be delegated to an agent.
+- **Evidence required before Gate 2:** the exam must cover the threat model, server-side
+  authorization matrix, tenant-denial cases, specialist expiry/revocation, data inventory
+  and retention/deletion, migration rollback, adapter scopes, audit integrity, accessibility,
+  license/dependency controls, and the explicit no-money boundary.
+- **Evidence required before Gate 3:** Builder, Test, independent Critic, and each tagged
+  owner must review the exact release revision. Required evidence includes clean isolation
+  and authorization tests, no critical dependency or accessibility blocker, rehearsed
+  migration rollback, specialist revocation proof, and a resolvable audit trail.
+- **Cooling-off:** the item never auto-ships. In team mode, every named Gate 3 authority
+  must sign. In solo mode, the authenticated human may rule only after the STEER-mandated
+  24-hour cooling-off from the verified build; the platform and repository must retain the
+  exact artifact revision, identity, timestamps, Critic review, and cooling-off evidence.
+- **Failure behavior:** missing authority, missing evidence, stale evidence, an unresolved
+  blocker, or an incomplete cooling-off period keeps the work blocked. Buzz discussion,
+  agent output, a green CI run, or a merge never substitutes for a human gate ruling.
+
 ## Chosen approach
 
 Pending Architect options. The working direction is a vendor-neutral Core contract with
@@ -96,5 +130,6 @@ installation, or making plugins full-trust POD members.
 
 ---
 
-GATE 1: PENDING — Product Lead must approve this exact revision.
-GATE 1 EVIDENCE: PENDING
+GATE 1: CHANGES REQUESTED — authenticated Product Lead ruling recorded in Flight Board
+work item STR-007; this corrected revision requires a new ruling.
+GATE 1 EVIDENCE: PENDING — rerun the Critic and bind the next ruling to this exact revision.
