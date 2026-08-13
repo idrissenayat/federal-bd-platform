@@ -186,6 +186,25 @@ function AgentReviewBrief({ item, review, reviewing, onReview, compact = false }
   </section>;
 }
 
+function buildChangeRequestDraft(review: AgentReview) {
+  const consequentialFindings = review.findings.filter((finding) => finding.severity !== "note");
+  if (!consequentialFindings.length) return "";
+
+  const instructions = consequentialFindings.map((finding, index) => [
+    `${index + 1}. ${finding.title}`,
+    `Required change: ${finding.action}`,
+    `Reason: ${finding.detail}`,
+  ].join("\n")).join("\n\n");
+  const dependencies = review.dependencies.slice(0, 3).map((dependency) => `- ${dependency}`).join("\n");
+
+  return [
+    "Changes requested based on the current Critic Agent review:",
+    instructions,
+    dependencies ? `Dependencies to resolve:\n${dependencies}` : "",
+    "Please update the work item and linked evidence, then return it for a fresh Critic review.",
+  ].filter(Boolean).join("\n\n");
+}
+
 export default function Home() {
   const [data, setData] = useState<Bootstrap | null>(null);
   const [view, setView] = useState<View>("overview");
@@ -196,6 +215,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reviewingIds, setReviewingIds] = useState<number[]>([]);
+  const [decisionChoice, setDecisionChoice] = useState("");
+  const [decisionReasoning, setDecisionReasoning] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
 
@@ -237,6 +258,8 @@ export default function Home() {
   const selected = data?.items.find((item) => item.id === selectedId) ?? null;
   const itemActivity = data?.activity.filter((event) => event.item_id === selectedId) ?? [];
   const selectedReview = data?.reviews.find((review) => review.item_id === selectedId) ?? null;
+  const freshSelectedReview = selected && selectedReview?.reviewed_item_updated_at === selected.updated_at ? selectedReview : null;
+  const changeRequestDraft = freshSelectedReview ? buildChangeRequestDraft(freshSelectedReview) : "";
   const decisionItems = data?.items.filter((item) => item.decision_status === "Needed now") ?? [];
   const blockedItems = data?.items.filter((item) => item.state === "blocked") ?? [];
   const activeItems = data?.items.filter((item) => item.state === "active") ?? [];
@@ -282,7 +305,7 @@ export default function Home() {
         method: "POST",
         body: JSON.stringify(Object.fromEntries(form.entries())),
       });
-      setDecisionOpen(false);
+      closeDecisionWorkspace();
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The ruling could not be recorded.");
@@ -310,8 +333,16 @@ export default function Home() {
 
   function openDecisionWorkspace(item: WorkItem) {
     setSelectedId(item.id);
+    setDecisionChoice("");
+    setDecisionReasoning("");
     setDecisionOpen(true);
     if (reviewNeedsRefresh(item) && !reviewingIds.includes(item.id)) void requestAgentReview(item.id);
+  }
+
+  function closeDecisionWorkspace() {
+    setDecisionOpen(false);
+    setDecisionChoice("");
+    setDecisionReasoning("");
   }
 
   function navigateTo(nextView: View) {
@@ -491,13 +522,15 @@ export default function Home() {
       {decisionOpen && selected && (
         <div className="modal-scrim decision-scrim">
           <form className="modal-card decision-modal" onSubmit={recordDecision}>
-            <header><div><span>◆ Authenticated human ruling</span><h2>{selected.gate}</h2></div><button type="button" onClick={() => setDecisionOpen(false)}>×</button></header>
+            <header><div><span>◆ Authenticated human ruling</span><h2>{selected.gate}</h2></div><button type="button" onClick={closeDecisionWorkspace}>×</button></header>
             <div className="decision-item-summary"><span>{selected.key}</span><strong>{selected.title}</strong><p>{selected.description}</p></div>
             <AgentReviewBrief compact item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => void requestAgentReview(selected.id)} />
             <div className="authority-warning"><strong>You are acting as {selected.decision_authority}.</strong><p>This ruling is attributed to {data.user.email ?? data.user.name}. Agents cannot submit this form without an authenticated human identity.</p></div>
-            <fieldset><legend>Ruling</legend><label className="radio-card"><input aria-label="Approve this gate" type="radio" name="decision" value="APPROVED" required /><span><strong>Approve</strong><small>Evidence is sufficient for this gate. Advance the work.</small></span></label><label className="radio-card"><input aria-label="Request changes for this gate" type="radio" name="decision" value="CHANGES_REQUESTED" required /><span><strong>Request changes</strong><small>Keep the gate pending and block work until the named gaps are resolved.</small></span></label></fieldset>
-            <label>Reasoning<textarea name="reasoning" required minLength={12} placeholder="State why this evidence is or is not sufficient. This becomes part of the audit trail." /></label>
-            <footer><button type="button" className="secondary-button" onClick={() => setDecisionOpen(false)}>Cancel</button><button className="decision-button" disabled={saving}>{saving ? "Recording…" : "Record human ruling"}</button></footer>
+            <fieldset><legend>Ruling</legend><label className="radio-card"><input aria-label="Approve this gate" type="radio" name="decision" value="APPROVED" required checked={decisionChoice === "APPROVED"} onChange={() => { setDecisionChoice("APPROVED"); setDecisionReasoning((current) => current === changeRequestDraft ? "" : current); }} /><span><strong>Approve</strong><small>Evidence is sufficient for this gate. Advance the work.</small></span></label><label className="radio-card"><input aria-label="Request changes for this gate" type="radio" name="decision" value="CHANGES_REQUESTED" required checked={decisionChoice === "CHANGES_REQUESTED"} onChange={() => { setDecisionChoice("CHANGES_REQUESTED"); if (!decisionReasoning.trim() && changeRequestDraft) setDecisionReasoning(changeRequestDraft); }} /><span><strong>Request changes</strong><small>Keep the gate pending and block work until the named gaps are resolved.</small></span></label></fieldset>
+            {decisionChoice === "CHANGES_REQUESTED" && changeRequestDraft && <section className="ai-reasoning-draft"><header><div><span>◇ Critic-drafted instructions</span><strong>Ready for your reasoning</strong></div><button type="button" disabled={decisionReasoning === changeRequestDraft} onClick={() => setDecisionReasoning(changeRequestDraft)}>{decisionReasoning === changeRequestDraft ? "Draft applied" : decisionReasoning.trim() ? "Restore AI draft" : "Use AI draft"}</button></header><p>Editable advice from the current review. You remain the author and decision authority.</p><pre>{changeRequestDraft}</pre></section>}
+            {decisionChoice === "CHANGES_REQUESTED" && !changeRequestDraft && reviewingIds.includes(selected.id) && <div className="draft-waiting"><span>◇</span><p><strong>Critic is preparing proposed instructions.</strong> You can write now or apply the draft when the review finishes.</p></div>}
+            <label><span className="reasoning-label-row"><span>Reasoning</span>{changeRequestDraft && decisionReasoning === changeRequestDraft && <em>AI draft applied · editable</em>}</span><textarea name="reasoning" required minLength={12} value={decisionReasoning} onChange={(event) => setDecisionReasoning(event.target.value)} placeholder="State why this evidence is or is not sufficient. This becomes part of the audit trail." /></label>
+            <footer><button type="button" className="secondary-button" onClick={closeDecisionWorkspace}>Cancel</button><button className="decision-button" disabled={saving}>{saving ? "Recording…" : "Record human ruling"}</button></footer>
           </form>
         </div>
       )}
