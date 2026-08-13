@@ -195,7 +195,7 @@ export default function Home() {
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [reviewingId, setReviewingId] = useState<number | null>(null);
+  const [reviewingIds, setReviewingIds] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
 
@@ -292,14 +292,35 @@ export default function Home() {
   }
 
   async function requestAgentReview(itemId: number) {
-    setReviewingId(itemId);
+    setReviewingIds((current) => current.includes(itemId) ? current : [...current, itemId]);
     try {
       await api(`/api/items/${itemId}/reviews`, { method: "POST", body: "{}" });
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The Critic Agent could not complete the review.");
     } finally {
-      setReviewingId(null);
+      setReviewingIds((current) => current.filter((id) => id !== itemId));
+    }
+  }
+
+  function reviewNeedsRefresh(item: WorkItem) {
+    const review = data?.reviews.find((candidate) => candidate.item_id === item.id);
+    return !review || review.reviewed_item_updated_at !== item.updated_at;
+  }
+
+  function openDecisionWorkspace(item: WorkItem) {
+    setSelectedId(item.id);
+    setDecisionOpen(true);
+    if (reviewNeedsRefresh(item) && !reviewingIds.includes(item.id)) void requestAgentReview(item.id);
+  }
+
+  function navigateTo(nextView: View) {
+    setView(nextView);
+    setMobileNav(false);
+    if (nextView === "decisions") {
+      for (const item of decisionItems) {
+        if (reviewNeedsRefresh(item) && !reviewingIds.includes(item.id)) void requestAgentReview(item.id);
+      }
     }
   }
 
@@ -333,7 +354,7 @@ export default function Home() {
         <nav className="side-nav" aria-label="Workspace navigation">
           <span className="nav-label">Workspace</span>
           {navigation.map((item) => (
-            <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setMobileNav(false); }}>
+            <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => navigateTo(item.id)}>
               <span aria-hidden="true">{item.icon}</span>{item.label}
               {item.id === "decisions" && decisionItems.length > 0 && <b>{decisionItems.length}</b>}
             </button>
@@ -384,12 +405,12 @@ export default function Home() {
               blocked={blockedItems}
               active={activeItems}
               onOpen={openItem}
-              onNavigate={setView}
+              onNavigate={navigateTo}
             />
           )}
           {view === "board" && <FlightBoard items={filteredItems} onOpen={openItem} onMove={updateItem} saving={saving} />}
           {view === "backlog" && <Backlog items={filteredItems} onOpen={openItem} onCreate={() => setCreateOpen(true)} />}
-          {view === "decisions" && <DecisionInbox items={decisionItems} decisions={data.decisions} reviews={data.reviews} onOpen={(item) => { openItem(item); setDecisionOpen(true); }} />}
+          {view === "decisions" && <DecisionInbox items={decisionItems} decisions={data.decisions} reviews={data.reviews} reviewingIds={reviewingIds} onOpen={openDecisionWorkspace} />}
           {view === "team" && <Team members={data.members} items={data.items} />}
         </div>
       </main>
@@ -408,11 +429,11 @@ export default function Home() {
               {selected.decision_status === "Needed now" && (
                 <div className="decision-callout">
                   <div><span>◆ Human ruling required</span><strong>{selected.gate}</strong><p>Authority: {selected.decision_authority}</p></div>
-                  <button onClick={() => setDecisionOpen(true)}>Review decision</button>
+                  <button onClick={() => openDecisionWorkspace(selected)}>Review decision</button>
                 </div>
               )}
 
-              <AgentReviewBrief item={selected} review={selectedReview} reviewing={reviewingId === selected.id} onReview={() => void requestAgentReview(selected.id)} />
+              <AgentReviewBrief item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => void requestAgentReview(selected.id)} />
 
               <section className="detail-section">
                 <h3>Work controls</h3>
@@ -472,7 +493,7 @@ export default function Home() {
           <form className="modal-card decision-modal" onSubmit={recordDecision}>
             <header><div><span>◆ Authenticated human ruling</span><h2>{selected.gate}</h2></div><button type="button" onClick={() => setDecisionOpen(false)}>×</button></header>
             <div className="decision-item-summary"><span>{selected.key}</span><strong>{selected.title}</strong><p>{selected.description}</p></div>
-            <AgentReviewBrief compact item={selected} review={selectedReview} reviewing={reviewingId === selected.id} onReview={() => void requestAgentReview(selected.id)} />
+            <AgentReviewBrief compact item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => void requestAgentReview(selected.id)} />
             <div className="authority-warning"><strong>You are acting as {selected.decision_authority}.</strong><p>This ruling is attributed to {data.user.email ?? data.user.name}. Agents cannot submit this form without an authenticated human identity.</p></div>
             <fieldset><legend>Ruling</legend><label className="radio-card"><input aria-label="Approve this gate" type="radio" name="decision" value="APPROVED" required /><span><strong>Approve</strong><small>Evidence is sufficient for this gate. Advance the work.</small></span></label><label className="radio-card"><input aria-label="Request changes for this gate" type="radio" name="decision" value="CHANGES_REQUESTED" required /><span><strong>Request changes</strong><small>Keep the gate pending and block work until the named gaps are resolved.</small></span></label></fieldset>
             <label>Reasoning<textarea name="reasoning" required minLength={12} placeholder="State why this evidence is or is not sufficient. This becomes part of the audit trail." /></label>
@@ -539,14 +560,15 @@ function Backlog({ items, onOpen, onCreate }: { items: WorkItem[]; onOpen: (item
   </>;
 }
 
-function DecisionInbox({ items, decisions, reviews, onOpen }: { items: WorkItem[]; decisions: Decision[]; reviews: AgentReview[]; onOpen: (item: WorkItem) => void }) {
+function DecisionInbox({ items, decisions, reviews, reviewingIds, onOpen }: { items: WorkItem[]; decisions: Decision[]; reviews: AgentReview[]; reviewingIds: number[]; onOpen: (item: WorkItem) => void }) {
   return <>
     <PageHeading eyebrow="Human authority" title="Decision inbox" copy="Start with the Critic Agent brief, inspect the exact evidence, then make the consequential decision in your own authenticated session." />
     <div className="decision-layout">
       <section className="decision-queue"><header><div><span className="panel-eyebrow">Requires your attention</span><h2>Pending rulings</h2></div><b>{items.length}</b></header>{items.length ? items.map((item) => {
         const review = reviews.find((candidate) => candidate.item_id === item.id);
         const stale = review ? review.reviewed_item_updated_at !== item.updated_at : false;
-        return <article className="decision-card" key={item.id}><div className="decision-diamond">◆</div><div className="decision-card-body"><div><span>{item.key} · {item.phase}</span><StatusPill value={item.gate} kind="gate" /></div><h3>{item.title}</h3><p>{item.description}</p><div className={`decision-agent-strip ${review ? "has-review" : "needs-review"}`}><span>◇</span><div><b>{review ? review.recommendation : "AI review not run"}</b><small>{review ? stale ? "Work changed — refresh the Critic brief" : review.findings[0]?.title ?? "No significant finding" : "Run the Critic before the human ruling for faster risk triage."}</small></div></div><dl><div><dt>Authority</dt><dd>{item.decision_authority}</dd></div><div><dt>Evidence</dt><dd>{item.evidence_url ? "Attached and ready to inspect" : "Evidence link missing"}</dd></div><div><dt>Next if approved</dt><dd>{item.gate === "Gate 2 pending" ? "Builder may begin implementation" : "Advance to the next STEER control"}</dd></div></dl><button onClick={() => onOpen(item)}>Open AI-assisted ruling →</button></div></article>;
+        const reviewing = reviewingIds.includes(item.id);
+        return <article className="decision-card" key={item.id}><div className="decision-diamond">◆</div><div className="decision-card-body"><div><span>{item.key} · {item.phase}</span><StatusPill value={item.gate} kind="gate" /></div><h3>{item.title}</h3><p>{item.description}</p><div className={`decision-agent-strip ${review && !stale ? "has-review" : "needs-review"}`}><span>◇</span><div><b>{reviewing ? "Critic Agent is reviewing now…" : review ? review.recommendation : "Critic review starts automatically"}</b><small>{reviewing ? "Reading the work item and linked evidence. This card refreshes when the brief is ready." : review ? stale ? "Work changed — opening this ruling refreshes the Critic brief." : review.findings[0]?.title ?? "No significant finding" : "Open the ruling workspace; no separate review step is required."}</small></div></div><dl><div><dt>Authority</dt><dd>{item.decision_authority}</dd></div><div><dt>Evidence</dt><dd>{item.evidence_url ? "Attached and ready to inspect" : "Evidence link missing"}</dd></div><div><dt>Next if approved</dt><dd>{item.gate === "Gate 2 pending" ? "Builder may begin implementation" : "Advance to the next STEER control"}</dd></div></dl><button onClick={() => onOpen(item)}>{reviewing ? "Open while Critic reviews →" : "Open AI-assisted ruling →"}</button></div></article>;
       }) : <Empty title="Decision inbox is clear" copy="A ruling appears only when the work is ready and a named human authority is required." />}</section>
       <section className="panel decision-history"><header><div><span className="panel-eyebrow">Authenticated record</span><h2>Decision history</h2></div></header>{decisions.length ? decisions.map((decision) => <div className="history-decision" key={decision.id}><span className={decision.decision === "APPROVED" ? "approved" : "changes"}>{decision.decision === "APPROVED" ? "✓" : "!"}</span><div><p><strong>{decision.item_key}</strong> · {decision.gate}</p><b>{decision.decision.replace("_", " ")}</b><blockquote>{decision.reasoning}</blockquote><small>{decision.actor_email ?? "Authenticated contributor"} · {formatDate(decision.created_at)}</small></div></div>) : <Empty title="No rulings recorded in this app yet" copy="The GitHub Gate 1 ruling remains linked from its evidence artifact." />}</section>
     </div>
