@@ -15,6 +15,13 @@
       "when": 1786631062906,
       "tag": "0001_fancy_dreadnoughts",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786635257028,
+      "tag": "0002_dizzy_robbie_robertson",
+      "breakpoints": true
     }
   ]
 }

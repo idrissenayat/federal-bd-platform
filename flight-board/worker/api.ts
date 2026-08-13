@@ -23,6 +23,7 @@ const phases = ["Sense", "Frame", "Engineer", "Evaluate", "Release", "Observe", 
 const priorities = ["Now", "Next", "Later"];
 const workflows = ["STEER", "Control", "Setup / excluded", "Unassigned"];
 const states = ["queued", "active", "blocked", "complete"];
+const decisionStatuses = ["Waiting", "Needed now", "Changes requested", "Rework", "Resubmitted", "Decided", "Not required"];
 
 type Finding = {
   severity: "blocker" | "should-fix" | "note";
@@ -31,7 +32,13 @@ type Finding = {
   action: string;
 };
 
-type EvidenceRead = { text: string | null; scope: string };
+type EvidenceRead = {
+  text: string | null;
+  scope: string;
+  sourceUrl: string | null;
+  revision: string | null;
+  sha256: string | null;
+};
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -50,6 +57,13 @@ function userFrom(request: Request): User | null {
     ? decodeURIComponent(encodedName)
     : null;
   return { id, email, name: decodedName ?? email?.split("@")[0] ?? "Contributor" };
+}
+
+async function ensureColumn(db: Database, table: string, column: string, definition: string) {
+  const columns = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+  if (!(columns.results ?? []).some((candidate) => candidate.name === column)) {
+    await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${definition}`).run();
+  }
 }
 
 async function ensureSchema(db: Database) {
@@ -81,6 +95,7 @@ async function ensureSchema(db: Database) {
       next_action text NOT NULL,
       evidence_url text,
       github_url text,
+      rework_instructions text,
       created_by text NOT NULL,
       created_at text NOT NULL,
       updated_at text NOT NULL
@@ -105,6 +120,10 @@ async function ensureSchema(db: Database) {
       reasoning text NOT NULL,
       actor_id text NOT NULL,
       actor_email text,
+      review_id integer,
+      evidence_url text,
+      evidence_revision text,
+      evidence_sha256 text,
       created_at text NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_decisions_item_created ON decisions (item_id, created_at)"),
@@ -122,12 +141,39 @@ async function ensureSchema(db: Database) {
       actions_json text NOT NULL,
       derived_tags_json text NOT NULL,
       evidence_scope text NOT NULL,
+      evidence_url text,
+      evidence_revision text,
+      evidence_sha256 text,
       reviewed_item_updated_at text NOT NULL,
       requested_by text NOT NULL,
       created_at text NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_agent_reviews_item_created ON agent_reviews (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS notifications (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+      dedupe_key text NOT NULL UNIQUE,
+      item_id integer NOT NULL,
+      member_id text,
+      recipient_role text NOT NULL,
+      kind text NOT NULL,
+      title text NOT NULL,
+      body text NOT NULL,
+      channel text DEFAULT 'Block Buzz' NOT NULL,
+      status text DEFAULT 'queued' NOT NULL,
+      created_at text NOT NULL,
+      read_at text
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_role_created ON notifications (recipient_role, created_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_member_status ON notifications (member_id, status)"),
   ]);
+  await ensureColumn(db, "work_items", "rework_instructions", "rework_instructions text");
+  await ensureColumn(db, "decisions", "review_id", "review_id integer");
+  await ensureColumn(db, "decisions", "evidence_url", "evidence_url text");
+  await ensureColumn(db, "decisions", "evidence_revision", "evidence_revision text");
+  await ensureColumn(db, "decisions", "evidence_sha256", "evidence_sha256 text");
+  await ensureColumn(db, "agent_reviews", "evidence_url", "evidence_url text");
+  await ensureColumn(db, "agent_reviews", "evidence_revision", "evidence_revision text");
+  await ensureColumn(db, "agent_reviews", "evidence_sha256", "evidence_sha256 text");
   await db.prepare("PRAGMA optimize").run();
 }
 
@@ -142,6 +188,52 @@ async function ensureCurrentUser(db: Database, user: User) {
     await db.prepare("UPDATE members SET role = 'Product Lead · interim Tech Lead', authority = 'Gates 1–3 for solo calibration sessions' WHERE id = ?")
       .bind(user.id).run();
   }
+}
+
+async function ensureHumanSeats(db: Database) {
+  await db.batch([
+    db.prepare("INSERT OR IGNORE INTO members (id, display_name, kind, role, authority, status, accent) VALUES ('human-design', 'Open seat', 'human', 'Product Designer', 'Design intent, accessibility, and independent Gate 3 review', 'open', 'violet')"),
+    db.prepare("INSERT OR IGNORE INTO members (id, display_name, kind, role, authority, status, accent) VALUES ('human-platform', 'Open seat', 'human', 'Platform / Ops Lead', 'Environment, delivery rails, rollback, telemetry, and agent operations', 'open', 'green')"),
+    db.prepare("INSERT OR IGNORE INTO members (id, display_name, kind, role, authority, status, accent) VALUES ('human-security', 'Open seat', 'human', 'Security Owner', 'Required on #security Gate 3 rulings', 'open', 'amber')"),
+  ]);
+}
+
+function roleContexts(role: string) {
+  const contexts: string[] = [];
+  if (role.includes("Product Lead")) contexts.push("product");
+  if (role.includes("Tech Lead")) contexts.push("tech");
+  if (role.includes("Product Designer")) contexts.push("design");
+  if (role.includes("Platform") || role.includes("Ops Lead")) contexts.push("platform");
+  if (role.includes("Security")) contexts.push("security");
+  return contexts.length ? contexts : ["contributor"];
+}
+
+async function backfillReworkState(db: Database) {
+  const now = new Date().toISOString();
+  await db.prepare(
+    `UPDATE work_items
+     SET decision_status = 'Changes requested',
+         rework_instructions = COALESCE(rework_instructions, (
+           SELECT d.reasoning FROM decisions d
+           WHERE d.item_id = work_items.id ORDER BY d.id DESC LIMIT 1
+         )),
+         next_action = 'Complete the requested changes in the linked evidence and resubmit for a fresh Critic review.',
+         updated_at = ?
+     WHERE state = 'blocked'
+       AND decision_status IN ('Waiting', 'Needed now')
+       AND (SELECT d.decision FROM decisions d WHERE d.item_id = work_items.id ORDER BY d.id DESC LIMIT 1) = 'CHANGES_REQUESTED'`,
+  ).bind(now).run();
+  await db.prepare(
+    `INSERT OR IGNORE INTO notifications
+     (dedupe_key, item_id, member_id, recipient_role, kind, title, body, channel, status, created_at)
+     SELECT 'decision-' || d.id || '-changes', d.item_id, w.assignee_id,
+            COALESCE(m.role, 'Evidence owner'), 'rework_requested',
+            w.key || ' returned for changes', d.reasoning, 'Block Buzz', 'queued', d.created_at
+     FROM decisions d
+     JOIN work_items w ON w.id = d.item_id
+     LEFT JOIN members m ON m.id = w.assignee_id
+     WHERE d.decision = 'CHANGES_REQUESTED'`,
+  ).run();
 }
 
 async function ensureSeedData(db: Database, user: User) {
@@ -192,8 +284,10 @@ async function ensureSeedData(db: Database, user: User) {
 async function bootstrap(db: Database, user: User) {
   await ensureSchema(db);
   await ensureCurrentUser(db, user);
+  await ensureHumanSeats(db);
   await ensureSeedData(db, user);
-  const [items, members, activity, decisions, reviews] = await Promise.all([
+  await backfillReworkState(db);
+  const [items, members, activity, decisions, reviews, notifications, currentMember] = await Promise.all([
     db.prepare(
       `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind
        FROM work_items w LEFT JOIN members m ON m.id = w.assignee_id
@@ -213,6 +307,12 @@ async function bootstrap(db: Database, user: User) {
       `SELECT r.*, w.key AS item_key, w.title AS item_title
        FROM agent_reviews r JOIN work_items w ON w.id = r.item_id ORDER BY r.created_at DESC`,
     ).all(),
+    db.prepare(
+      `SELECT n.*, w.key AS item_key, w.title AS item_title, m.display_name AS member_name
+       FROM notifications n JOIN work_items w ON w.id = n.item_id
+       LEFT JOIN members m ON m.id = n.member_id ORDER BY n.created_at DESC LIMIT 80`,
+    ).all(),
+    db.prepare("SELECT role, authority FROM members WHERE id = ?").bind(user.id).first<{ role: string; authority: string }>(),
   ]);
   const parsedReviews = (reviews.results ?? []).map((review) => ({
     ...review,
@@ -223,12 +323,13 @@ async function bootstrap(db: Database, user: User) {
     derived_tags: JSON.parse(String((review as Record<string, unknown>).derived_tags_json ?? "[]")),
   }));
   return {
-    user,
+    user: { ...user, role: currentMember?.role ?? "Contributor", authority: currentMember?.authority ?? "May own work", role_contexts: roleContexts(currentMember?.role ?? "Contributor") },
     items: items.results ?? [],
     members: members.results ?? [],
     activity: activity.results ?? [],
     decisions: decisions.results ?? [],
     reviews: parsedReviews,
+    notifications: notifications.results ?? [],
   };
 }
 
@@ -268,9 +369,10 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
     priority: { column: "priority", values: priorities },
     workflow: { column: "workflow", values: workflows },
     state: { column: "state", values: states },
-    decisionStatus: { column: "decision_status", values: ["Waiting", "Needed now", "Decided", "Not required"] },
+    decisionStatus: { column: "decision_status", values: decisionStatuses },
     assigneeId: { column: "assignee_id" },
     nextAction: { column: "next_action" },
+    reworkInstructions: { column: "rework_instructions" },
     evidenceUrl: { column: "evidence_url" },
     githubUrl: { column: "github_url" },
     title: { column: "title" },
@@ -312,26 +414,45 @@ function deriveTags(text: string) {
 }
 
 async function readEvidence(urlValue: unknown): Promise<EvidenceRead> {
-  if (!urlValue) return { text: null, scope: "Work item fields only; no evidence link was attached." };
+  if (!urlValue) return { text: null, scope: "Work item fields only; no evidence link was attached.", sourceUrl: null, revision: null, sha256: null };
   try {
     const source = new URL(String(urlValue));
     let target = source;
+    let revision: string | null = null;
     if (source.hostname === "github.com") {
       const parts = source.pathname.split("/").filter(Boolean);
       const blobIndex = parts.indexOf("blob");
       if (blobIndex !== 2 || parts.length < 5) {
-        return { text: null, scope: "Work item fields and evidence-link presence; the linked GitHub page is not a raw artifact." };
+        return { text: null, scope: "Work item fields and evidence-link presence; the linked GitHub page is not a raw artifact.", sourceUrl: source.toString(), revision: null, sha256: null };
       }
-      target = new URL(`https://raw.githubusercontent.com/${parts[0]}/${parts[1]}/${parts.slice(3).join("/")}`);
+      const requestedRef = parts[3];
+      revision = requestedRef;
+      if (!/^[0-9a-f]{40}$/i.test(requestedRef)) {
+        const revisionResponse = await fetch(`https://api.github.com/repos/${parts[0]}/${parts[1]}/commits/${encodeURIComponent(requestedRef)}`, {
+          headers: { accept: "application/vnd.github+json", "user-agent": "steer-flight-board" },
+          signal: AbortSignal.timeout(7000),
+        });
+        if (revisionResponse.ok) {
+          const payload = await revisionResponse.json() as { sha?: string };
+          if (payload.sha && /^[0-9a-f]{40}$/i.test(payload.sha)) revision = payload.sha;
+        }
+      }
+      target = new URL(`https://raw.githubusercontent.com/${parts[0]}/${parts[1]}/${revision}/${parts.slice(4).join("/")}`);
     } else if (source.hostname !== "raw.githubusercontent.com") {
-      return { text: null, scope: "Work item fields and evidence-link presence; external artifact reading is restricted to approved GitHub text links." };
+      return { text: null, scope: "Work item fields and evidence-link presence; external artifact reading is restricted to approved GitHub text links.", sourceUrl: source.toString(), revision: null, sha256: null };
+    } else {
+      const parts = source.pathname.split("/").filter(Boolean);
+      revision = parts[2] ?? null;
     }
     const response = await fetch(target, { headers: { accept: "text/plain" }, signal: AbortSignal.timeout(7000) });
-    if (!response.ok) return { text: null, scope: `Work item fields and evidence-link presence; the artifact returned HTTP ${response.status}.` };
+    if (!response.ok) return { text: null, scope: `Work item fields and evidence-link presence; the artifact returned HTTP ${response.status}.`, sourceUrl: source.toString(), revision, sha256: null };
     const text = (await response.text()).slice(0, 60000);
-    return { text, scope: "Work item fields plus the linked public GitHub text artifact (maximum 60,000 characters)." };
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    const sha256 = [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
+    const revisionLabel = revision && /^[0-9a-f]{40}$/i.test(revision) ? revision.slice(0, 12) : revision;
+    return { text, scope: `Work item fields plus the exact linked public GitHub artifact${revisionLabel ? ` at revision ${revisionLabel}` : ""} (maximum 60,000 characters).`, sourceUrl: source.toString(), revision, sha256 };
   } catch {
-    return { text: null, scope: "Work item fields and evidence-link presence; the artifact could not be read automatically." };
+    return { text: null, scope: "Work item fields and evidence-link presence; the artifact could not be read automatically.", sourceUrl: String(urlValue), revision: null, sha256: null };
   }
 }
 
@@ -350,7 +471,7 @@ async function runCriticReview(db: Database, user: User, itemId: number) {
     if (!findings.some((existing) => existing.title === finding.title)) findings.push(finding);
   };
 
-  if (item.state === "blocked") {
+  if (item.state === "blocked" && !["Changes requested", "Rework", "Resubmitted"].includes(String(item.decision_status))) {
     addFinding({ severity: "blocker", title: "Work is already blocked", detail: String(item.next_action), action: "Resolve or explicitly rule on the blocker before advancing the gate." });
     dependencies.push(`Blocker resolution: ${String(item.next_action)}`);
   }
@@ -398,7 +519,7 @@ async function runCriticReview(db: Database, user: User, itemId: number) {
     dependencies.push(`Default-closed controls for ${defaultClosed.join(", ")}`);
   }
   if (tags.length) dependencies.push(`Derived domain coverage: ${tags.join(", ")}`);
-  if (gate.includes("pending")) dependencies.push(`Authenticated ${String(item.decision_authority)} ruling for ${gate}`);
+  if (gate.includes("pending") && ["Needed now", "Resubmitted"].includes(String(item.decision_status))) dependencies.push(`Authenticated ${String(item.decision_authority)} ruling for ${gate}`);
   if (item.evidence_url) dependencies.push("Exact evidence revision must remain resolvable and match the ruling.");
   if (/block buzz|railway/i.test(joinedText)) dependencies.push("External agent-operations availability in Block Buzz / Railway.");
   if (item.workflow === "Setup / excluded") impacts.push("This item is excluded from the STEER-versus-Control outcome comparison; keep its effort out of experiment results.");
@@ -409,7 +530,7 @@ async function runCriticReview(db: Database, user: User, itemId: number) {
   const cappedFindings = findings.slice(0, 3);
   for (const finding of cappedFindings) if (finding.severity !== "note") actions.push(finding.action);
   if (item.evidence_url) actions.push("Open the linked evidence and verify the exact revision, not only this summary.");
-  if (gate.includes("pending")) actions.push(`Record the ${gate} ruling with concise evidence-based reasoning.`);
+  if (gate.includes("pending") && ["Needed now", "Resubmitted"].includes(String(item.decision_status))) actions.push(`Record the ${gate} ruling with concise evidence-based reasoning.`);
   const uniqueActions = [...new Set(actions)].slice(0, 4);
 
   const blockers = cappedFindings.filter((finding) => finding.severity === "blocker").length;
@@ -428,8 +549,8 @@ async function runCriticReview(db: Database, user: User, itemId: number) {
     `INSERT INTO agent_reviews
      (item_id, agent_id, review_mode, recommendation, confidence, summary, findings_json,
       dependencies_json, impacts_json, actions_json, derived_tags_json, evidence_scope,
-      reviewed_item_updated_at, requested_by, created_at)
-     VALUES (?, 'agent-critic', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      evidence_url, evidence_revision, evidence_sha256, reviewed_item_updated_at, requested_by, created_at)
+     VALUES (?, 'agent-critic', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     itemId,
     reviewMode,
@@ -442,6 +563,9 @@ async function runCriticReview(db: Database, user: User, itemId: number) {
     JSON.stringify(uniqueActions),
     JSON.stringify(tags),
     evidence.scope,
+    evidence.sourceUrl,
+    evidence.revision,
+    evidence.sha256,
     String(item.updated_at),
     user.id,
     now,
@@ -451,12 +575,25 @@ async function runCriticReview(db: Database, user: User, itemId: number) {
   return json({ ok: true, reviewId: result.meta?.last_row_id, recommendation }, 201);
 }
 
+function reworkAssigneeForGate(gate: string) {
+  if (gate === "Gate 1 pending") return "agent-scout";
+  if (gate === "Gate 2 pending") return "agent-test";
+  if (gate === "Gate 3 pending") return "agent-builder";
+  return null;
+}
+
+function firstRequiredChange(reasoning: string) {
+  const line = reasoning.split("\n").map((value) => value.trim()).find((value) => value.toLowerCase().startsWith("required change:"));
+  return line?.slice("required change:".length).trim() || "Complete the requested changes in the linked evidence and resubmit for a fresh Critic review.";
+}
+
 async function decide(request: Request, db: Database, user: User, itemId: number) {
   const current = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
   if (!current) return json({ error: "Work item not found." }, 404);
   const body = await request.json() as Record<string, unknown>;
   const decision = String(body.decision ?? "");
   const reasoning = String(body.reasoning ?? "").trim();
+  const reviewId = Number(body.reviewId ?? 0);
   if (!["APPROVED", "CHANGES_REQUESTED"].includes(decision) || reasoning.length < 12) {
     return json({ error: "Select a ruling and provide meaningful reasoning." }, 400);
   }
@@ -469,27 +606,107 @@ async function decide(request: Request, db: Database, user: User, itemId: number
     (gate === "Gate 3 pending" && role.includes("Product Lead") && role.includes("Tech Lead"))
   );
   if (!authorized) return json({ error: `Your recorded role is not the named authority for ${gate}.` }, 403);
+  const review = await db.prepare(
+    "SELECT id, reviewed_item_updated_at, evidence_url, evidence_revision, evidence_sha256 FROM agent_reviews WHERE id = ? AND item_id = ?",
+  ).bind(reviewId, itemId).first<{ id: number; reviewed_item_updated_at: string; evidence_url: string | null; evidence_revision: string | null; evidence_sha256: string | null }>();
+  if (!review || review.reviewed_item_updated_at !== String(current.updated_at)) {
+    return json({ error: "Run a fresh Critic review before recording this ruling." }, 409);
+  }
+  if (!review.evidence_sha256) {
+    return json({ error: "The linked evidence could not be bound to an exact content revision. Attach a resolvable public GitHub text artifact and review again." }, 409);
+  }
   const now = new Date().toISOString();
-  await db.prepare(
-    "INSERT INTO decisions (item_id, gate, decision, reasoning, actor_id, actor_email, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-  ).bind(itemId, gate, decision, reasoning, user.id, user.email, now).run();
+  const decisionResult = await db.prepare(
+    `INSERT INTO decisions
+     (item_id, gate, decision, reasoning, actor_id, actor_email, review_id,
+      evidence_url, evidence_revision, evidence_sha256, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(itemId, gate, decision, reasoning, user.id, user.email, review.id, review.evidence_url, review.evidence_revision, review.evidence_sha256, now).run();
 
   let nextGate = gate;
   let nextPhase = String(current.phase);
-  let nextStatus = "Needed now";
+  let nextStatus = decision === "APPROVED" ? "Decided" : "Changes requested";
   let nextState = decision === "APPROVED" ? String(current.state) : "blocked";
+  let nextAssignee = current.assignee_id;
+  let reworkInstructions: string | null = null;
+  let nextAction = String(current.next_action);
   if (decision === "APPROVED") {
-    nextStatus = "Decided";
     if (gate === "Gate 1 pending") { nextGate = "Gate 2 pending"; nextStatus = "Waiting"; }
     if (gate === "Gate 2 pending") { nextGate = "Gate 2 passed"; nextPhase = "Engineer"; nextState = "active"; }
     if (gate === "Gate 3 pending") { nextGate = "Gate 3 passed"; nextPhase = "Release"; nextState = "active"; }
+  } else {
+    nextAssignee = reworkAssigneeForGate(gate) ?? current.assignee_id;
+    reworkInstructions = reasoning;
+    nextAction = firstRequiredChange(reasoning);
   }
   await db.prepare(
-    "UPDATE work_items SET gate = ?, phase = ?, decision_status = ?, state = ?, updated_at = ? WHERE id = ?",
-  ).bind(nextGate, nextPhase, nextStatus, nextState, now, itemId).run();
+    "UPDATE work_items SET gate = ?, phase = ?, decision_status = ?, state = ?, assignee_id = ?, next_action = ?, rework_instructions = ?, updated_at = ? WHERE id = ?",
+  ).bind(nextGate, nextPhase, nextStatus, nextState, nextAssignee, nextAction, reworkInstructions, now, itemId).run();
   await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'decision', ?, ?)")
     .bind(itemId, user.id, `${gate}: ${decision} — ${reasoning}`, now).run();
+  if (decision === "CHANGES_REQUESTED") {
+    const recipient = nextAssignee
+      ? await db.prepare("SELECT role FROM members WHERE id = ?").bind(nextAssignee).first<{ role: string }>()
+      : null;
+    await db.prepare(
+      `INSERT OR IGNORE INTO notifications
+       (dedupe_key, item_id, member_id, recipient_role, kind, title, body, channel, status, created_at)
+       VALUES (?, ?, ?, ?, 'rework_requested', ?, ?, 'Block Buzz', 'queued', ?)`,
+    ).bind(
+      `decision-${decisionResult.meta?.last_row_id ?? now}-changes`, itemId, nextAssignee,
+      recipient?.role ?? "Evidence owner", `${String(current.key)} returned for changes`, reasoning, now,
+    ).run();
+  }
   return json({ ok: true });
+}
+
+async function transitionItem(request: Request, db: Database, user: User, itemId: number) {
+  const current = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
+  if (!current) return json({ error: "Work item not found." }, 404);
+  const body = await request.json() as Record<string, unknown>;
+  const action = String(body.action ?? "");
+  const status = String(current.decision_status);
+  const now = new Date().toISOString();
+
+  if (action === "START_REWORK") {
+    if (status !== "Changes requested") return json({ error: "This item is not waiting to begin rework." }, 409);
+    await db.prepare("UPDATE work_items SET decision_status = 'Rework', state = 'active', updated_at = ? WHERE id = ?").bind(now, itemId).run();
+    await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'workflow', 'Rework started from the recorded change request.', ?)").bind(itemId, user.id, now).run();
+    return json({ ok: true, status: "Rework" });
+  }
+
+  if (action === "RESUBMIT") {
+    if (!["Changes requested", "Rework"].includes(status)) return json({ error: "Only returned work can be resubmitted." }, 409);
+    if (!current.evidence_url) return json({ error: "Attach the updated evidence before resubmitting." }, 409);
+    const evidence = await readEvidence(current.evidence_url);
+    if (!evidence.sha256) return json({ error: "The updated evidence could not be resolved and fingerprinted." }, 409);
+    const priorDecision = await db.prepare(
+      "SELECT evidence_sha256 FROM decisions WHERE item_id = ? AND decision = 'CHANGES_REQUESTED' ORDER BY id DESC LIMIT 1",
+    ).bind(itemId).first<{ evidence_sha256: string | null }>();
+    if (priorDecision?.evidence_sha256 && priorDecision.evidence_sha256 === evidence.sha256) {
+      return json({ error: "The evidence content has not changed since the change request. Update the artifact before resubmitting." }, 409);
+    }
+    await db.prepare("UPDATE work_items SET decision_status = 'Resubmitted', state = 'blocked', updated_at = ? WHERE id = ?").bind(now, itemId).run();
+    await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'workflow', 'Updated evidence resubmitted for a fresh Critic review and human ruling.', ?)").bind(itemId, user.id, now).run();
+    await db.prepare(
+      `INSERT OR IGNORE INTO notifications
+       (dedupe_key, item_id, member_id, recipient_role, kind, title, body, channel, status, created_at)
+       VALUES (?, ?, NULL, ?, 'decision_ready', ?, ?, 'Block Buzz', 'queued', ?)`,
+    ).bind(
+      `resubmit-${itemId}-${now}`, itemId, String(current.decision_authority),
+      `${String(current.key)} is ready for another ruling`,
+      "Updated evidence was resubmitted. Review the fresh Critic brief and exact evidence revision before deciding.", now,
+    ).run();
+    return json({ ok: true, status: "Resubmitted" });
+  }
+
+  return json({ error: "Unknown workflow transition." }, 400);
+}
+
+async function markNotificationRead(db: Database, user: User, notificationId: number) {
+  const now = new Date().toISOString();
+  await db.prepare("UPDATE notifications SET status = 'read', read_at = ? WHERE id = ?").bind(now, notificationId).run();
+  return json({ ok: true, actor: user.id });
 }
 
 export async function handleApi(request: Request, env: Env): Promise<Response | null> {
@@ -508,8 +725,12 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "PATCH" && itemMatch) return updateItem(request, env.DB, user, Number(itemMatch[1]));
     const reviewMatch = url.pathname.match(/^\/api\/items\/(\d+)\/reviews$/);
     if (request.method === "POST" && reviewMatch) return runCriticReview(env.DB, user, Number(reviewMatch[1]));
+    const workflowMatch = url.pathname.match(/^\/api\/items\/(\d+)\/workflow$/);
+    if (request.method === "POST" && workflowMatch) return transitionItem(request, env.DB, user, Number(workflowMatch[1]));
     const decisionMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decisions$/);
     if (request.method === "POST" && decisionMatch) return decide(request, env.DB, user, Number(decisionMatch[1]));
+    const notificationMatch = url.pathname.match(/^\/api\/notifications\/(\d+)\/read$/);
+    if (request.method === "POST" && notificationMatch) return markNotificationRead(env.DB, user, Number(notificationMatch[1]));
     return json({ error: "Not found." }, 404);
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "Unexpected error." }, 500);

@@ -9,7 +9,8 @@ const states = ["queued", "active", "blocked", "complete"] as const;
 const githubRoot = "https://github.com/idrissenayat/federal-bd-platform";
 const buzzUrl = "wss://blockbuzzmain-production-5bcb.up.railway.app";
 
-type View = "overview" | "board" | "backlog" | "decisions" | "team";
+type View = "my-work" | "overview" | "board" | "backlog" | "decisions" | "team";
+type RoleContext = "product" | "tech" | "design" | "platform" | "security" | "contributor";
 
 type WorkItem = {
   id: number;
@@ -29,6 +30,7 @@ type WorkItem = {
   next_action: string;
   evidence_url: string | null;
   github_url: string | null;
+  rework_instructions: string | null;
   updated_at: string;
 };
 
@@ -63,6 +65,10 @@ type Decision = {
   decision: string;
   reasoning: string;
   actor_email: string | null;
+  review_id: number | null;
+  evidence_url: string | null;
+  evidence_revision: string | null;
+  evidence_sha256: string | null;
   created_at: string;
 };
 
@@ -89,25 +95,54 @@ type AgentReview = {
   actions: string[];
   derived_tags: string[];
   evidence_scope: string;
+  evidence_url: string | null;
+  evidence_revision: string | null;
+  evidence_sha256: string | null;
   reviewed_item_updated_at: string;
   created_at: string;
 };
 
+type Notification = {
+  id: number;
+  item_id: number;
+  item_key: string;
+  item_title: string;
+  member_id: string | null;
+  member_name: string | null;
+  recipient_role: string;
+  kind: string;
+  title: string;
+  body: string;
+  channel: string;
+  status: string;
+  created_at: string;
+};
+
 type Bootstrap = {
-  user: { id: string; email: string | null; name: string };
+  user: { id: string; email: string | null; name: string; role: string; authority: string; role_contexts: RoleContext[] };
   items: WorkItem[];
   members: Member[];
   activity: Activity[];
   decisions: Decision[];
   reviews: AgentReview[];
+  notifications: Notification[];
 };
 
 const navigation: { id: View; label: string; icon: string }[] = [
+  { id: "my-work", label: "My Work", icon: "✦" },
   { id: "overview", label: "Overview", icon: "◫" },
   { id: "board", label: "Flight Board", icon: "▥" },
   { id: "backlog", label: "Backlog", icon: "≡" },
   { id: "decisions", label: "Human Decisions", icon: "◆" },
   { id: "team", label: "Team & Agents", icon: "◎" },
+];
+
+const roleCockpits: Array<{ id: RoleContext; label: string; short: string; copy: string }> = [
+  { id: "product", label: "Product Lead", short: "Product", copy: "Prioritize signals, protect outcomes, and make Gates 1 and 3 deliberate." },
+  { id: "tech", label: "Tech Lead", short: "Technology", copy: "Own exams, architecture judgment, Gate 2, and returned technical work." },
+  { id: "design", label: "Product Designer", short: "Design", copy: "Protect design intent, accessibility, and the independent release perspective." },
+  { id: "platform", label: "Platform / Ops Lead", short: "Platform", copy: "Keep environments, delivery rails, telemetry, rollback, and agents healthy." },
+  { id: "security", label: "Security Owner", short: "Security", copy: "Review default-closed security work and provide the required specialist judgment." },
 ];
 
 const phaseCues: Record<string, string> = {
@@ -207,7 +242,8 @@ function buildChangeRequestDraft(review: AgentReview) {
 
 export default function Home() {
   const [data, setData] = useState<Bootstrap | null>(null);
-  const [view, setView] = useState<View>("overview");
+  const [view, setView] = useState<View>("my-work");
+  const [actingRole, setActingRole] = useState<RoleContext>("product");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -260,7 +296,7 @@ export default function Home() {
   const selectedReview = data?.reviews.find((review) => review.item_id === selectedId) ?? null;
   const freshSelectedReview = selected && selectedReview?.reviewed_item_updated_at === selected.updated_at ? selectedReview : null;
   const changeRequestDraft = freshSelectedReview ? buildChangeRequestDraft(freshSelectedReview) : "";
-  const decisionItems = data?.items.filter((item) => item.decision_status === "Needed now") ?? [];
+  const decisionItems = data?.items.filter((item) => ["Needed now", "Resubmitted"].includes(item.decision_status)) ?? [];
   const blockedItems = data?.items.filter((item) => item.state === "blocked") ?? [];
   const activeItems = data?.items.filter((item) => item.state === "active") ?? [];
 
@@ -323,6 +359,32 @@ export default function Home() {
       setError(caught instanceof Error ? caught.message : "The Critic Agent could not complete the review.");
     } finally {
       setReviewingIds((current) => current.filter((id) => id !== itemId));
+    }
+  }
+
+  async function transitionWorkflow(item: WorkItem, action: "START_REWORK" | "RESUBMIT") {
+    setSaving(true);
+    try {
+      await api(`/api/items/${item.id}/workflow`, { method: "POST", body: JSON.stringify({ action }) });
+      if (action === "RESUBMIT") {
+        setReviewingIds((current) => current.includes(item.id) ? current : [...current, item.id]);
+        await api(`/api/items/${item.id}/reviews`, { method: "POST", body: "{}" });
+      }
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The workflow transition could not be completed.");
+    } finally {
+      setSaving(false);
+      setReviewingIds((current) => current.filter((id) => id !== item.id));
+    }
+  }
+
+  async function markNotificationRead(notificationId: number) {
+    try {
+      await api(`/api/notifications/${notificationId}/read`, { method: "POST", body: "{}" });
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The notification could not be updated.");
     }
   }
 
@@ -406,7 +468,7 @@ export default function Home() {
 
         <div className="user-card">
           <Avatar name={data.user.name} />
-          <div><strong>{data.user.name}</strong><span>{data.user.email ?? "Authenticated contributor"}</span></div>
+          <div><strong>{data.user.name}</strong><span>{data.user.role}</span></div>
           <i className="online-dot" />
         </div>
       </aside>
@@ -428,6 +490,22 @@ export default function Home() {
         {error && <div className="error-banner"><span>{error}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
 
         <div className="content-area">
+          {view === "my-work" && (
+            <MyWork
+              user={data.user}
+              actingRole={actingRole}
+              onRoleChange={setActingRole}
+              items={filteredItems}
+              reviews={data.reviews}
+              notifications={data.notifications}
+              members={data.members}
+              saving={saving}
+              onOpen={openItem}
+              onDecision={openDecisionWorkspace}
+              onTransition={transitionWorkflow}
+              onReadNotification={markNotificationRead}
+            />
+          )}
           {view === "overview" && (
             <Overview
               items={filteredItems}
@@ -457,10 +535,19 @@ export default function Home() {
               <h2>{selected.title}</h2>
               <p className="drawer-description">{selected.description}</p>
 
-              {selected.decision_status === "Needed now" && (
+              {["Needed now", "Resubmitted"].includes(selected.decision_status) && (
                 <div className="decision-callout">
-                  <div><span>◆ Human ruling required</span><strong>{selected.gate}</strong><p>Authority: {selected.decision_authority}</p></div>
+                  <div><span>◆ {selected.decision_status === "Resubmitted" ? "Rework resubmitted" : "Human ruling required"}</span><strong>{selected.gate}</strong><p>Authority: {selected.decision_authority}</p></div>
                   <button onClick={() => openDecisionWorkspace(selected)}>Review decision</button>
+                </div>
+              )}
+
+              {["Changes requested", "Rework"].includes(selected.decision_status) && (
+                <div className="rework-callout">
+                  <div className="rework-callout-heading"><span>↺ {selected.decision_status}</span><StatusPill value={selected.assignee_name ?? "Unassigned"} kind="agent" /></div>
+                  <strong>Return path is explicit</strong>
+                  <p>{selected.rework_instructions ?? "Complete the recorded change request and update the linked evidence."}</p>
+                  <div><small>{selected.decision_status === "Changes requested" ? "Begin only when the owner is ready to work the evidence." : "Resubmit only after the evidence link points to the updated artifact."}</small><button disabled={saving} onClick={() => void transitionWorkflow(selected, selected.decision_status === "Changes requested" ? "START_REWORK" : "RESUBMIT")}>{saving ? "Updating…" : selected.decision_status === "Changes requested" ? "Start rework" : "Resubmit evidence"}</button></div>
                 </div>
               )}
 
@@ -473,8 +560,9 @@ export default function Home() {
                   <label>State<select value={selected.state} disabled={saving} onChange={(event) => void updateItem(selected.id, { state: event.target.value })}>{states.map((state) => <option key={state}>{state}</option>)}</select></label>
                   <label>Priority<select value={selected.priority} disabled={saving} onChange={(event) => void updateItem(selected.id, { priority: event.target.value })}>{priorities.map((priority) => <option key={priority}>{priority}</option>)}</select></label>
                   <label>Workflow<select value={selected.workflow} disabled={saving} onChange={(event) => void updateItem(selected.id, { workflow: event.target.value })}>{workflows.map((workflow) => <option key={workflow}>{workflow}</option>)}</select></label>
-                  <label>Decision readiness<select value={selected.decision_status} disabled={saving} onChange={(event) => void updateItem(selected.id, { decisionStatus: event.target.value })}>{["Waiting", "Needed now", "Decided", "Not required"].map((status) => <option key={status}>{status}</option>)}</select></label>
+                  <label>Decision readiness<select value={selected.decision_status} disabled={saving} onChange={(event) => void updateItem(selected.id, { decisionStatus: event.target.value })}>{["Waiting", "Needed now", "Changes requested", "Rework", "Resubmitted", "Decided", "Not required"].map((status) => <option key={status}>{status}</option>)}</select></label>
                   <label className="span-two">Assignee<select value={selected.assignee_id ?? ""} disabled={saving} onChange={(event) => void updateItem(selected.id, { assigneeId: event.target.value || null })}><option value="">Unassigned</option>{data.members.map((member) => <option key={member.id} value={member.id}>{member.display_name} · {member.role}</option>)}</select></label>
+                  <label className="span-two">Evidence URL<input key={`evidence-${selected.id}`} defaultValue={selected.evidence_url ?? ""} disabled={saving} placeholder="https://github.com/organization/repository/blob/revision/path.md" onBlur={(event) => { const value = event.target.value.trim(); if (value !== (selected.evidence_url ?? "")) void updateItem(selected.id, { evidenceUrl: value || null }); }} /></label>
                 </div>
               </section>
 
@@ -489,6 +577,7 @@ export default function Home() {
                   {selected.evidence_url ? <a href={selected.evidence_url} target="_blank" rel="noreferrer"><span>▤</span><div><strong>Evidence artifact</strong><small>{selected.evidence_url}</small></div><b>↗</b></a> : <div className="missing-evidence">No evidence link attached yet.</div>}
                   {selected.github_url && <a href={selected.github_url} target="_blank" rel="noreferrer"><span>⌂</span><div><strong>GitHub record</strong><small>Authoritative engineering trail</small></div><b>↗</b></a>}
                 </div>
+                {selectedReview?.evidence_sha256 && <div className="evidence-binding"><span>✓ Evidence bound</span><strong>{selectedReview.evidence_revision ? `Revision ${selectedReview.evidence_revision.slice(0, 12)}` : `SHA-256 ${selectedReview.evidence_sha256.slice(0, 12)}`}</strong><small>The Critic reviewed this exact content, not a moving branch label.</small></div>}
               </section>
 
               <section className="detail-section activity-section">
@@ -522,15 +611,17 @@ export default function Home() {
       {decisionOpen && selected && (
         <div className="modal-scrim decision-scrim">
           <form className="modal-card decision-modal" onSubmit={recordDecision}>
+            <input type="hidden" name="reviewId" value={freshSelectedReview?.id ?? ""} />
             <header><div><span>◆ Authenticated human ruling</span><h2>{selected.gate}</h2></div><button type="button" onClick={closeDecisionWorkspace}>×</button></header>
             <div className="decision-item-summary"><span>{selected.key}</span><strong>{selected.title}</strong><p>{selected.description}</p></div>
             <AgentReviewBrief compact item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => void requestAgentReview(selected.id)} />
+            {freshSelectedReview?.evidence_sha256 ? <div className="decision-evidence-bound"><span>✓ Exact evidence captured</span><strong>{freshSelectedReview.evidence_revision ? freshSelectedReview.evidence_revision.slice(0, 12) : freshSelectedReview.evidence_sha256.slice(0, 12)}</strong><small>This ruling will retain the Critic review and content fingerprint.</small></div> : <div className="review-stale">A fresh review with resolvable evidence is required before this ruling can be recorded.</div>}
             <div className="authority-warning"><strong>You are acting as {selected.decision_authority}.</strong><p>This ruling is attributed to {data.user.email ?? data.user.name}. Agents cannot submit this form without an authenticated human identity.</p></div>
             <fieldset><legend>Ruling</legend><label className="radio-card"><input aria-label="Approve this gate" type="radio" name="decision" value="APPROVED" required checked={decisionChoice === "APPROVED"} onChange={() => { setDecisionChoice("APPROVED"); setDecisionReasoning((current) => current === changeRequestDraft ? "" : current); }} /><span><strong>Approve</strong><small>Evidence is sufficient for this gate. Advance the work.</small></span></label><label className="radio-card"><input aria-label="Request changes for this gate" type="radio" name="decision" value="CHANGES_REQUESTED" required checked={decisionChoice === "CHANGES_REQUESTED"} onChange={() => { setDecisionChoice("CHANGES_REQUESTED"); if (!decisionReasoning.trim() && changeRequestDraft) setDecisionReasoning(changeRequestDraft); }} /><span><strong>Request changes</strong><small>Keep the gate pending and block work until the named gaps are resolved.</small></span></label></fieldset>
             {decisionChoice === "CHANGES_REQUESTED" && changeRequestDraft && <section className="ai-reasoning-draft"><header><div><span>◇ Critic-drafted instructions</span><strong>Ready for your reasoning</strong></div><button type="button" disabled={decisionReasoning === changeRequestDraft} onClick={() => setDecisionReasoning(changeRequestDraft)}>{decisionReasoning === changeRequestDraft ? "Draft applied" : decisionReasoning.trim() ? "Restore AI draft" : "Use AI draft"}</button></header><p>Editable advice from the current review. You remain the author and decision authority.</p><pre>{changeRequestDraft}</pre></section>}
             {decisionChoice === "CHANGES_REQUESTED" && !changeRequestDraft && reviewingIds.includes(selected.id) && <div className="draft-waiting"><span>◇</span><p><strong>Critic is preparing proposed instructions.</strong> You can write now or apply the draft when the review finishes.</p></div>}
             <label><span className="reasoning-label-row"><span>Reasoning</span>{changeRequestDraft && decisionReasoning === changeRequestDraft && <em>AI draft applied · editable</em>}</span><textarea name="reasoning" required minLength={12} value={decisionReasoning} onChange={(event) => setDecisionReasoning(event.target.value)} placeholder="State why this evidence is or is not sufficient. This becomes part of the audit trail." /></label>
-            <footer><button type="button" className="secondary-button" onClick={closeDecisionWorkspace}>Cancel</button><button className="decision-button" disabled={saving}>{saving ? "Recording…" : "Record human ruling"}</button></footer>
+            <footer><button type="button" className="secondary-button" onClick={closeDecisionWorkspace}>Cancel</button><button className="decision-button" disabled={saving || !freshSelectedReview?.evidence_sha256}>{saving ? "Recording…" : "Record human ruling"}</button></footer>
           </form>
         </div>
       )}
@@ -540,6 +631,64 @@ export default function Home() {
 
 function PageHeading({ eyebrow, title, copy, actions }: { eyebrow: string; title: string; copy: string; actions?: React.ReactNode }) {
   return <div className="page-heading"><div><span>{eyebrow}</span><h1>{title}</h1><p>{copy}</p></div>{actions && <div className="heading-actions">{actions}</div>}</div>;
+}
+
+function itemMatchesRole(item: WorkItem, role: RoleContext, reviews: AgentReview[]) {
+  const review = reviews.find((candidate) => candidate.item_id === item.id);
+  const tags = review?.derived_tags ?? [];
+  if (role === "product") return item.decision_authority.includes("Product Lead") || item.gate === "Gate 1 pending" || ["Sense", "Learn"].includes(item.phase);
+  if (role === "tech") return item.decision_authority.includes("Tech Lead") || item.gate === "Gate 2 pending" || ["Engineer", "Evaluate"].includes(item.phase);
+  if (role === "design") return tags.some((tag) => ["#a11y", "#design-system"].includes(tag)) || ["Frame", "Evaluate"].includes(item.phase);
+  if (role === "platform") return item.assignee_id === "agent-ops" || /platform|environment|block buzz|deploy|rollback|telemetry|pipeline|protected main/i.test(`${item.title} ${item.description}`) || ["Release", "Observe"].includes(item.phase);
+  if (role === "security") return tags.includes("#security") || item.decision_authority.includes("Security");
+  return Boolean(item.assignee_id);
+}
+
+function RoleWorkCard({ item, canAct, saving, onOpen, onDecision, onTransition }: { item: WorkItem; canAct: boolean; saving: boolean; onOpen: (item: WorkItem) => void; onDecision: (item: WorkItem) => void; onTransition: (item: WorkItem, action: "START_REWORK" | "RESUBMIT") => Promise<void> }) {
+  const needsDecision = ["Needed now", "Resubmitted"].includes(item.decision_status);
+  const returned = item.decision_status === "Changes requested";
+  const inRework = item.decision_status === "Rework";
+  const action = !canAct ? "Inspect work" : needsDecision ? "Review ruling" : returned ? "Start rework" : inRework ? "Resubmit evidence" : "Open work";
+  function act() {
+    if (!canAct) return onOpen(item);
+    if (needsDecision) return onDecision(item);
+    if (returned) return void onTransition(item, "START_REWORK");
+    if (inRework) return void onTransition(item, "RESUBMIT");
+    onOpen(item);
+  }
+  return <article className={`role-work-card state-${item.state}`}><header><span>{item.key} · {item.phase}</span><StatusPill value={item.decision_status} /></header><h3>{item.title}</h3><p>{["Changes requested", "Rework"].includes(item.decision_status) ? item.rework_instructions ?? item.next_action : item.next_action}</p><footer><span><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><button disabled={saving} onClick={act}>{action} →</button></footer></article>;
+}
+
+function MyWork({ user, actingRole, onRoleChange, items, reviews, notifications, members, saving, onOpen, onDecision, onTransition, onReadNotification }: { user: Bootstrap["user"]; actingRole: RoleContext; onRoleChange: (role: RoleContext) => void; items: WorkItem[]; reviews: AgentReview[]; notifications: Notification[]; members: Member[]; saving: boolean; onOpen: (item: WorkItem) => void; onDecision: (item: WorkItem) => void; onTransition: (item: WorkItem, action: "START_REWORK" | "RESUBMIT") => Promise<void>; onReadNotification: (id: number) => Promise<void> }) {
+  const role = roleCockpits.find((candidate) => candidate.id === actingRole) ?? roleCockpits[0];
+  const canAct = user.role_contexts.includes(actingRole);
+  const relevant = items.filter((item) => item.state !== "complete" && itemMatchesRole(item, actingRole, reviews));
+  const rulings = relevant.filter((item) => ["Needed now", "Resubmitted"].includes(item.decision_status));
+  const returns = relevant.filter((item) => ["Changes requested", "Rework"].includes(item.decision_status));
+  const moving = relevant.filter((item) => !["Needed now", "Resubmitted", "Changes requested", "Rework"].includes(item.decision_status));
+  const relatedIds = new Set(relevant.map((item) => item.id));
+  const roleNotifications = notifications.filter((notification) => relatedIds.has(notification.item_id) || notification.recipient_role.toLowerCase().includes(role.short.toLowerCase())).slice(0, 6);
+  const seat = members.find((member) => member.kind === "human" && (member.role.includes(role.label) || role.id === "platform" && member.role.includes("Platform")));
+
+  return <>
+    <PageHeading eyebrow="Role cockpit" title={`${role.label} workspace`} copy={role.copy} actions={<div className={`role-authority ${canAct ? "held" : "view-only"}`}><span>{canAct ? "Acting authority" : "View only"}</span><strong>{canAct ? user.name : seat?.display_name ?? "Open seat"}</strong></div>} />
+    <div className="role-switcher" role="tablist" aria-label="Human role workspaces">{roleCockpits.map((candidate) => <button role="tab" aria-selected={actingRole === candidate.id} className={actingRole === candidate.id ? "active" : ""} key={candidate.id} onClick={() => onRoleChange(candidate.id)}><span>{candidate.short}</span><small>{user.role_contexts.includes(candidate.id) ? "Your role" : "Shared view"}</small></button>)}</div>
+
+    <section className="role-today">
+      <div><span className="panel-eyebrow">Start here</span><h2>{rulings.length ? `${rulings.length} ruling${rulings.length === 1 ? "" : "s"} need judgment` : returns.length ? `${returns.length} returned item${returns.length === 1 ? "" : "s"} need movement` : "No urgent role action"}</h2><p>{canAct ? "Work the first consequential queue, then stop. STEER protects attention by making ownership and the next move explicit." : `You can inspect this cockpit, but ${seat?.display_name === "Open seat" || !seat ? "this role is not yet staffed" : seat.display_name + " holds this authority"}.`}</p></div>
+      <div className="role-metrics"><div><strong>{rulings.length}</strong><span>Rulings</span></div><div><strong>{returns.length}</strong><span>Rework</span></div><div><strong>{relevant.filter((item) => item.state === "blocked").length}</strong><span>Blocked</span></div><div><strong>{roleNotifications.filter((item) => item.status !== "read").length}</strong><span>Signals</span></div></div>
+    </section>
+
+    <div className="role-queue-grid">
+      <section className="panel role-queue"><header><div><span className="panel-eyebrow">Human judgment</span><h2>Ready for your ruling</h2></div><b>{rulings.length}</b></header>{rulings.length ? rulings.map((item) => <RoleWorkCard key={item.id} item={item} canAct={canAct} saving={saving} onOpen={onOpen} onDecision={onDecision} onTransition={onTransition} />) : <Empty title="No ruling is waiting" copy="Resubmitted work appears here after a fresh Critic review." />}</section>
+      <section className="panel role-queue"><header><div><span className="panel-eyebrow">Return loop</span><h2>Changes and rework</h2></div><b>{returns.length}</b></header>{returns.length ? returns.map((item) => <RoleWorkCard key={item.id} item={item} canAct={canAct} saving={saving} onOpen={onOpen} onDecision={onDecision} onTransition={onTransition} />) : <Empty title="No returned work" copy="A change request creates an owned, traceable handoff here." />}</section>
+    </div>
+
+    <div className="role-lower-grid">
+      <section className="panel role-in-motion"><header><div><span className="panel-eyebrow">Role portfolio</span><h2>In motion</h2></div><b>{moving.length}</b></header>{moving.slice(0, 5).map((item) => <button key={item.id} onClick={() => onOpen(item)}><span>{item.key}</span><div><strong>{item.title}</strong><small>{item.next_action}</small></div><StatusPill value={item.phase} /></button>)}{!moving.length && <Empty title="Nothing is moving here" copy="Relevant work appears as it enters this role’s responsibility." />}</section>
+      <section className="panel notification-center"><header><div><span className="panel-eyebrow">Block Buzz outbox</span><h2>Role notifications</h2></div><b>{roleNotifications.filter((item) => item.status !== "read").length}</b></header>{roleNotifications.length ? roleNotifications.map((notification) => <article key={notification.id} className={notification.status === "read" ? "read" : ""}><span>◌</span><div><strong>{notification.title}</strong><p>{notification.body}</p><small>{notification.channel} · {notification.status} · {formatDate(notification.created_at)}</small></div>{notification.status !== "read" && <button onClick={() => void onReadNotification(notification.id)}>Mark read</button>}</article>) : <Empty title="No role signals yet" copy="Rework and resubmission events will create a durable Block Buzz-ready notification." />}</section>
+    </div>
+  </>;
 }
 
 function Overview({ items, activity, decisions, blocked, active, onOpen, onNavigate }: { items: WorkItem[]; activity: Activity[]; decisions: WorkItem[]; blocked: WorkItem[]; active: WorkItem[]; onOpen: (item: WorkItem) => void; onNavigate: (view: View) => void }) {
@@ -601,9 +750,9 @@ function DecisionInbox({ items, decisions, reviews, reviewingIds, onOpen }: { it
         const review = reviews.find((candidate) => candidate.item_id === item.id);
         const stale = review ? review.reviewed_item_updated_at !== item.updated_at : false;
         const reviewing = reviewingIds.includes(item.id);
-        return <article className="decision-card" key={item.id}><div className="decision-diamond">◆</div><div className="decision-card-body"><div><span>{item.key} · {item.phase}</span><StatusPill value={item.gate} kind="gate" /></div><h3>{item.title}</h3><p>{item.description}</p><div className={`decision-agent-strip ${review && !stale ? "has-review" : "needs-review"}`}><span>◇</span><div><b>{reviewing ? "Critic Agent is reviewing now…" : review ? review.recommendation : "Critic review starts automatically"}</b><small>{reviewing ? "Reading the work item and linked evidence. This card refreshes when the brief is ready." : review ? stale ? "Work changed — opening this ruling refreshes the Critic brief." : review.findings[0]?.title ?? "No significant finding" : "Open the ruling workspace; no separate review step is required."}</small></div></div><dl><div><dt>Authority</dt><dd>{item.decision_authority}</dd></div><div><dt>Evidence</dt><dd>{item.evidence_url ? "Attached and ready to inspect" : "Evidence link missing"}</dd></div><div><dt>Next if approved</dt><dd>{item.gate === "Gate 2 pending" ? "Builder may begin implementation" : "Advance to the next STEER control"}</dd></div></dl><button onClick={() => onOpen(item)}>{reviewing ? "Open while Critic reviews →" : "Open AI-assisted ruling →"}</button></div></article>;
+        return <article className="decision-card" key={item.id}><div className="decision-diamond">◆</div><div className="decision-card-body"><div><span>{item.key} · {item.phase}</span><StatusPill value={item.decision_status === "Resubmitted" ? "Resubmitted" : item.gate} kind="gate" /></div><h3>{item.title}</h3><p>{item.description}</p><div className={`decision-agent-strip ${review && !stale ? "has-review" : "needs-review"}`}><span>◇</span><div><b>{reviewing ? "Critic Agent is reviewing now…" : review ? review.recommendation : "Critic review starts automatically"}</b><small>{reviewing ? "Reading the work item and linked evidence. This card refreshes when the brief is ready." : review ? stale ? "Work changed — opening this ruling refreshes the Critic brief." : review.findings[0]?.title ?? "No significant finding" : "Open the ruling workspace; no separate review step is required."}</small></div></div><dl><div><dt>Authority</dt><dd>{item.decision_authority}</dd></div><div><dt>Evidence</dt><dd>{review?.evidence_sha256 && !stale ? `Bound · ${(review.evidence_revision ?? review.evidence_sha256).slice(0, 12)}` : item.evidence_url ? "Attached; exact binding pending" : "Evidence link missing"}</dd></div><div><dt>Next if approved</dt><dd>{item.gate === "Gate 2 pending" ? "Builder may begin implementation" : "Advance to the next STEER control"}</dd></div></dl><button onClick={() => onOpen(item)}>{reviewing ? "Open while Critic reviews →" : "Open AI-assisted ruling →"}</button></div></article>;
       }) : <Empty title="Decision inbox is clear" copy="A ruling appears only when the work is ready and a named human authority is required." />}</section>
-      <section className="panel decision-history"><header><div><span className="panel-eyebrow">Authenticated record</span><h2>Decision history</h2></div></header>{decisions.length ? decisions.map((decision) => <div className="history-decision" key={decision.id}><span className={decision.decision === "APPROVED" ? "approved" : "changes"}>{decision.decision === "APPROVED" ? "✓" : "!"}</span><div><p><strong>{decision.item_key}</strong> · {decision.gate}</p><b>{decision.decision.replace("_", " ")}</b><blockquote>{decision.reasoning}</blockquote><small>{decision.actor_email ?? "Authenticated contributor"} · {formatDate(decision.created_at)}</small></div></div>) : <Empty title="No rulings recorded in this app yet" copy="The GitHub Gate 1 ruling remains linked from its evidence artifact." />}</section>
+      <section className="panel decision-history"><header><div><span className="panel-eyebrow">Authenticated record</span><h2>Decision history</h2></div></header>{decisions.length ? decisions.map((decision) => <div className="history-decision" key={decision.id}><span className={decision.decision === "APPROVED" ? "approved" : "changes"}>{decision.decision === "APPROVED" ? "✓" : "!"}</span><div><p><strong>{decision.item_key}</strong> · {decision.gate}</p><b>{decision.decision.replace("_", " ")}</b><blockquote>{decision.reasoning}</blockquote><small>{decision.actor_email ?? "Authenticated contributor"} · {formatDate(decision.created_at)}</small><em>{decision.evidence_sha256 ? `Evidence ${(decision.evidence_revision ?? decision.evidence_sha256).slice(0, 12)} · Critic review #${decision.review_id}` : "Legacy ruling · exact evidence revision was not captured"}</em></div></div>) : <Empty title="No rulings recorded in this app yet" copy="The GitHub Gate 1 ruling remains linked from its evidence artifact." />}</section>
     </div>
   </>;
 }
