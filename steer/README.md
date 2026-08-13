@@ -1,10 +1,13 @@
-# STEER operating layer for the Federal BD Platform
+# STEER Core installation for the Federal BD reference project
 
-This directory is the product's working STEER v2 installation. Framework reference files live beside product-specific briefs, exams, reviews, signals, and guardrails.
+This directory combines the reusable STEER Core controls with one project's installed
+briefs, exams, reviews, signals, experiment files, and guardrails. Vendor-neutral
+explanations live in `docs/steer/`; normative gates, guardrails, metrics, roles, and
+templates live here. Product-specific material must remain clearly labeled.
 
 ## Primary purpose
 
-This is an Agentic SDLC experiment. Read these in order:
+For this reference project, read these in order:
 
 1. `TEAM-ONBOARDING.md` — where work happens and how humans and agents join safely.
 2. `EXPERIMENT-CHARTER.md` — what STEER must prove and how claims are constrained.
@@ -13,11 +16,16 @@ This is an Agentic SDLC experiment. Read these in order:
 5. `PILOT-0003.md` — applies the experiment to this product.
 6. `PROJECT-GUARDRAILS.md` — product and trust controls shared across treatments.
 
+For adoption outside Federal BD, begin with `docs/steer/ADOPTION.md` instead of copying
+the project charter or project guardrails.
+
 ## Numbering
 
 - `0001` remains the framework's worked waitlist example under `examples/`.
 - `0002` is this project's setup/source-health tracer.
 - `0003` is the product-program brief for the opportunity-intelligence vertical slice. It defines common product requirements but is not scored as one comparative item; the frozen cohort will decompose it into independently useful candidate cards before allocation.
+- `0004` specifies the open-source multi-organization, multi-POD, multi-project reference
+  platform. It is not authorized for implementation until Gates 1 and 2 are approved.
 
 ## Decision status
 

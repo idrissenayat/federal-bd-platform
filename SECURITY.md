@@ -2,9 +2,9 @@
 
 ## Supported scope
 
-This pre-release project accepts public, unclassified information and synthetic test data
-only. Production security support begins when a production environment exists; until
-then, every security finding applies to the current `main` branch.
+STEER is experimental / pre-1.0. The latest `main` branch is the only currently supported
+line. No production support or response-time guarantee is offered yet. The Federal BD
+reference project accepts public, unclassified information and synthetic test data only.
 
 ## Reporting
 
@@ -26,3 +26,9 @@ the defect issue form.
 Do not ingest or upload CUI, FCI, export-controlled, proprietary proposal, or classified
 material. Attachments are hostile input and remain quarantined until the signed brief and
 exam prove scanning and safe extraction controls.
+
+An adopter is responsible for defining and enforcing its own classification, privacy,
+identity, retention, and regulatory boundary. The current prototype is not a production
+multi-tenant security claim. Do not place real organization secrets or sensitive project
+content in it until the relevant isolation, backup, migration, and authorization exams
+have passed.

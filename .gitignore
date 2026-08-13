@@ -12,6 +12,8 @@ node_modules/
 .next/
 dist/
 build/
+!flight-board/build/
+!flight-board/build/sites-vite-plugin.ts
 coverage/
 htmlcov/
 *.log
@@ -21,4 +23,3 @@ config/company-profile.yaml
 data/raw/
 data/quarantine/
 data/exports/
-
