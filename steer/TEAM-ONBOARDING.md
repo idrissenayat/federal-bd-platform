@@ -155,6 +155,12 @@ Before creating credentials, record:
 The initial roster is Scout, Architect, Builder, Test Agent, Critic, Docs Agent, and Ops
 Agent. Add another identity only when the role has a distinct bounded purpose.
 
+In the current Buzz workspace, the approved profiles are displayed as `Scout`,
+`Architect`, `STEER Builder`, `STEER Test Agent`, `STEER Critic`, `Docs Agent`, and
+`Ops Agent`. Do not substitute Buzz starter agents such as Fizz, Honey, or Bumble, or
+project/domain specialists, for these STEER control roles. Project-specific agents are
+added separately only when their boundary and project channel have been approved.
+
 ### 2. Create a separate agent identity
 
 Generate the identity through the approved Buzz/agent-runtime procedure. Preserve:
