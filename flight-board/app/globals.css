@@ -95,3 +95,62 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (max-width: 480px) { .metric-grid { grid-template-columns: 1fr; }.metric-grid > button { grid-template-columns: 38px 1fr auto; }.metric-grid button > small { grid-column: 3; }.board-legend { display: none; }.member-grid { grid-template-columns: 1fr; } }
 @media (max-width: 620px) { .review-two-column { grid-template-columns: 1fr; }.agent-review-header, .agent-review > footer { align-items: flex-start; flex-direction: column; }.agent-review > footer button { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+/* Blush + butter visual system and non-overlapping responsive navigation. */
+:root {
+  --ink: #573846;
+  --ink-2: #714f5d;
+  --navy: #744f5d;
+  --paper: #fff9f3;
+  --panel: #fffefb;
+  --line: #ecdcd8;
+  --line-dark: rgba(87, 56, 70, .12);
+  --muted: #806b73;
+  --aqua: #e68daa;
+  --aqua-dark: #b64e73;
+  --amber: #edbd58;
+  --coral: #d9687b;
+  --blue: #c993b2;
+  --green: #8b9b63;
+  --violet: #a97fa8;
+  --shadow: 0 15px 42px rgba(116, 79, 93, .09);
+}
+
+body { background: radial-gradient(circle at 8% 8%, rgba(246, 197, 210, .34), transparent 25%), radial-gradient(circle at 91% 4%, rgba(250, 219, 137, .28), transparent 24%), var(--paper); }
+.sidebar { background: linear-gradient(180deg, #fff0f4 0%, #fff8e6 100%); border-right: 1px solid #ead6d5; color: var(--ink); flex: 0 0 238px; overflow-y: auto; width: 238px; }
+.main-workspace { margin-left: 238px; width: calc(100% - 238px); }
+.brand-mark i { background: var(--aqua-dark); }.brand-mark i:nth-child(2) { background: var(--amber); }
+.product-brand span, .workspace-switcher div span, .workspace-switcher b, .nav-label { color: #9a7d86; }
+.workspace-switcher { background: rgba(255,255,255,.66); border-color: #ead8d5; }.workspace-avatar { background: linear-gradient(145deg, #f3a9bd, #f4ca69); color: var(--ink); }
+.side-nav button, .side-links a { color: #775f68; }.side-nav button > span, .side-links a > span { color: #b4748d; }.side-nav button:hover, .side-links a:hover { background: rgba(255,255,255,.62); color: var(--ink); }.side-nav button.active { background: linear-gradient(90deg, rgba(231,141,170,.2), rgba(242,195,91,.19)); color: #a33e64; }.side-nav button.active > span { color: #b64e73; }.side-nav button b { background: var(--amber); color: var(--ink); }
+.side-links, .user-card { border-color: #e8d5d4; }.authority-card { background: rgba(245,202,106,.23); border-color: rgba(192,137,32,.2); }.authority-card span { color: #996b17; }.authority-card p, .user-card div span { color: #8b717a; }.online-dot { background: #96a66a; border-color: #fff3ed; }
+.app-topbar { background: rgba(255,253,248,.92); border-color: #eadbd7; }.global-search { background: #fff7f2; border-color: #ead9d5; }.global-search kbd { background: #fffdf9; }
+.create-button, .primary-button { background: linear-gradient(135deg, #ef9bb4, #f4c85f); border: 1px solid rgba(171,87,109,.14); box-shadow: 0 7px 18px rgba(211,128,151,.2); color: #533442; }.create-button span { color: #7d4158; }.create-button:hover, .primary-button:hover { background: linear-gradient(135deg, #e887a5, #efbb46); }
+.text-button { color: #ac456b; }.panel, .decision-card, .member-card, .kanban-card { border-color: #eadbd7; box-shadow: 0 7px 24px rgba(116,79,93,.055); }.metric-grid > button { background: rgba(255,254,251,.91); border-color: #eadbd7; }.metric-icon.aqua { background: rgba(232,142,172,.19); color: #a84368; }.metric-icon.amber { background: rgba(242,194,86,.23); color: #94630b; }.metric-icon.coral { background: rgba(217,104,123,.15); color: #aa4357; }.metric-icon.blue { background: rgba(201,147,178,.18); color: #845875; }
+.kanban-cards { background: linear-gradient(180deg, rgba(247,209,218,.17), rgba(250,226,164,.12)); border-color: #eadbd7; }.kanban-card.state-active { border-top-color: #d86991; }.card-move { background: #fff9f2; }.phase-frame { background: #d86991; }.phase-engineer { background: #96a66a; }.phase-evaluate { background: #e9b647; }
+.item-drawer, .modal-card { background: #fff9f3; }.drawer-header { background: #fffdf9; }.decision-callout, .authority-warning { background: #fff5d9; border-color: #ecd18f; }.decision-callout button, .decision-button { background: linear-gradient(135deg, #d96e91, #eeb847); color: #fff; }.agent-review { background: linear-gradient(145deg, #fff2f5, #fff8df); border-color: #ead3d3; }.critic-mark, .decision-agent-strip > span { background: #d76d91; color: #fff8df; }.agent-review-button, .agent-review footer button { background: #c95f85; }.review-actions { background: #fff0be; color: var(--ink); }.review-actions ol { color: #715a43; }.decision-agent-strip { background: #fff1f5; border-color: #ead1d8; }
+.drawer-scrim, .modal-scrim { background: rgba(87,56,70,.22); }
+.app-loading { background: linear-gradient(145deg, #fff0f4, #fff5d6); color: var(--ink); }.app-loading p { color: var(--muted); }.loading-mark i { background: #dc7898; }.loading-mark i:nth-child(2) { background: #eab84a; }
+
+@media (max-width: 1050px) {
+  .app-shell { flex-direction: column; }
+  .sidebar { align-items: center; box-shadow: none; display: flex; flex: 0 0 auto; gap: 18px; inset: auto; min-height: auto; overflow: visible; padding: 12px 16px; position: relative; transform: none !important; width: 100%; }
+  .product-brand { flex: 0 0 auto; padding: 0; }
+  .workspace-switcher, .side-links, .authority-card, .user-card, .side-nav .nav-label { display: none; }
+  .side-nav { display: flex; flex: 1; flex-direction: row; gap: 5px; justify-content: flex-end; min-width: 0; overflow-x: auto; }
+  .side-nav button { flex: 0 0 auto; justify-content: center; padding: 9px 10px; width: auto; }
+  .main-workspace { margin-left: 0; width: 100%; }
+  .mobile-menu { display: none; }
+  .app-topbar { top: 0; }
+  .content-area { padding-left: 22px; padding-right: 22px; }
+}
+
+@media (max-width: 680px) {
+  .sidebar { align-items: stretch; flex-direction: column; gap: 9px; padding: 11px 14px 8px; }
+  .product-brand { justify-content: center; }
+  .side-nav { justify-content: flex-start; margin: 0 -4px; padding: 2px 4px 5px; }
+  .side-nav button { min-width: max-content; }
+  .app-topbar { height: 58px; padding: 0 13px; }
+  .content-area { padding: 24px 13px 65px; }
+  .item-drawer { max-width: none; width: 100%; }
+}
