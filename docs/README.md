@@ -11,6 +11,7 @@
 | Architecture and trust boundaries | `docs/architecture/` |
 | Source authority and ingestion policy | `docs/sources/` |
 | Environment and readiness evidence | `steer/ENVIRONMENT-READINESS.md` and `steer/evidence/` |
+| Security limitations and dependency risk | `SECURITY.md` and `docs/security/` |
 | Human and agent onboarding | `steer/TEAM-ONBOARDING.md` |
 | Signals and user observations | Block Buzz `#signals`, linked GitHub records, and `steer/signals/` digests |
 | Learning reviews | `steer/reviews/` |

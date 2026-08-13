@@ -6,6 +6,11 @@ STEER is experimental / pre-1.0. The latest `main` branch is the only currently 
 line. No production support or response-time guarantee is offered yet. The Federal BD
 reference project accepts public, unclassified information and synthetic test data only.
 
+The current dependency audit and time-bounded mitigations are recorded in
+[`docs/security/DEPENDENCY-RISK-2026-08-13.md`](docs/security/DEPENDENCY-RISK-2026-08-13.md).
+Do not interpret a zero production-dependency audit as a claim that development tooling
+is risk-free.
+
 ## Reporting
 
 Use a private GitHub Security Advisory for a vulnerability or suspected credential
