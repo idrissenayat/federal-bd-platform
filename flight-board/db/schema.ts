@@ -34,6 +34,7 @@ export const workItems = sqliteTable(
     evidenceUrl: text("evidence_url"),
     githubUrl: text("github_url"),
     reworkInstructions: text("rework_instructions"),
+    blockedSince: text("blocked_since"),
     createdBy: text("created_by").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),

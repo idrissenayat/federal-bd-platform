@@ -31,6 +31,7 @@ type WorkItem = {
   evidence_url: string | null;
   github_url: string | null;
   rework_instructions: string | null;
+  blocked_since: string | null;
   updated_at: string;
 };
 
@@ -119,6 +120,7 @@ type Notification = {
 };
 
 type Bootstrap = {
+  generated_at: string;
   user: { id: string; email: string | null; name: string; role: string; authority: string; role_contexts: RoleContext[] };
   items: WorkItem[];
   members: Member[];
@@ -493,9 +495,11 @@ export default function Home() {
           {view === "my-work" && (
             <MyWork
               user={data.user}
+              generatedAt={data.generated_at}
               actingRole={actingRole}
               onRoleChange={setActingRole}
               items={filteredItems}
+              activity={data.activity}
               reviews={data.reviews}
               notifications={data.notifications}
               members={data.members}
@@ -659,13 +663,69 @@ function RoleWorkCard({ item, canAct, saving, onOpen, onDecision, onTransition }
   return <article className={`role-work-card state-${item.state}`}><header><span>{item.key} · {item.phase}</span><StatusPill value={item.decision_status} /></header><h3>{item.title}</h3><p>{["Changes requested", "Rework"].includes(item.decision_status) ? item.rework_instructions ?? item.next_action : item.next_action}</p><footer><span><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><button disabled={saving} onClick={act}>{action} →</button></footer></article>;
 }
 
-function MyWork({ user, actingRole, onRoleChange, items, reviews, notifications, members, saving, onOpen, onDecision, onTransition, onReadNotification }: { user: Bootstrap["user"]; actingRole: RoleContext; onRoleChange: (role: RoleContext) => void; items: WorkItem[]; reviews: AgentReview[]; notifications: Notification[]; members: Member[]; saving: boolean; onOpen: (item: WorkItem) => void; onDecision: (item: WorkItem) => void; onTransition: (item: WorkItem, action: "START_REWORK" | "RESUBMIT") => Promise<void>; onReadNotification: (id: number) => Promise<void> }) {
+function ageLabel(value: string | null, referenceTime: number) {
+  if (!value) return "Not tracked";
+  const elapsed = referenceTime - new Date(value).getTime();
+  if (!Number.isFinite(elapsed) || elapsed < 0) return "Just now";
+  const hours = Math.floor(elapsed / 3_600_000);
+  if (hours < 1) return `${Math.max(1, Math.floor(elapsed / 60_000))}m`;
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+function FlowPulse({ items, activity, generatedAt, onOpen }: { items: WorkItem[]; activity: Activity[]; generatedAt: string; onOpen: (item: WorkItem) => void }) {
+  const wipLimit = 2;
+  const referenceTime = new Date(generatedAt).getTime();
+  const inFlight = items.filter((item) => ["active", "blocked"].includes(item.state));
+  const humanWaiting = items.filter((item) => ["Needed now", "Resubmitted"].includes(item.decision_status));
+  const agentWaiting = items.filter((item) => item.assignee_kind === "agent" && item.state !== "complete" && !humanWaiting.some((candidate) => candidate.id === item.id));
+  const blockers = items.filter((item) => item.state === "blocked").sort((a, b) => new Date(a.blocked_since ?? a.updated_at).getTime() - new Date(b.blocked_since ?? b.updated_at).getTime());
+  const recentThreshold = referenceTime - 24 * 60 * 60 * 1000;
+  const movedRecently = new Set(activity.filter((event) => new Date(event.created_at).getTime() >= recentThreshold && ["decision", "workflow", "updated", "created"].includes(event.action)).map((event) => event.item_id)).size;
+  const nextItem = humanWaiting[0]
+    ?? items.find((item) => ["Changes requested", "Rework"].includes(item.decision_status))
+    ?? items.find((item) => item.state === "active" && item.assignee_kind === "agent")
+    ?? items.find((item) => item.state === "active")
+    ?? items.find((item) => item.state === "queued")
+    ?? null;
+  const nextOwner = nextItem
+    ? ["Needed now", "Resubmitted"].includes(nextItem.decision_status)
+      ? nextItem.decision_authority
+      : nextItem.assignee_name ?? "Product Lead"
+    : "No owner needed";
+  const nextEvent = nextItem
+    ? ["Needed now", "Resubmitted"].includes(nextItem.decision_status)
+      ? `Record the ${nextItem.gate} ruling`
+      : nextItem.decision_status === "Changes requested"
+        ? "Start the recorded rework"
+        : nextItem.decision_status === "Rework"
+          ? "Update and resubmit the evidence"
+          : nextItem.next_action
+    : "All tracked work is complete";
+  const pullAllowed = inFlight.length < wipLimit;
+
+  return <section className={`flow-pulse ${pullAllowed ? "flow-open" : "flow-full"}`} aria-label="Team flow pulse">
+    <header><div><span>Live team flow</span><h2>Are we moving forward?</h2></div><div className="pulse-state"><i />{movedRecently ? `${movedRecently} item${movedRecently === 1 ? "" : "s"} moved in 24h` : "No movement in 24h"}</div></header>
+    <div className="flow-metrics">
+      <div className={inFlight.length > wipLimit ? "metric-alert" : ""}><span>WIP</span><strong>{inFlight.length}<small> / {wipLimit}</small></strong><em>{inFlight.length > wipLimit ? `${inFlight.length - wipLimit} over limit` : `${wipLimit - inFlight.length} slot${wipLimit - inFlight.length === 1 ? "" : "s"} open`}</em></div>
+      <div><span>Moved recently</span><strong>{movedRecently}</strong><em>Unique items · 24h</em></div>
+      <div><span>Waiting on human</span><strong>{humanWaiting.length}</strong><em>{humanWaiting.length ? humanWaiting[0].decision_authority : "No ruling queued"}</em></div>
+      <div><span>Waiting on agents</span><strong>{agentWaiting.length}</strong><em>{agentWaiting.length ? "Owned agent work" : "No agent handoff"}</em></div>
+      <div className={blockers.length ? "metric-warn" : ""}><span>Oldest blocker</span><strong>{blockers.length ? ageLabel(blockers[0].blocked_since ?? blockers[0].updated_at, referenceTime) : "—"}</strong><em>{blockers[0]?.key ?? "No blockers"}</em></div>
+    </div>
+    <div className="flow-next"><div><span>Next expected event</span><strong>{nextEvent}</strong><small>{nextItem ? `${nextItem.key} · Owner: ${nextOwner}` : nextOwner}</small></div>{nextItem && <button onClick={() => onOpen(nextItem)}>Open {nextItem.key} →</button>}<aside><span>{pullAllowed ? "WIP slot available" : "Pull paused"}</span><p>{pullAllowed ? "Finish role work, then pull the highest-priority ready backlog item." : "Do not start or create more delivery work. Finish, unblock, or explicitly stop something first."}</p></aside></div>
+  </section>;
+}
+
+function MyWork({ user, generatedAt, actingRole, onRoleChange, items, activity, reviews, notifications, members, saving, onOpen, onDecision, onTransition, onReadNotification }: { user: Bootstrap["user"]; generatedAt: string; actingRole: RoleContext; onRoleChange: (role: RoleContext) => void; items: WorkItem[]; activity: Activity[]; reviews: AgentReview[]; notifications: Notification[]; members: Member[]; saving: boolean; onOpen: (item: WorkItem) => void; onDecision: (item: WorkItem) => void; onTransition: (item: WorkItem, action: "START_REWORK" | "RESUBMIT") => Promise<void>; onReadNotification: (id: number) => Promise<void> }) {
   const role = roleCockpits.find((candidate) => candidate.id === actingRole) ?? roleCockpits[0];
   const canAct = user.role_contexts.includes(actingRole);
   const relevant = items.filter((item) => item.state !== "complete" && itemMatchesRole(item, actingRole, reviews));
   const rulings = relevant.filter((item) => ["Needed now", "Resubmitted"].includes(item.decision_status));
   const returns = relevant.filter((item) => ["Changes requested", "Rework"].includes(item.decision_status));
-  const moving = relevant.filter((item) => !["Needed now", "Resubmitted", "Changes requested", "Rework"].includes(item.decision_status));
+  const moving = relevant.filter((item) => ["active", "blocked"].includes(item.state) && !["Needed now", "Resubmitted", "Changes requested", "Rework"].includes(item.decision_status));
+  const readyToPull = relevant.filter((item) => item.state === "queued");
+  const teamWip = items.filter((item) => ["active", "blocked"].includes(item.state)).length;
   const relatedIds = new Set(relevant.map((item) => item.id));
   const roleNotifications = notifications.filter((notification) => relatedIds.has(notification.item_id) || notification.recipient_role.toLowerCase().includes(role.short.toLowerCase())).slice(0, 6);
   const seat = members.find((member) => member.kind === "human" && (member.role.includes(role.label) || role.id === "platform" && member.role.includes("Platform")));
@@ -673,6 +733,8 @@ function MyWork({ user, actingRole, onRoleChange, items, reviews, notifications,
   return <>
     <PageHeading eyebrow="Role cockpit" title={`${role.label} workspace`} copy={role.copy} actions={<div className={`role-authority ${canAct ? "held" : "view-only"}`}><span>{canAct ? "Acting authority" : "View only"}</span><strong>{canAct ? user.name : seat?.display_name ?? "Open seat"}</strong></div>} />
     <div className="role-switcher" role="tablist" aria-label="Human role workspaces">{roleCockpits.map((candidate) => <button role="tab" aria-selected={actingRole === candidate.id} className={actingRole === candidate.id ? "active" : ""} key={candidate.id} onClick={() => onRoleChange(candidate.id)}><span>{candidate.short}</span><small>{user.role_contexts.includes(candidate.id) ? "Your role" : "Shared view"}</small></button>)}</div>
+
+    <FlowPulse items={items} activity={activity} generatedAt={generatedAt} onOpen={onOpen} />
 
     <section className="role-today">
       <div><span className="panel-eyebrow">Start here</span><h2>{rulings.length ? `${rulings.length} ruling${rulings.length === 1 ? "" : "s"} need judgment` : returns.length ? `${returns.length} returned item${returns.length === 1 ? "" : "s"} need movement` : "No urgent role action"}</h2><p>{canAct ? "Work the first consequential queue, then stop. STEER protects attention by making ownership and the next move explicit." : `You can inspect this cockpit, but ${seat?.display_name === "Open seat" || !seat ? "this role is not yet staffed" : seat.display_name + " holds this authority"}.`}</p></div>
@@ -685,7 +747,7 @@ function MyWork({ user, actingRole, onRoleChange, items, reviews, notifications,
     </div>
 
     <div className="role-lower-grid">
-      <section className="panel role-in-motion"><header><div><span className="panel-eyebrow">Role portfolio</span><h2>In motion</h2></div><b>{moving.length}</b></header>{moving.slice(0, 5).map((item) => <button key={item.id} onClick={() => onOpen(item)}><span>{item.key}</span><div><strong>{item.title}</strong><small>{item.next_action}</small></div><StatusPill value={item.phase} /></button>)}{!moving.length && <Empty title="Nothing is moving here" copy="Relevant work appears as it enters this role’s responsibility." />}</section>
+      <section className="panel role-in-motion"><header><div><span className="panel-eyebrow">Role portfolio</span><h2>Running versus ready</h2></div><b>{moving.length + readyToPull.length}</b></header>{moving.length > 0 && <div className="portfolio-group-label"><span>In motion</span><b>{moving.length}</b></div>}{moving.slice(0, 5).map((item) => <button key={item.id} onClick={() => onOpen(item)}><span>{item.key}</span><div><strong>{item.title}</strong><small>{item.next_action}</small></div><StatusPill value={item.state} /></button>)}{readyToPull.length > 0 && <div className="portfolio-group-label ready"><span>Ready to pull</span><b>{readyToPull.length}</b><em>{teamWip >= 2 ? "WIP full" : "Capacity available"}</em></div>}{readyToPull.slice(0, 5).map((item) => <button key={item.id} onClick={() => onOpen(item)}><span>{item.key}</span><div><strong>{item.title}</strong><small>{item.next_action}</small></div><StatusPill value={teamWip >= 2 ? "Paused" : item.priority} kind={teamWip >= 2 ? "blocked" : item.priority} /></button>)}{!moving.length && !readyToPull.length && <Empty title="No role portfolio work" copy="Relevant running or pull-ready work appears here." />}</section>
       <section className="panel notification-center"><header><div><span className="panel-eyebrow">Block Buzz outbox</span><h2>Role notifications</h2></div><b>{roleNotifications.filter((item) => item.status !== "read").length}</b></header>{roleNotifications.length ? roleNotifications.map((notification) => <article key={notification.id} className={notification.status === "read" ? "read" : ""}><span>◌</span><div><strong>{notification.title}</strong><p>{notification.body}</p><small>{notification.channel} · {notification.status} · {formatDate(notification.created_at)}</small></div>{notification.status !== "read" && <button onClick={() => void onReadNotification(notification.id)}>Mark read</button>}</article>) : <Empty title="No role signals yet" copy="Rework and resubmission events will create a durable Block Buzz-ready notification." />}</section>
     </div>
   </>;

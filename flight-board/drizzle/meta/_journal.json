@@ -22,6 +22,13 @@
       "when": 1786635257028,
       "tag": "0002_dizzy_robbie_robertson",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786636327672,
+      "tag": "0003_young_sugar_man",
+      "breakpoints": true
     }
   ]
 }

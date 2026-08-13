@@ -96,6 +96,7 @@ async function ensureSchema(db: Database) {
       evidence_url text,
       github_url text,
       rework_instructions text,
+      blocked_since text,
       created_by text NOT NULL,
       created_at text NOT NULL,
       updated_at text NOT NULL
@@ -167,6 +168,7 @@ async function ensureSchema(db: Database) {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_member_status ON notifications (member_id, status)"),
   ]);
   await ensureColumn(db, "work_items", "rework_instructions", "rework_instructions text");
+  await ensureColumn(db, "work_items", "blocked_since", "blocked_since text");
   await ensureColumn(db, "decisions", "review_id", "review_id integer");
   await ensureColumn(db, "decisions", "evidence_url", "evidence_url text");
   await ensureColumn(db, "decisions", "evidence_revision", "evidence_revision text");
@@ -212,17 +214,28 @@ async function backfillReworkState(db: Database) {
   const now = new Date().toISOString();
   await db.prepare(
     `UPDATE work_items
+     SET blocked_since = COALESCE(blocked_since, (
+       SELECT d.created_at FROM decisions d
+       WHERE d.item_id = work_items.id AND d.decision = 'CHANGES_REQUESTED'
+       ORDER BY d.id DESC LIMIT 1
+     ), created_at)
+     WHERE state = 'blocked'`,
+  ).run();
+  await db.prepare("UPDATE work_items SET blocked_since = NULL WHERE state != 'blocked' AND blocked_since IS NOT NULL").run();
+  await db.prepare(
+    `UPDATE work_items
      SET decision_status = 'Changes requested',
          rework_instructions = COALESCE(rework_instructions, (
            SELECT d.reasoning FROM decisions d
            WHERE d.item_id = work_items.id ORDER BY d.id DESC LIMIT 1
          )),
          next_action = 'Complete the requested changes in the linked evidence and resubmit for a fresh Critic review.',
+         blocked_since = COALESCE(blocked_since, ?),
          updated_at = ?
      WHERE state = 'blocked'
        AND decision_status IN ('Waiting', 'Needed now')
        AND (SELECT d.decision FROM decisions d WHERE d.item_id = work_items.id ORDER BY d.id DESC LIMIT 1) = 'CHANGES_REQUESTED'`,
-  ).bind(now).run();
+  ).bind(now, now).run();
   await db.prepare(
     `INSERT OR IGNORE INTO notifications
      (dedupe_key, item_id, member_id, recipient_role, kind, title, body, channel, status, created_at)
@@ -323,6 +336,7 @@ async function bootstrap(db: Database, user: User) {
     derived_tags: JSON.parse(String((review as Record<string, unknown>).derived_tags_json ?? "[]")),
   }));
   return {
+    generated_at: new Date().toISOString(),
     user: { ...user, role: currentMember?.role ?? "Contributor", authority: currentMember?.authority ?? "May own work", role_contexts: roleContexts(currentMember?.role ?? "Contributor") },
     items: items.results ?? [],
     members: members.results ?? [],
@@ -392,6 +406,11 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
     changes.push(`${key} → ${value || "unassigned"}`);
   }
   const now = new Date().toISOString();
+  const requestedState = body.state ? String(body.state) : null;
+  if (requestedState) {
+    sets.push("blocked_since = ?");
+    values.push(requestedState === "blocked" ? current.blocked_since ?? now : null);
+  }
   sets.push("updated_at = ?");
   values.push(now, itemId);
   await db.prepare(`UPDATE work_items SET ${sets.join(", ")} WHERE id = ?`).bind(...values).run();
@@ -626,7 +645,7 @@ async function decide(request: Request, db: Database, user: User, itemId: number
   let nextGate = gate;
   let nextPhase = String(current.phase);
   let nextStatus = decision === "APPROVED" ? "Decided" : "Changes requested";
-  let nextState = decision === "APPROVED" ? String(current.state) : "blocked";
+  let nextState = decision === "APPROVED" ? "active" : "blocked";
   let nextAssignee = current.assignee_id;
   let reworkInstructions: string | null = null;
   let nextAction = String(current.next_action);
@@ -639,9 +658,10 @@ async function decide(request: Request, db: Database, user: User, itemId: number
     reworkInstructions = reasoning;
     nextAction = firstRequiredChange(reasoning);
   }
+  const blockedSince = nextState === "blocked" ? current.blocked_since ?? now : null;
   await db.prepare(
-    "UPDATE work_items SET gate = ?, phase = ?, decision_status = ?, state = ?, assignee_id = ?, next_action = ?, rework_instructions = ?, updated_at = ? WHERE id = ?",
-  ).bind(nextGate, nextPhase, nextStatus, nextState, nextAssignee, nextAction, reworkInstructions, now, itemId).run();
+    "UPDATE work_items SET gate = ?, phase = ?, decision_status = ?, state = ?, assignee_id = ?, next_action = ?, rework_instructions = ?, blocked_since = ?, updated_at = ? WHERE id = ?",
+  ).bind(nextGate, nextPhase, nextStatus, nextState, nextAssignee, nextAction, reworkInstructions, blockedSince, now, itemId).run();
   await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'decision', ?, ?)")
     .bind(itemId, user.id, `${gate}: ${decision} — ${reasoning}`, now).run();
   if (decision === "CHANGES_REQUESTED") {
@@ -670,7 +690,7 @@ async function transitionItem(request: Request, db: Database, user: User, itemId
 
   if (action === "START_REWORK") {
     if (status !== "Changes requested") return json({ error: "This item is not waiting to begin rework." }, 409);
-    await db.prepare("UPDATE work_items SET decision_status = 'Rework', state = 'active', updated_at = ? WHERE id = ?").bind(now, itemId).run();
+    await db.prepare("UPDATE work_items SET decision_status = 'Rework', state = 'active', blocked_since = NULL, updated_at = ? WHERE id = ?").bind(now, itemId).run();
     await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'workflow', 'Rework started from the recorded change request.', ?)").bind(itemId, user.id, now).run();
     return json({ ok: true, status: "Rework" });
   }
@@ -686,7 +706,7 @@ async function transitionItem(request: Request, db: Database, user: User, itemId
     if (priorDecision?.evidence_sha256 && priorDecision.evidence_sha256 === evidence.sha256) {
       return json({ error: "The evidence content has not changed since the change request. Update the artifact before resubmitting." }, 409);
     }
-    await db.prepare("UPDATE work_items SET decision_status = 'Resubmitted', state = 'blocked', updated_at = ? WHERE id = ?").bind(now, itemId).run();
+    await db.prepare("UPDATE work_items SET decision_status = 'Resubmitted', state = 'blocked', blocked_since = ?, updated_at = ? WHERE id = ?").bind(now, now, itemId).run();
     await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'workflow', 'Updated evidence resubmitted for a fresh Critic review and human ruling.', ?)").bind(itemId, user.id, now).run();
     await db.prepare(
       `INSERT OR IGNORE INTO notifications
