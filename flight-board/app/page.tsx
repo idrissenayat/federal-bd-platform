@@ -7,7 +7,8 @@ const priorities = ["Now", "Next", "Later"] as const;
 const workflows = ["STEER", "Control", "Setup / excluded", "Unassigned"] as const;
 const states = ["queued", "active", "blocked", "complete"] as const;
 const githubRoot = "https://github.com/idrissenayat/federal-bd-platform";
-const buzzUrl = "wss://blockbuzzmain-production-5bcb.up.railway.app";
+const buzzRelayUrl = "wss://blockbuzzmain-production-5bcb.up.railway.app";
+const buzzDownloadUrl = "https://buzz.xyz";
 
 type View = "my-work" | "overview" | "board" | "backlog" | "decisions" | "team";
 type RoleContext = "product" | "tech" | "design" | "platform" | "security" | "contributor";
@@ -128,6 +129,14 @@ type Bootstrap = {
   decisions: Decision[];
   reviews: AgentReview[];
   notifications: Notification[];
+};
+
+type BuzzStatus = {
+  online: boolean;
+  relay: string;
+  version: string | null;
+  auth_required: boolean;
+  checked_at: string;
 };
 
 const navigation: { id: View; label: string; icon: string }[] = [
@@ -257,6 +266,10 @@ export default function Home() {
   const [decisionReasoning, setDecisionReasoning] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
+  const [buzzOpen, setBuzzOpen] = useState(false);
+  const [buzzStatus, setBuzzStatus] = useState<BuzzStatus | null>(null);
+  const [buzzChecking, setBuzzChecking] = useState(false);
+  const [buzzCopied, setBuzzCopied] = useState(false);
 
   async function load() {
     try {
@@ -424,6 +437,29 @@ export default function Home() {
     setDecisionOpen(false);
   }
 
+  async function openBuzzWorkspace() {
+    setBuzzOpen(true);
+    setBuzzCopied(false);
+    setBuzzChecking(true);
+    try {
+      const status = await api("/api/buzz-status") as BuzzStatus;
+      setBuzzStatus(status);
+    } catch {
+      setBuzzStatus({ online: false, relay: buzzRelayUrl, version: null, auth_required: true, checked_at: new Date().toISOString() });
+    } finally {
+      setBuzzChecking(false);
+    }
+  }
+
+  async function copyBuzzRelay() {
+    try {
+      await navigator.clipboard.writeText(buzzRelayUrl);
+      setBuzzCopied(true);
+    } catch {
+      setBuzzCopied(false);
+    }
+  }
+
   if (loading) {
     return <div className="app-loading"><span className="loading-mark"><i /><i /><i /></span><strong>Preparing your STEER workspace</strong><p>Loading work, evidence, and team authority…</p></div>;
   }
@@ -460,7 +496,7 @@ export default function Home() {
           <span className="nav-label">Connected records</span>
           <a href="https://github.com/users/idrissenayat/projects/1/views/2" target="_blank" rel="noreferrer"><span>↗</span> GitHub Project</a>
           <a href={githubRoot} target="_blank" rel="noreferrer"><span>⌂</span> Repository</a>
-          <a href={buzzUrl} title="Block Buzz relay"><span>◌</span> Block Buzz</a>
+          <button type="button" onClick={() => void openBuzzWorkspace()} title="Connect to the team Block Buzz workspace"><span>◌</span> Block Buzz</button>
         </div>
 
         <div className="authority-card">
@@ -524,7 +560,7 @@ export default function Home() {
           {view === "board" && <FlightBoard items={filteredItems} onOpen={openItem} onMove={updateItem} saving={saving} />}
           {view === "backlog" && <Backlog items={filteredItems} onOpen={openItem} onCreate={() => setCreateOpen(true)} />}
           {view === "decisions" && <DecisionInbox items={decisionItems} decisions={data.decisions} reviews={data.reviews} reviewingIds={reviewingIds} onOpen={openDecisionWorkspace} />}
-          {view === "team" && <Team members={data.members} items={data.items} />}
+          {view === "team" && <Team members={data.members} items={data.items} onOpenBuzz={() => void openBuzzWorkspace()} />}
         </div>
       </main>
 
@@ -627,6 +663,28 @@ export default function Home() {
             <label><span className="reasoning-label-row"><span>Reasoning</span>{changeRequestDraft && decisionReasoning === changeRequestDraft && <em>AI draft applied · editable</em>}</span><textarea name="reasoning" required minLength={12} value={decisionReasoning} onChange={(event) => setDecisionReasoning(event.target.value)} placeholder="State why this evidence is or is not sufficient. This becomes part of the audit trail." /></label>
             <footer><button type="button" className="secondary-button" onClick={closeDecisionWorkspace}>Cancel</button><button className="decision-button" disabled={saving || !freshSelectedReview?.evidence_sha256}>{saving ? "Recording…" : "Record human ruling"}</button></footer>
           </form>
+        </div>
+      )}
+
+      {buzzOpen && (
+        <div className="modal-scrim buzz-scrim">
+          <section className="modal-card buzz-modal" role="dialog" aria-modal="true" aria-labelledby="buzz-title">
+            <header><div><span>Block Buzz team communication</span><h2 id="buzz-title">Connect to the STEER team workspace</h2></div><button type="button" aria-label="Close Buzz connection guide" onClick={() => setBuzzOpen(false)}>×</button></header>
+            <div className={`buzz-health ${buzzChecking ? "checking" : buzzStatus?.online ? "online" : "offline"}`}>
+              <i />
+              <div><strong>{buzzChecking ? "Checking the team relay…" : buzzStatus?.online ? "Team relay is online" : "Team relay could not be reached"}</strong><span>{buzzStatus?.online ? `Buzz Relay ${buzzStatus.version ?? ""} is accepting connections.` : "Retry in a moment or notify the Platform / Ops Lead."}</span></div>
+              {!buzzChecking && <button type="button" onClick={() => void openBuzzWorkspace()}>Check again</button>}
+            </div>
+            <p className="modal-intro">Buzz is a desktop workspace, while the address below is its secure relay. The previous link failed because a browser cannot open a WebSocket relay as a webpage.</p>
+            <ol className="buzz-steps">
+              <li><b>Install or open Buzz.</b><span>Use the official macOS, Windows, or Linux app.</span></li>
+              <li><b>Add an existing community or relay.</b><span>In Buzz, choose the option to connect to a relay you already have.</span></li>
+              <li><b>Paste the STEER team relay.</b><span>Use the exact address below; the workspace is invite-only.</span></li>
+              <li><b>Join the team channels.</b><span>Ask the community owner for an invitation if Buzz says your identity is not yet authorized.</span></li>
+            </ol>
+            <div className="buzz-relay-field"><span className="buzz-relay-label">STEER team relay</span><div><input readOnly value={buzzRelayUrl} aria-label="STEER team Buzz relay URL" /><button type="button" onClick={() => void copyBuzzRelay()}>{buzzCopied ? "Copied ✓" : "Copy relay"}</button></div><small>{buzzStatus?.auth_required !== false ? "Authenticated, invite-only workspace" : "Workspace access is managed in Buzz"} · never share your private key</small></div>
+            <footer><button type="button" className="secondary-button" onClick={() => setBuzzOpen(false)}>Close</button><a className="primary-button buzz-download" href={buzzDownloadUrl} target="_blank" rel="noreferrer">Open / download Buzz ↗</a></footer>
+          </section>
         </div>
       )}
     </div>
@@ -819,11 +877,11 @@ function DecisionInbox({ items, decisions, reviews, reviewingIds, onOpen }: { it
   </>;
 }
 
-function Team({ members, items }: { members: Member[]; items: WorkItem[] }) {
+function Team({ members, items, onOpenBuzz }: { members: Member[]; items: WorkItem[]; onOpenBuzz: () => void }) {
   const humans = members.filter((member) => member.kind === "human");
   const agents = members.filter((member) => member.kind === "agent");
   return <>
-    <PageHeading eyebrow="People, agents, and authority" title="Team" copy="Make ownership easy to see and impossible to confuse. Agent capability never silently becomes human authority." actions={<a className="text-button" href={buzzUrl}>Open Block Buzz relay →</a>} />
+    <PageHeading eyebrow="People, agents, and authority" title="Team" copy="Make ownership easy to see and impossible to confuse. Agent capability never silently becomes human authority." actions={<button className="text-button" onClick={onOpenBuzz}>Connect to Block Buzz →</button>} />
     <section className="team-section"><header><div><span className="panel-eyebrow">Human contributors</span><h2>Decision and product authority</h2></div><StatusPill value={`${humans.length} people / seats`} kind="human" /></header><div className="member-grid">{humans.map((member) => <article className="member-card" key={member.id}><div className="member-card-top"><Avatar name={member.display_name} kind={member.kind} accent={member.accent} /><StatusPill value={member.status} /></div><h3>{member.display_name}</h3><span>{member.role}</span><p>{member.authority}</p><footer><b>{items.filter((item) => item.assignee_id === member.id && item.state !== "complete").length}</b><span>open items</span></footer></article>)}</div></section>
     <section className="team-section agent-section"><header><div><span className="panel-eyebrow">Agent fleet</span><h2>Specialized delivery roles</h2></div><StatusPill value={`${agents.length} enrolled`} kind="agent" /></header><div className="member-grid">{agents.map((member) => <article className="member-card agent-card" key={member.id}><div className="member-card-top"><Avatar name={member.display_name} kind={member.kind} accent={member.accent} /><StatusPill value={member.status} /></div><h3>{member.display_name}</h3><span>{member.role}</span><p>{member.authority}</p><footer><b>{items.filter((item) => item.assignee_id === member.id && item.state !== "complete").length}</b><span>assigned items</span><em>Cannot approve gates</em></footer></article>)}</div></section>
   </>;

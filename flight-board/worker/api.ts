@@ -24,6 +24,8 @@ const priorities = ["Now", "Next", "Later"];
 const workflows = ["STEER", "Control", "Setup / excluded", "Unassigned"];
 const states = ["queued", "active", "blocked", "complete"];
 const decisionStatuses = ["Waiting", "Needed now", "Changes requested", "Rework", "Resubmitted", "Decided", "Not required"];
+const buzzRelayHttpUrl = "https://blockbuzzmain-production-5bcb.up.railway.app";
+const buzzRelayWsUrl = "wss://blockbuzzmain-production-5bcb.up.railway.app";
 
 type Finding = {
   severity: "blocker" | "should-fix" | "note";
@@ -729,6 +731,26 @@ async function markNotificationRead(db: Database, user: User, notificationId: nu
   return json({ ok: true, actor: user.id });
 }
 
+async function getBuzzStatus() {
+  try {
+    const [healthResponse, relayResponse] = await Promise.all([
+      fetch(`${buzzRelayHttpUrl}/health`, { headers: { accept: "text/plain" }, signal: AbortSignal.timeout(5000) }),
+      fetch(buzzRelayHttpUrl, { headers: { accept: "application/nostr+json, application/json" }, signal: AbortSignal.timeout(5000) }),
+    ]);
+    const health = healthResponse.ok ? (await healthResponse.text()).trim().toLowerCase() : "";
+    const relay = relayResponse.ok ? await relayResponse.json() as { version?: string; limitation?: { auth_required?: boolean } } : null;
+    return json({
+      online: health === "ok" && relayResponse.ok,
+      relay: buzzRelayWsUrl,
+      version: relay?.version ?? null,
+      auth_required: relay?.limitation?.auth_required ?? true,
+      checked_at: new Date().toISOString(),
+    });
+  } catch {
+    return json({ online: false, relay: buzzRelayWsUrl, version: null, auth_required: true, checked_at: new Date().toISOString() });
+  }
+}
+
 export async function handleApi(request: Request, env: Env): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/")) return null;
@@ -739,6 +761,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
   try {
     await ensureSchema(env.DB);
     await ensureCurrentUser(env.DB, user);
+    if (request.method === "GET" && url.pathname === "/api/buzz-status") return getBuzzStatus();
     if (request.method === "GET" && url.pathname === "/api/bootstrap") return json(await bootstrap(env.DB, user));
     if (request.method === "POST" && url.pathname === "/api/items") return createItem(request, env.DB, user);
     const itemMatch = url.pathname.match(/^\/api\/items\/(\d+)$/);
