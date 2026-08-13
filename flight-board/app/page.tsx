@@ -66,12 +66,40 @@ type Decision = {
   created_at: string;
 };
 
+type AgentFinding = {
+  severity: "blocker" | "should-fix" | "note";
+  title: string;
+  detail: string;
+  action: string;
+};
+
+type AgentReview = {
+  id: number;
+  item_id: number;
+  item_key: string;
+  item_title: string;
+  agent_id: string;
+  review_mode: string;
+  recommendation: string;
+  confidence: string;
+  summary: string;
+  findings: AgentFinding[];
+  dependencies: string[];
+  impacts: string[];
+  actions: string[];
+  derived_tags: string[];
+  evidence_scope: string;
+  reviewed_item_updated_at: string;
+  created_at: string;
+};
+
 type Bootstrap = {
   user: { id: string; email: string | null; name: string };
   items: WorkItem[];
   members: Member[];
   activity: Activity[];
   decisions: Decision[];
+  reviews: AgentReview[];
 };
 
 const navigation: { id: View; label: string; icon: string }[] = [
@@ -125,6 +153,39 @@ function Empty({ title, copy }: { title: string; copy: string }) {
   return <div className="empty-panel"><span>✓</span><h3>{title}</h3><p>{copy}</p></div>;
 }
 
+function AgentReviewBrief({ item, review, reviewing, onReview, compact = false }: { item: WorkItem; review: AgentReview | null; reviewing: boolean; onReview: () => void; compact?: boolean }) {
+  const stale = review ? review.reviewed_item_updated_at !== item.updated_at : false;
+  if (!review) {
+    return <section className={`agent-review agent-review-empty ${compact ? "agent-review-compact" : ""}`}>
+      <div className="agent-review-heading"><span className="critic-mark">◇</span><div><span>AI review brief</span><strong>Get a fresh Critic perspective</strong></div></div>
+      <p>The Critic Agent will surface up to three significant findings, dependencies, impact, and the fastest safe next actions. Its advice never replaces the human ruling.</p>
+      <button type="button" className="agent-review-button" disabled={reviewing} onClick={onReview}>{reviewing ? "Critic is reviewing…" : "Run Critic review"}</button>
+    </section>;
+  }
+
+  return <section className={`agent-review ${compact ? "agent-review-compact" : ""}`}>
+    <header className="agent-review-header">
+      <div className="agent-review-heading"><span className="critic-mark">◇</span><div><span>AI review brief · advisory</span><strong>Critic Agent</strong></div></div>
+      <StatusPill value={review.recommendation} kind={review.recommendation.includes("blocker") ? "blocked" : review.recommendation.includes("changes") ? "review" : "ready"} />
+    </header>
+    {stale && <div className="review-stale">Work changed after this review. Refresh before relying on it.</div>}
+    <div className="review-verdict"><span>{review.recommendation}</span><p>{review.summary}</p></div>
+    {!compact && <>
+      <div className="review-findings">
+        <h4>Significant findings</h4>
+        {review.findings.length ? review.findings.map((finding, index) => <article className={`finding finding-${finding.severity}`} key={`${finding.title}-${index}`}><span>{finding.severity === "blocker" ? "!" : finding.severity === "should-fix" ? "△" : "i"}</span><div><div><b>{finding.title}</b><em>{finding.severity.replace("-", " ")}</em></div><p>{finding.detail}</p><small>Action: {finding.action}</small></div></article>) : <p className="review-clear">No significant finding was visible in the reviewed scope.</p>}
+      </div>
+      <div className="review-two-column">
+        <div><h4>Dependencies</h4>{review.dependencies.length ? <ul>{review.dependencies.map((value) => <li key={value}>{value}</li>)}</ul> : <p>None identified.</p>}</div>
+        <div><h4>Downstream impact</h4>{review.impacts.length ? <ul>{review.impacts.map((value) => <li key={value}>{value}</li>)}</ul> : <p>No material impact identified.</p>}</div>
+      </div>
+      <div className="review-actions"><h4>What to do now</h4><ol>{review.actions.map((value) => <li key={value}>{value}</li>)}</ol></div>
+    </>}
+    {compact && review.findings[0] && <div className={`compact-finding finding-${review.findings[0].severity}`}><b>{review.findings[0].title}</b><span>{review.findings[0].action}</span></div>}
+    <footer><div><span>{review.confidence} confidence · {formatDate(review.created_at)}</span><small>{review.evidence_scope}</small></div><button type="button" disabled={reviewing} onClick={onReview}>{reviewing ? "Reviewing…" : stale ? "Refresh review" : "Run again"}</button></footer>
+  </section>;
+}
+
 export default function Home() {
   const [data, setData] = useState<Bootstrap | null>(null);
   const [view, setView] = useState<View>("overview");
@@ -134,6 +195,7 @@ export default function Home() {
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [reviewingId, setReviewingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
 
@@ -174,6 +236,7 @@ export default function Home() {
 
   const selected = data?.items.find((item) => item.id === selectedId) ?? null;
   const itemActivity = data?.activity.filter((event) => event.item_id === selectedId) ?? [];
+  const selectedReview = data?.reviews.find((review) => review.item_id === selectedId) ?? null;
   const decisionItems = data?.items.filter((item) => item.decision_status === "Needed now") ?? [];
   const blockedItems = data?.items.filter((item) => item.state === "blocked") ?? [];
   const activeItems = data?.items.filter((item) => item.state === "active") ?? [];
@@ -225,6 +288,18 @@ export default function Home() {
       setError(caught instanceof Error ? caught.message : "The ruling could not be recorded.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function requestAgentReview(itemId: number) {
+    setReviewingId(itemId);
+    try {
+      await api(`/api/items/${itemId}/reviews`, { method: "POST", body: "{}" });
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The Critic Agent could not complete the review.");
+    } finally {
+      setReviewingId(null);
     }
   }
 
@@ -314,7 +389,7 @@ export default function Home() {
           )}
           {view === "board" && <FlightBoard items={filteredItems} onOpen={openItem} onMove={updateItem} saving={saving} />}
           {view === "backlog" && <Backlog items={filteredItems} onOpen={openItem} onCreate={() => setCreateOpen(true)} />}
-          {view === "decisions" && <DecisionInbox items={decisionItems} decisions={data.decisions} onOpen={(item) => { openItem(item); setDecisionOpen(true); }} />}
+          {view === "decisions" && <DecisionInbox items={decisionItems} decisions={data.decisions} reviews={data.reviews} onOpen={(item) => { openItem(item); setDecisionOpen(true); }} />}
           {view === "team" && <Team members={data.members} items={data.items} />}
         </div>
       </main>
@@ -336,6 +411,8 @@ export default function Home() {
                   <button onClick={() => setDecisionOpen(true)}>Review decision</button>
                 </div>
               )}
+
+              <AgentReviewBrief item={selected} review={selectedReview} reviewing={reviewingId === selected.id} onReview={() => void requestAgentReview(selected.id)} />
 
               <section className="detail-section">
                 <h3>Work controls</h3>
@@ -395,6 +472,7 @@ export default function Home() {
           <form className="modal-card decision-modal" onSubmit={recordDecision}>
             <header><div><span>◆ Authenticated human ruling</span><h2>{selected.gate}</h2></div><button type="button" onClick={() => setDecisionOpen(false)}>×</button></header>
             <div className="decision-item-summary"><span>{selected.key}</span><strong>{selected.title}</strong><p>{selected.description}</p></div>
+            <AgentReviewBrief compact item={selected} review={selectedReview} reviewing={reviewingId === selected.id} onReview={() => void requestAgentReview(selected.id)} />
             <div className="authority-warning"><strong>You are acting as {selected.decision_authority}.</strong><p>This ruling is attributed to {data.user.email ?? data.user.name}. Agents cannot submit this form without an authenticated human identity.</p></div>
             <fieldset><legend>Ruling</legend><label className="radio-card"><input aria-label="Approve this gate" type="radio" name="decision" value="APPROVED" required /><span><strong>Approve</strong><small>Evidence is sufficient for this gate. Advance the work.</small></span></label><label className="radio-card"><input aria-label="Request changes for this gate" type="radio" name="decision" value="CHANGES_REQUESTED" required /><span><strong>Request changes</strong><small>Keep the gate pending and block work until the named gaps are resolved.</small></span></label></fieldset>
             <label>Reasoning<textarea name="reasoning" required minLength={12} placeholder="State why this evidence is or is not sufficient. This becomes part of the audit trail." /></label>
@@ -461,11 +539,15 @@ function Backlog({ items, onOpen, onCreate }: { items: WorkItem[]; onOpen: (item
   </>;
 }
 
-function DecisionInbox({ items, decisions, onOpen }: { items: WorkItem[]; decisions: Decision[]; onOpen: (item: WorkItem) => void }) {
+function DecisionInbox({ items, decisions, reviews, onOpen }: { items: WorkItem[]; decisions: Decision[]; reviews: AgentReview[]; onOpen: (item: WorkItem) => void }) {
   return <>
-    <PageHeading eyebrow="Human authority" title="Decision inbox" copy="Agents may assemble and critique the evidence. A named human must read it and record the ruling in their own authenticated session." />
+    <PageHeading eyebrow="Human authority" title="Decision inbox" copy="Start with the Critic Agent brief, inspect the exact evidence, then make the consequential decision in your own authenticated session." />
     <div className="decision-layout">
-      <section className="decision-queue"><header><div><span className="panel-eyebrow">Requires your attention</span><h2>Pending rulings</h2></div><b>{items.length}</b></header>{items.length ? items.map((item) => <article className="decision-card" key={item.id}><div className="decision-diamond">◆</div><div className="decision-card-body"><div><span>{item.key} · {item.phase}</span><StatusPill value={item.gate} kind="gate" /></div><h3>{item.title}</h3><p>{item.description}</p><dl><div><dt>Authority</dt><dd>{item.decision_authority}</dd></div><div><dt>Evidence</dt><dd>{item.evidence_url ? "Attached and ready to inspect" : "Evidence link missing"}</dd></div><div><dt>Next if approved</dt><dd>{item.gate === "Gate 2 pending" ? "Builder may begin implementation" : "Advance to the next STEER control"}</dd></div></dl><button onClick={() => onOpen(item)}>Open ruling workspace →</button></div></article>) : <Empty title="Decision inbox is clear" copy="A ruling appears only when the work is ready and a named human authority is required." />}</section>
+      <section className="decision-queue"><header><div><span className="panel-eyebrow">Requires your attention</span><h2>Pending rulings</h2></div><b>{items.length}</b></header>{items.length ? items.map((item) => {
+        const review = reviews.find((candidate) => candidate.item_id === item.id);
+        const stale = review ? review.reviewed_item_updated_at !== item.updated_at : false;
+        return <article className="decision-card" key={item.id}><div className="decision-diamond">◆</div><div className="decision-card-body"><div><span>{item.key} · {item.phase}</span><StatusPill value={item.gate} kind="gate" /></div><h3>{item.title}</h3><p>{item.description}</p><div className={`decision-agent-strip ${review ? "has-review" : "needs-review"}`}><span>◇</span><div><b>{review ? review.recommendation : "AI review not run"}</b><small>{review ? stale ? "Work changed — refresh the Critic brief" : review.findings[0]?.title ?? "No significant finding" : "Run the Critic before the human ruling for faster risk triage."}</small></div></div><dl><div><dt>Authority</dt><dd>{item.decision_authority}</dd></div><div><dt>Evidence</dt><dd>{item.evidence_url ? "Attached and ready to inspect" : "Evidence link missing"}</dd></div><div><dt>Next if approved</dt><dd>{item.gate === "Gate 2 pending" ? "Builder may begin implementation" : "Advance to the next STEER control"}</dd></div></dl><button onClick={() => onOpen(item)}>Open AI-assisted ruling →</button></div></article>;
+      }) : <Empty title="Decision inbox is clear" copy="A ruling appears only when the work is ready and a named human authority is required." />}</section>
       <section className="panel decision-history"><header><div><span className="panel-eyebrow">Authenticated record</span><h2>Decision history</h2></div></header>{decisions.length ? decisions.map((decision) => <div className="history-decision" key={decision.id}><span className={decision.decision === "APPROVED" ? "approved" : "changes"}>{decision.decision === "APPROVED" ? "✓" : "!"}</span><div><p><strong>{decision.item_key}</strong> · {decision.gate}</p><b>{decision.decision.replace("_", " ")}</b><blockquote>{decision.reasoning}</blockquote><small>{decision.actor_email ?? "Authenticated contributor"} · {formatDate(decision.created_at)}</small></div></div>) : <Empty title="No rulings recorded in this app yet" copy="The GitHub Gate 1 ruling remains linked from its evidence artifact." />}</section>
     </div>
   </>;

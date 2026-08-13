@@ -71,3 +71,26 @@ export const decisions = sqliteTable(
   },
   (table) => [index("idx_decisions_item_created").on(table.itemId, table.createdAt)],
 );
+
+export const agentReviews = sqliteTable(
+  "agent_reviews",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    itemId: integer("item_id").notNull(),
+    agentId: text("agent_id").notNull(),
+    reviewMode: text("review_mode").notNull(),
+    recommendation: text("recommendation").notNull(),
+    confidence: text("confidence").notNull(),
+    summary: text("summary").notNull(),
+    findingsJson: text("findings_json").notNull(),
+    dependenciesJson: text("dependencies_json").notNull(),
+    impactsJson: text("impacts_json").notNull(),
+    actionsJson: text("actions_json").notNull(),
+    derivedTagsJson: text("derived_tags_json").notNull(),
+    evidenceScope: text("evidence_scope").notNull(),
+    reviewedItemUpdatedAt: text("reviewed_item_updated_at").notNull(),
+    requestedBy: text("requested_by").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_agent_reviews_item_created").on(table.itemId, table.createdAt)],
+);

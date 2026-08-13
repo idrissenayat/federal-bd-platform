@@ -24,6 +24,15 @@ const priorities = ["Now", "Next", "Later"];
 const workflows = ["STEER", "Control", "Setup / excluded", "Unassigned"];
 const states = ["queued", "active", "blocked", "complete"];
 
+type Finding = {
+  severity: "blocker" | "should-fix" | "note";
+  title: string;
+  detail: string;
+  action: string;
+};
+
+type EvidenceRead = { text: string | null; scope: string };
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -99,6 +108,25 @@ async function ensureSchema(db: Database) {
       created_at text NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_decisions_item_created ON decisions (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS agent_reviews (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+      item_id integer NOT NULL,
+      agent_id text NOT NULL,
+      review_mode text NOT NULL,
+      recommendation text NOT NULL,
+      confidence text NOT NULL,
+      summary text NOT NULL,
+      findings_json text NOT NULL,
+      dependencies_json text NOT NULL,
+      impacts_json text NOT NULL,
+      actions_json text NOT NULL,
+      derived_tags_json text NOT NULL,
+      evidence_scope text NOT NULL,
+      reviewed_item_updated_at text NOT NULL,
+      requested_by text NOT NULL,
+      created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_agent_reviews_item_created ON agent_reviews (item_id, created_at)"),
   ]);
   await db.prepare("PRAGMA optimize").run();
 }
@@ -165,7 +193,7 @@ async function bootstrap(db: Database, user: User) {
   await ensureSchema(db);
   await ensureCurrentUser(db, user);
   await ensureSeedData(db, user);
-  const [items, members, activity, decisions] = await Promise.all([
+  const [items, members, activity, decisions, reviews] = await Promise.all([
     db.prepare(
       `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind
        FROM work_items w LEFT JOIN members m ON m.id = w.assignee_id
@@ -181,8 +209,27 @@ async function bootstrap(db: Database, user: User) {
       `SELECT d.*, w.key AS item_key, w.title AS item_title
        FROM decisions d JOIN work_items w ON w.id = d.item_id ORDER BY d.created_at DESC`,
     ).all(),
+    db.prepare(
+      `SELECT r.*, w.key AS item_key, w.title AS item_title
+       FROM agent_reviews r JOIN work_items w ON w.id = r.item_id ORDER BY r.created_at DESC`,
+    ).all(),
   ]);
-  return { user, items: items.results ?? [], members: members.results ?? [], activity: activity.results ?? [], decisions: decisions.results ?? [] };
+  const parsedReviews = (reviews.results ?? []).map((review) => ({
+    ...review,
+    findings: JSON.parse(String((review as Record<string, unknown>).findings_json ?? "[]")),
+    dependencies: JSON.parse(String((review as Record<string, unknown>).dependencies_json ?? "[]")),
+    impacts: JSON.parse(String((review as Record<string, unknown>).impacts_json ?? "[]")),
+    actions: JSON.parse(String((review as Record<string, unknown>).actions_json ?? "[]")),
+    derived_tags: JSON.parse(String((review as Record<string, unknown>).derived_tags_json ?? "[]")),
+  }));
+  return {
+    user,
+    items: items.results ?? [],
+    members: members.results ?? [],
+    activity: activity.results ?? [],
+    decisions: decisions.results ?? [],
+    reviews: parsedReviews,
+  };
 }
 
 async function createItem(request: Request, db: Database, user: User) {
@@ -251,6 +298,159 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
   return json({ ok: true });
 }
 
+function deriveTags(text: string) {
+  const rules: Array<[string, RegExp]> = [
+    ["#security", /\b(auth|authori[sz]ation|credential|secret|token|api key|security|session)\b/i],
+    ["#privacy", /\b(privacy|personal data|pii|email address|retention|delete user)\b/i],
+    ["#a11y", /\b(accessibility|a11y|keyboard|screen reader|wcag|contrast)\b/i],
+    ["#reliability", /\b(reliability|rollback|telemetry|monitor|timeout|latency|availability|deploy|release)\b/i],
+    ["#legal", /\b(legal|license|compliance|claim|copyright)\b/i],
+    ["#design-system", /\b(design system|interface|user experience|\bui\b|\bux\b)\b/i],
+    ["#money", /\b(payment|price|pricing|cost|budget|charge|money)\b/i],
+  ];
+  return rules.filter(([, pattern]) => pattern.test(text)).map(([tag]) => tag);
+}
+
+async function readEvidence(urlValue: unknown): Promise<EvidenceRead> {
+  if (!urlValue) return { text: null, scope: "Work item fields only; no evidence link was attached." };
+  try {
+    const source = new URL(String(urlValue));
+    let target = source;
+    if (source.hostname === "github.com") {
+      const parts = source.pathname.split("/").filter(Boolean);
+      const blobIndex = parts.indexOf("blob");
+      if (blobIndex !== 2 || parts.length < 5) {
+        return { text: null, scope: "Work item fields and evidence-link presence; the linked GitHub page is not a raw artifact." };
+      }
+      target = new URL(`https://raw.githubusercontent.com/${parts[0]}/${parts[1]}/${parts.slice(3).join("/")}`);
+    } else if (source.hostname !== "raw.githubusercontent.com") {
+      return { text: null, scope: "Work item fields and evidence-link presence; external artifact reading is restricted to approved GitHub text links." };
+    }
+    const response = await fetch(target, { headers: { accept: "text/plain" }, signal: AbortSignal.timeout(7000) });
+    if (!response.ok) return { text: null, scope: `Work item fields and evidence-link presence; the artifact returned HTTP ${response.status}.` };
+    const text = (await response.text()).slice(0, 60000);
+    return { text, scope: "Work item fields plus the linked public GitHub text artifact (maximum 60,000 characters)." };
+  } catch {
+    return { text: null, scope: "Work item fields and evidence-link presence; the artifact could not be read automatically." };
+  }
+}
+
+async function runCriticReview(db: Database, user: User, itemId: number) {
+  const item = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
+  if (!item) return json({ error: "Work item not found." }, 404);
+
+  const evidence = await readEvidence(item.evidence_url);
+  const joinedText = [item.title, item.description, item.next_action, evidence.text].filter(Boolean).join("\n");
+  const tags = deriveTags(joinedText);
+  const findings: Finding[] = [];
+  const dependencies: string[] = [];
+  const impacts: string[] = [];
+  const actions: string[] = [];
+  const addFinding = (finding: Finding) => {
+    if (!findings.some((existing) => existing.title === finding.title)) findings.push(finding);
+  };
+
+  if (item.state === "blocked") {
+    addFinding({ severity: "blocker", title: "Work is already blocked", detail: String(item.next_action), action: "Resolve or explicitly rule on the blocker before advancing the gate." });
+    dependencies.push(`Blocker resolution: ${String(item.next_action)}`);
+  }
+  if (!item.evidence_url) {
+    addFinding({
+      severity: item.decision_status === "Needed now" ? "blocker" : "should-fix",
+      title: "Decision evidence is missing",
+      detail: "The human cannot verify the recommendation against a durable artifact.",
+      action: "Attach the exact brief, exam, build, or observation artifact required by this gate.",
+    });
+  } else if (!evidence.text) {
+    addFinding({ severity: "should-fix", title: "Artifact needs direct human inspection", detail: evidence.scope, action: "Open the evidence link and verify the exact revision before ruling." });
+  }
+  if (!item.assignee_id) {
+    addFinding({ severity: "should-fix", title: "No accountable owner", detail: "The item has no human or agent assigned to resolve findings and execute the next action.", action: "Assign an owner before the item advances." });
+  }
+  if (item.workflow === "Unassigned") {
+    addFinding({ severity: "should-fix", title: "Workflow treatment is undecided", detail: "STEER, Control, and Setup work have different controls and measurement implications.", action: "Assign the treatment before delivery work begins." });
+  }
+
+  const gate = String(item.gate ?? "");
+  const evidenceText = evidence.text?.toLowerCase() ?? "";
+  if (gate === "Gate 1 pending" && evidence.text) {
+    const required = ["expected outcome", "what \"done and correct\" means", "out of scope", "risks", "design intent"];
+    const missing = required.filter((section) => !evidenceText.includes(section));
+    if (missing.length) addFinding({ severity: "should-fix", title: "Intent brief coverage is incomplete", detail: `The linked artifact does not clearly expose: ${missing.join(", ")}.`, action: "Clarify these sections before approving Gate 1." });
+    impacts.push("Approval authorizes exam design against this intent; ambiguity will propagate into tests and implementation.");
+  }
+  if (gate === "Gate 2 pending") {
+    const required = ["acceptance tests", "edge cases", "non-functional checks", "outcome instrumentation", "guardrails in force"];
+    const missing = evidence.text ? required.filter((section) => !evidenceText.includes(section)) : required;
+    if (missing.length) addFinding({ severity: evidence.text ? "should-fix" : "blocker", title: "Exam coverage needs confirmation", detail: `The review could not verify: ${missing.join(", ")}.`, action: "Confirm each required section expresses what correct means before approving Gate 2." });
+    else addFinding({ severity: "note", title: "Core Gate 2 sections are present", detail: "The exam exposes acceptance tests, attacks, non-functional checks, instrumentation, and named guardrails.", action: "Read for quality and omissions; presence alone does not prove sufficiency." });
+    impacts.push("Gate 2 approval freezes the exam and permits Builder implementation. Later exam changes require Tech Lead authorization.");
+  }
+  if (gate === "Gate 3 pending") {
+    const hasVerification = /\b(pass|passed|verified|green|successful)\b/i.test(evidence.text ?? "");
+    if (!hasVerification) addFinding({ severity: "blocker", title: "Verified-build evidence is not visible", detail: "Gate 3 needs a verified build, Critic findings, checks, rollout observation, and a rollback path.", action: "Attach the exact verified commit and required check evidence before release approval." });
+    impacts.push("Approval authorizes release to users and must include every tagged domain owner plus the independent-perspective rule.");
+  }
+
+  const defaultClosed = tags.filter((tag) => ["#security", "#privacy", "#money"].includes(tag));
+  if (defaultClosed.length) {
+    addFinding({ severity: "should-fix", title: "Default-closed controls apply", detail: `${defaultClosed.join(", ")} signals require conservative review, named authority, and the mandated cooling-off before Gate 3.`, action: "Confirm the specialist guardrails and cooling-off evidence are planned." });
+    dependencies.push(`Default-closed controls for ${defaultClosed.join(", ")}`);
+  }
+  if (tags.length) dependencies.push(`Derived domain coverage: ${tags.join(", ")}`);
+  if (gate.includes("pending")) dependencies.push(`Authenticated ${String(item.decision_authority)} ruling for ${gate}`);
+  if (item.evidence_url) dependencies.push("Exact evidence revision must remain resolvable and match the ruling.");
+  if (/block buzz|railway/i.test(joinedText)) dependencies.push("External agent-operations availability in Block Buzz / Railway.");
+  if (item.workflow === "Setup / excluded") impacts.push("This item is excluded from the STEER-versus-Control outcome comparison; keep its effort out of experiment results.");
+  if (item.state === "blocked") impacts.push("Downstream work should not advance while the item remains blocked.");
+
+  const severityRank = { blocker: 0, "should-fix": 1, note: 2 } as const;
+  findings.sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
+  const cappedFindings = findings.slice(0, 3);
+  for (const finding of cappedFindings) if (finding.severity !== "note") actions.push(finding.action);
+  if (item.evidence_url) actions.push("Open the linked evidence and verify the exact revision, not only this summary.");
+  if (gate.includes("pending")) actions.push(`Record the ${gate} ruling with concise evidence-based reasoning.`);
+  const uniqueActions = [...new Set(actions)].slice(0, 4);
+
+  const blockers = cappedFindings.filter((finding) => finding.severity === "blocker").length;
+  const shouldFix = cappedFindings.filter((finding) => finding.severity === "should-fix").length;
+  const recommendation = blockers ? "Resolve blockers before ruling" : shouldFix ? "Review with changes in mind" : "Ready for human review";
+  const summary = blockers
+    ? `The Critic found ${blockers} blocking condition${blockers === 1 ? "" : "s"}. Do not advance until the named action is resolved or explicitly ruled on.`
+    : shouldFix
+      ? `No automatic hard stop was found, but ${shouldFix} material concern${shouldFix === 1 ? "" : "s"} should shape the human review.`
+      : "No material control gap was visible in the reviewed scope. The human must still inspect the evidence and make the gate decision.";
+  const now = new Date().toISOString();
+  const reviewMode = evidence.text ? "structured_artifact_review" : "structured_workspace_review";
+  const confidence = evidence.text ? "Medium" : "Low";
+
+  const result = await db.prepare(
+    `INSERT INTO agent_reviews
+     (item_id, agent_id, review_mode, recommendation, confidence, summary, findings_json,
+      dependencies_json, impacts_json, actions_json, derived_tags_json, evidence_scope,
+      reviewed_item_updated_at, requested_by, created_at)
+     VALUES (?, 'agent-critic', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    itemId,
+    reviewMode,
+    recommendation,
+    confidence,
+    summary,
+    JSON.stringify(cappedFindings),
+    JSON.stringify([...new Set(dependencies)].slice(0, 5)),
+    JSON.stringify([...new Set(impacts)].slice(0, 4)),
+    JSON.stringify(uniqueActions),
+    JSON.stringify(tags),
+    evidence.scope,
+    String(item.updated_at),
+    user.id,
+    now,
+  ).run();
+  await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, 'agent-critic', 'agent_review', ?, ?)")
+    .bind(itemId, `${recommendation} · ${cappedFindings.length} significant finding${cappedFindings.length === 1 ? "" : "s"}`, now).run();
+  return json({ ok: true, reviewId: result.meta?.last_row_id, recommendation }, 201);
+}
+
 async function decide(request: Request, db: Database, user: User, itemId: number) {
   const current = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
   if (!current) return json({ error: "Work item not found." }, 404);
@@ -306,6 +506,8 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "POST" && url.pathname === "/api/items") return createItem(request, env.DB, user);
     const itemMatch = url.pathname.match(/^\/api\/items\/(\d+)$/);
     if (request.method === "PATCH" && itemMatch) return updateItem(request, env.DB, user, Number(itemMatch[1]));
+    const reviewMatch = url.pathname.match(/^\/api\/items\/(\d+)\/reviews$/);
+    if (request.method === "POST" && reviewMatch) return runCriticReview(env.DB, user, Number(reviewMatch[1]));
     const decisionMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decisions$/);
     if (request.method === "POST" && decisionMatch) return decide(request, env.DB, user, Number(decisionMatch[1]));
     return json({ error: "Not found." }, 404);
