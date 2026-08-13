@@ -1,10 +1,11 @@
-# STEER Flight Board
+# STEER Work Management
 
-A human-friendly presentation layer for the federal BD project's STEER work.
+A Jira-like operational application built around the STEER Agentic SDLC.
 
-GitHub Issues and Project #1 remain authoritative. The board explains current
-focus, ownership, gates, next actions, and supporting evidence, then routes
-contributors to GitHub to change the official record.
+The application provides a persistent backlog, seven-phase Flight Board,
+assignment and activity controls, a human decision inbox, and a team authority
+map. GitHub remains the auditable engineering record; Block Buzz remains the
+communication layer.
 
 ## Local development
 

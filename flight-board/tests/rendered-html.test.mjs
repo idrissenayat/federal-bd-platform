@@ -13,16 +13,14 @@ async function render() {
   );
 }
 
-test("server-renders the STEER Flight Board", async () => {
+test("server-renders the STEER work-management app shell", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>STEER Flight Board<\/title>/i);
-  assert.match(html, /Human control tower/);
-  assert.match(html, /Prepare Gate 2/);
-  assert.match(html, /Seven phases\. Three human gates\./);
-  assert.match(html, /GitHub remains the system of record/);
+  assert.match(html, /<title>STEER Work Management<\/title>/i);
+  assert.match(html, /Preparing your STEER workspace/);
+  assert.match(html, /Loading work, evidence, and team authority/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });

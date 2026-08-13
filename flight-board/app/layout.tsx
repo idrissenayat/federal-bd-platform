@@ -28,17 +28,17 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     metadataBase: new URL(origin),
-    title: "STEER Flight Board",
+    title: "STEER Work Management",
     description,
     openGraph: {
-      title: "STEER Flight Board",
+      title: "STEER Work Management",
       description,
       type: "website",
       images: [{ url: `${origin}/og.png`, width: 1200, height: 630 }],
     },
     twitter: {
       card: "summary_large_image",
-      title: "STEER Flight Board",
+      title: "STEER Work Management",
       description,
       images: [`${origin}/og.png`],
     },
