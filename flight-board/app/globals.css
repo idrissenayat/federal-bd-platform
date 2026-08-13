@@ -182,3 +182,226 @@ body { background: radial-gradient(circle at 8% 8%, rgba(246, 197, 210, .34), tr
   .ai-reasoning-draft button { width: 100%; }
   .reasoning-label-row { align-items: flex-start; flex-direction: column; gap: 5px; }
 }
+
+/* Readability uplift: keep the dense operations layout while making every
+   action, explanation, and workflow signal comfortably legible. */
+body { font-size: 14px; }
+
+.product-brand span,
+.workspace-switcher div span,
+.nav-label,
+.authority-card span,
+.page-heading > div:first-child > span,
+.panel-eyebrow,
+.agent-review-heading > div span,
+.ai-reasoning-draft > header span,
+.modal-card > header span,
+.role-authority span,
+.flow-pulse > header span,
+.flow-next > div span,
+.flow-next aside span,
+.portfolio-group-label span,
+.rework-callout-heading > span,
+.evidence-binding span,
+.decision-evidence-bound span { font-size: 10px; line-height: 1.35; }
+
+.workspace-switcher strong,
+.user-card strong,
+.global-search input,
+.top-actions > a,
+.side-nav button,
+.side-links a,
+.create-button,
+.primary-button,
+.text-button,
+.secondary-button { font-size: 12px; }
+
+.authority-card p,
+.user-card div span,
+.page-heading p,
+.error-banner,
+.drawer-description,
+.modal-intro,
+.empty-panel p,
+.app-loading p { font-size: 12px; line-height: 1.55; }
+
+.status-pill { font-size: 10px; line-height: 1.15; padding: 5px 8px; }
+.side-nav button b { font-size: 10px; min-height: 20px; min-width: 20px; }
+.global-search kbd { font-size: 10px; }
+.panel > header > b,
+.decision-queue > header > b { font-size: 11px; min-height: 28px; min-width: 28px; }
+
+.metric-grid button > div span,
+.metric-grid button > small,
+.focus-rank,
+.focus-main > div:first-child > span:first-child,
+.focus-main > p,
+.focus-main footer > span:first-child,
+.authority-legend,
+.board-legend span { font-size: 11px; line-height: 1.5; }
+.focus-main h3 { font-size: 14px; }
+
+.feed-event p,
+.feed-event div > span,
+.feed-event small,
+.phase-health button > strong,
+.phase-health button > small,
+.phase-health button > em,
+.health-node span,
+.health-node b { font-size: 10px; line-height: 1.45; }
+.event-symbol,
+.phase-health button > i { font-size: 11px; }
+
+.kanban-column > header strong,
+.kanban-column > header > b,
+.column-cue,
+.card-topline > span:first-child,
+.kanban-card p,
+.kanban-card footer > span,
+.card-move span,
+.column-empty { font-size: 10px; line-height: 1.45; }
+.kanban-card h3 { font-size: 14px; line-height: 1.4; }
+
+.table-toolbar strong { font-size: 13px; }
+.table-toolbar div:first-child span,
+.table-head,
+.title-cell > b,
+.title-cell small,
+.owner-cell { font-size: 11px; line-height: 1.45; }
+.title-cell strong { font-size: 13px; }
+.table-row { min-height: 72px; }
+
+.decision-card-body > div:first-child > span,
+.decision-card p,
+.decision-card dt,
+.decision-card dd,
+.decision-card button,
+.history-decision p,
+.history-decision div > b,
+.history-decision blockquote,
+.history-decision small,
+.history-decision em { font-size: 11px; line-height: 1.5; }
+
+.member-card > span,
+.member-card > p,
+.member-card footer span,
+.member-card footer em { font-size: 11px; line-height: 1.5; }
+.member-card > h3 { font-size: 15px; }
+.member-avatar { font-size: 10px; }
+
+.decision-callout span,
+.decision-callout p,
+.decision-callout button,
+.decision-button,
+.agent-review-empty > p,
+.agent-review-button,
+.agent-review footer button,
+.review-stale,
+.review-verdict p,
+.agent-review h4,
+.review-clear,
+.compact-finding b,
+.compact-finding span { font-size: 11px; line-height: 1.5; }
+.agent-review-heading > div strong { font-size: 14px; }
+.review-verdict > span { font-size: 17px; }
+.finding > span { font-size: 11px; }
+
+.finding b { font-size: 12px; }
+.finding em { font-size: 9px; }
+.finding p,
+.finding small,
+.review-two-column ul,
+.review-two-column p,
+.review-actions ol,
+.agent-review > footer span,
+.agent-review > footer small { font-size: 11px; line-height: 1.55; }
+
+.detail-section > h3,
+.detail-section > div:first-child h3 { font-size: 13px; }
+.field-grid label,
+.modal-card > label,
+.form-grid label,
+.decision-modal legend { font-size: 11px; line-height: 1.4; }
+.field-grid select,
+.field-grid input,
+.modal-card input,
+.modal-card textarea,
+.modal-card select,
+.next-section textarea { font-size: 13px; line-height: 1.5; min-height: 42px; }
+.next-section > div span,
+.evidence-links small,
+.missing-evidence,
+.activity-row p,
+.activity-row div span,
+.muted { font-size: 11px; line-height: 1.5; }
+.evidence-links strong { font-size: 12px; }
+
+.decision-item-summary > span,
+.decision-item-summary > p,
+.authority-warning strong,
+.authority-warning p,
+.radio-card strong,
+.radio-card small { font-size: 11px; line-height: 1.5; }
+.decision-item-summary > strong { font-size: 14px; }
+.drawer-header > div > span:first-child { font-size: 11px; }
+.error-screen button { font-size: 12px; }
+
+.ai-reasoning-draft > header strong { font-size: 13px; }
+.ai-reasoning-draft button,
+.ai-reasoning-draft > p,
+.ai-reasoning-draft pre,
+.draft-waiting p,
+.draft-waiting strong,
+.reasoning-label-row em,
+.decision-agent-strip b,
+.decision-agent-strip small { font-size: 11px; line-height: 1.55; }
+
+.role-authority strong,
+.role-switcher button span,
+.role-switcher button small,
+.role-today p,
+.role-metrics span,
+.role-queue > header > b,
+.role-in-motion > header > b,
+.notification-center > header > b,
+.role-work-card > header > span,
+.role-work-card > p,
+.role-work-card > footer > span,
+.role-work-card > footer button,
+.role-in-motion > button > span,
+.role-in-motion > button small,
+.notification-center article strong,
+.notification-center article p,
+.notification-center article small,
+.notification-center article button,
+.rework-callout > p,
+.rework-callout small,
+.rework-callout button,
+.evidence-binding strong,
+.decision-evidence-bound strong,
+.evidence-binding small,
+.decision-evidence-bound small { font-size: 11px; line-height: 1.5; }
+.role-work-card h3 { font-size: 14px; }
+.role-in-motion > button strong { font-size: 12px; }
+
+.pulse-state,
+.flow-metrics span,
+.flow-metrics em,
+.flow-next > div small,
+.flow-next > button,
+.flow-next aside p,
+.portfolio-group-label em { font-size: 11px; line-height: 1.45; }
+.portfolio-group-label b { font-size: 10px; height: 21px; width: 21px; }
+.flow-metrics strong { font-size: 24px; }
+.flow-metrics strong small { font-size: 12px; }
+.flow-next > div strong { font-size: 13px; line-height: 1.45; }
+.flow-metrics em,
+.flow-next > div strong { overflow: visible; text-overflow: clip; white-space: normal; }
+
+@media (max-width: 680px) {
+  .page-heading h1 { font-size: 32px; }
+  .side-nav button { font-size: 12px; }
+  .flow-metrics strong { font-size: 22px; }
+  .create-button { font-size: 0; }
+  .create-button span { font-size: 16px; }
+}
