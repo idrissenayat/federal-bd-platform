@@ -22,7 +22,7 @@ security exception, or experiment deviation must not exist only in chat.
 | Setting | Value |
 |---|---|
 | Buzz relay | `wss://blockbuzzmain-production-5bcb.up.railway.app` |
-| Current community label | `blockbuzzmain-production-5bcb` |
+| Community name | `STEER Flight Team` |
 | Railway project | `steer-block-buzz` |
 | Railway production service | `block/buzz:main` |
 | Access model | Authenticated and membership-gated |
@@ -79,9 +79,10 @@ Buzz identity unless identity recovery has been explicitly chosen.
 
 The onboarding is successful when all of the following are true:
 
-- `blockbuzzmain-production-5bcb` appears in the far-left community switcher.
+- `STEER Flight Team` appears in the far-left community switcher.
 - The member can open `#general` and the welcome channels.
-- The member can post a non-sensitive hello in `#steer-team` or `#general`.
+- The member can post a non-sensitive hello in `#steer-team` or `#general` and can
+  open the channel for the project they are assigned to.
 - The member can open the Flight Board and identify their role cockpit.
 - The member knows that agents may advise but cannot approve a STEER gate.
 
@@ -223,7 +224,8 @@ content requires a narrower audience.
 
 | Channel | Purpose | Durable follow-through |
 |---|---|---|
-| `#steer-team` | Human/agent huddle and delivery coordination | Link decisions and evidence to the work item |
+| `#steer-team` | Cross-project human/agent huddle and Flight Team coordination | Link decisions and evidence to the relevant project work item |
+| `#project-<short-name>` | Delivery coordination for one project; for example, `#project-federal-bd-pilot` | Keep project evidence in its repository and Flight Board work items |
 | `#signals` | User, operational, and product observations | Promote worthy signals to the Flight Board and `steer/signals/` |
 | `#gate-review` | Notification and discussion around upcoming human rulings | Record the actual ruling in the authenticated decision surface |
 | `#agent-ops` | Agent health, channel discovery, failures, and escalation | Link operational incidents or access changes to an issue |
