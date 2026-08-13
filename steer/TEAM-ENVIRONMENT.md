@@ -13,7 +13,7 @@ operating model.
 | Review | Pull request + fresh-context Critic | Diff, Critic findings, human rulings, and required checks are preserved |
 | Release decision | Gate 3 evidence | Human decision is distinct from green CI and merge permission |
 | Documentation | Repository Markdown | Intent, design, decisions, operations, and learning are versioned with code |
-| Team communication | GitHub Discussions + escalation issues | Huddles, signals, questions, and decisions have named destinations and response expectations |
+| Team communication | Block Buzz + GitHub evidence | Humans and agents share channels; consequential outcomes link back to work and evidence |
 | Learning | Metrics ledger + weekly Learning Review | Flow, quality, outcome, cost, and human attention are reviewed and changes are limited |
 
 ## Shared GitHub surfaces
@@ -26,6 +26,10 @@ operating model.
 - **Discussions:** the asynchronous huddle and signals inbox. Durable decisions graduate
   to the decision log; product evidence graduates to a brief or signal digest.
 - **Security Advisories:** confidential vulnerability reporting.
+
+New humans and agents follow `TEAM-ONBOARDING.md`. Block Buzz is the live huddle,
+signals, and agent-coordination layer; GitHub remains the durable engineering and decision
+record. Buzz relay membership and private-channel membership are separate controls.
 
 ## Work states and WIP
 

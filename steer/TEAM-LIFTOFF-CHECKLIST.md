@@ -12,6 +12,8 @@ Re-run this checklist for every new team, and in miniature for every new hire.
 - [ ] Minimum fleet configured from `agents/agent-roles.md`; fresh-context Critic verified. Cross-vendor diversity is added by trigger and recorded as diversity insurance, not independent assurance
 - [ ] Honesty-test defect-category bank written and sealed (used for unannounced agent-seeded tests)
 - [ ] All humans have read the kit and their charter
+- [ ] Every human completed `TEAM-ONBOARDING.md`, joined the shared Buzz community, and posted a verified hello
+- [ ] Every agent has a separate admitted identity, named human owner, approved channels, and successful mention/reply proof
 - [ ] Working agreements signed (see Liftoff Guide); WIP limit and review SLAs written down
 
 ## 2 · Tools ready (run the test, don't trust the install)
@@ -23,6 +25,7 @@ Re-run this checklist for every new team, and in miniature for every new hire.
 - [ ] Flags: ship / hide / un-ship without editing app code; rollback rehearsed twice
 - [ ] Thrown error appears in tracking within a minute; signals inbox is the single landing place
 - [ ] Flight board answers "what's in flight, what's blocked?" in 30 seconds
+- [ ] Buzz relay admission, channel membership, human invitation, and agent escalation were tested end to end
 - [ ] Last week's agent spend is a number someone can say out loud
 - [ ] Last week's judgment, diff-fixing, and governance hours are numbers someone can say out loud
 

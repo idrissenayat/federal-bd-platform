@@ -6,11 +6,12 @@ This directory is the product's working STEER v2 installation. Framework referen
 
 This is an Agentic SDLC experiment. Read these in order:
 
-1. `EXPERIMENT-CHARTER.md` — what STEER must prove and how claims are constrained.
-2. `CONTROL-WORKFLOW.md` — the competent agent-assisted Kanban comparison.
-3. `EXPERIMENT-REGISTER.md` — freezes configuration, allocation, and cohort status.
-4. `PILOT-0003.md` — applies the experiment to this product.
-5. `PROJECT-GUARDRAILS.md` — product and trust controls shared across treatments.
+1. `TEAM-ONBOARDING.md` — where work happens and how humans and agents join safely.
+2. `EXPERIMENT-CHARTER.md` — what STEER must prove and how claims are constrained.
+3. `CONTROL-WORKFLOW.md` — the competent agent-assisted Kanban comparison.
+4. `EXPERIMENT-REGISTER.md` — freezes configuration, allocation, and cohort status.
+5. `PILOT-0003.md` — applies the experiment to this product.
+6. `PROJECT-GUARDRAILS.md` — product and trust controls shared across treatments.
 
 ## Numbering
 
