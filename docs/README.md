@@ -10,7 +10,8 @@
 | Architecture and trust boundaries | `docs/architecture/` |
 | Source authority and ingestion policy | `docs/sources/` |
 | Environment and readiness evidence | `steer/ENVIRONMENT-READINESS.md` and `steer/evidence/` |
-| Signals and user observations | GitHub Discussions plus `steer/signals/` digests |
+| Human and agent onboarding | `steer/TEAM-ONBOARDING.md` |
+| Signals and user observations | Block Buzz `#signals`, linked GitHub records, and `steer/signals/` digests |
 | Learning reviews | `steer/reviews/` |
 
 Repository Markdown is the durable knowledge base because it versions product intent,

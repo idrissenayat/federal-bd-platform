@@ -78,3 +78,5 @@ The readiness levels, evidence, and remaining delivery blockers are recorded in
 Team delivery uses the shared surfaces and rules in
 [`steer/TEAM-ENVIRONMENT.md`](steer/TEAM-ENVIRONMENT.md), with communication and
 escalation routing in [`steer/TEAM-COMMUNICATION.md`](steer/TEAM-COMMUNICATION.md).
+Every new human and agent starts with the tested access, Buzz membership, channel, and
+verification steps in [`steer/TEAM-ONBOARDING.md`](steer/TEAM-ONBOARDING.md).
