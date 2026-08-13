@@ -34,6 +34,24 @@ type WorkItem = {
   rework_instructions: string | null;
   blocked_since: string | null;
   updated_at: string;
+  dispatch_authorization: AgentDispatchAuthorization;
+};
+
+type DispatchCheck = {
+  id: string;
+  label: string;
+  met: boolean;
+  detail: string;
+};
+
+type AgentDispatchAuthorization = {
+  authorized: boolean;
+  status: "Authorized" | "Blocked";
+  summary: string;
+  checks: DispatchCheck[];
+  missing: string[];
+  channel: string;
+  handoff_message: string | null;
 };
 
 type Member = {
@@ -199,6 +217,25 @@ function Empty({ title, copy }: { title: string; copy: string }) {
   return <div className="empty-panel"><span>✓</span><h3>{title}</h3><p>{copy}</p></div>;
 }
 
+function AgentDispatchControl({ item, dispatching, copied, onDispatch }: { item: WorkItem; dispatching: boolean; copied: boolean; onDispatch: () => void }) {
+  const authorization = item.dispatch_authorization;
+  return <section className={`dispatch-control ${authorization.authorized ? "dispatch-authorized" : "dispatch-blocked"}`}>
+    <header>
+      <div><span>Agent work authorization</span><h3>{authorization.authorized ? "Ready for a controlled Buzz handoff" : "Buzz cannot start this work"}</h3></div>
+      <StatusPill value={authorization.status} kind={authorization.authorized ? "ready" : "blocked"} />
+    </header>
+    <p>{authorization.summary}</p>
+    <div className="dispatch-checks">
+      {authorization.checks.map((check) => <div className={check.met ? "met" : "missing"} key={check.id}><span>{check.met ? "✓" : "!"}</span><div><strong>{check.label}</strong><small>{check.detail}</small></div></div>)}
+    </div>
+    <div className="dispatch-rule"><strong>One rule</strong><p>The Flight Board authorizes and assigns. Buzz coordinates the conversation. GitHub proves the implementation.</p></div>
+    <footer>
+      <span>{authorization.authorized ? `Handoff destination: ${authorization.channel}` : "Resolve the missing controls above in this work item."}</span>
+      <button type="button" disabled={!authorization.authorized || dispatching} onClick={onDispatch}>{dispatching ? "Authorizing…" : copied ? "Handoff copied ✓" : "Authorize & copy Buzz handoff"}</button>
+    </footer>
+  </section>;
+}
+
 function AgentReviewBrief({ item, review, reviewing, onReview, compact = false }: { item: WorkItem; review: AgentReview | null; reviewing: boolean; onReview: () => void; compact?: boolean }) {
   const stale = review ? review.reviewed_item_updated_at !== item.updated_at : false;
   if (!review) {
@@ -270,6 +307,8 @@ export default function Home() {
   const [buzzStatus, setBuzzStatus] = useState<BuzzStatus | null>(null);
   const [buzzChecking, setBuzzChecking] = useState(false);
   const [buzzCopied, setBuzzCopied] = useState(false);
+  const [dispatchingId, setDispatchingId] = useState<number | null>(null);
+  const [copiedHandoffId, setCopiedHandoffId] = useState<number | null>(null);
 
   async function load() {
     try {
@@ -460,6 +499,21 @@ export default function Home() {
     }
   }
 
+  async function authorizeBuzzHandoff(item: WorkItem) {
+    setDispatchingId(item.id);
+    try {
+      const result = await api(`/api/items/${item.id}/dispatch`, { method: "POST", body: "{}" }) as { message?: string };
+      if (!result.message) throw new Error("The authorized handoff message was not returned.");
+      await navigator.clipboard.writeText(result.message);
+      setCopiedHandoffId(item.id);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The agent handoff could not be authorized.");
+    } finally {
+      setDispatchingId(null);
+    }
+  }
+
   if (loading) {
     return <div className="app-loading"><span className="loading-mark"><i /><i /><i /></span><strong>Preparing your STEER workspace</strong><p>Loading work, evidence, and team authority…</p></div>;
   }
@@ -606,6 +660,8 @@ export default function Home() {
                 </div>
               </section>
 
+              <AgentDispatchControl item={selected} dispatching={dispatchingId === selected.id} copied={copiedHandoffId === selected.id} onDispatch={() => void authorizeBuzzHandoff(selected)} />
+
               <section className="detail-section next-section">
                 <div><h3>Next action</h3><span>Keep this executable and unambiguous.</span></div>
                 <textarea defaultValue={selected.next_action} onBlur={(event) => { if (event.target.value !== selected.next_action) void updateItem(selected.id, { nextAction: event.target.value }); }} />
@@ -676,6 +732,7 @@ export default function Home() {
               {!buzzChecking && <button type="button" onClick={() => void openBuzzWorkspace()}>Check again</button>}
             </div>
             <p className="modal-intro">Buzz is a desktop workspace, while the address below is its secure relay. The previous link failed because a browser cannot open a WebSocket relay as a webpage.</p>
+            <div className="buzz-work-rule"><span>Work-control rule</span><strong>Never assign or reprioritize an agent in Buzz.</strong><p>Open the work item here, satisfy its authorization checklist, and use its generated handoff. A mention is a notification—not permission to start.</p></div>
             <ol className="buzz-steps">
               <li><b>Install or open Buzz.</b><span>Use the official macOS, Windows, or Linux app.</span></li>
               <li><b>Add an existing community or relay.</b><span>In Buzz, choose the option to connect to a relay you already have.</span></li>
@@ -882,6 +939,15 @@ function Team({ members, items, onOpenBuzz }: { members: Member[]; items: WorkIt
   const agents = members.filter((member) => member.kind === "agent");
   return <>
     <PageHeading eyebrow="People, agents, and authority" title="Team" copy="Make ownership easy to see and impossible to confuse. Agent capability never silently becomes human authority." actions={<button className="text-button" onClick={onOpenBuzz}>Connect to Block Buzz →</button>} />
+    <section className="work-contract">
+      <header><div><span className="panel-eyebrow">Shared operating contract</span><h2>One source of truth for each kind of work</h2></div><StatusPill value="Enforced" kind="ready" /></header>
+      <div className="contract-grid">
+        <article><span>01</span><strong>STEER Work Management</strong><p>Creates, prioritizes, assigns, authorizes, changes, and closes work. Human gates live here.</p><em>Controls what should happen</em></article>
+        <article><span>02</span><strong>Block Buzz</strong><p>Coordinates huddles, questions, blockers, alerts, and visible handoffs linked to a work item.</p><em>Coordinates people and agents</em></article>
+        <article><span>03</span><strong>GitHub</strong><p>Preserves code, pull requests, tests, reviews, versioned documents, and exact evidence.</p><em>Proves what happened</em></article>
+      </div>
+      <footer><b>Buzz mention ≠ assignment</b><span>Agents must refuse execution unless the Flight Board shows an authorized assignment.</span></footer>
+    </section>
     <section className="team-section"><header><div><span className="panel-eyebrow">Human contributors</span><h2>Decision and product authority</h2></div><StatusPill value={`${humans.length} people / seats`} kind="human" /></header><div className="member-grid">{humans.map((member) => <article className="member-card" key={member.id}><div className="member-card-top"><Avatar name={member.display_name} kind={member.kind} accent={member.accent} /><StatusPill value={member.status} /></div><h3>{member.display_name}</h3><span>{member.role}</span><p>{member.authority}</p><footer><b>{items.filter((item) => item.assignee_id === member.id && item.state !== "complete").length}</b><span>open items</span></footer></article>)}</div></section>
     <section className="team-section agent-section"><header><div><span className="panel-eyebrow">Agent fleet</span><h2>Specialized delivery roles</h2></div><StatusPill value={`${agents.length} enrolled`} kind="agent" /></header><div className="member-grid">{agents.map((member) => <article className="member-card agent-card" key={member.id}><div className="member-card-top"><Avatar name={member.display_name} kind={member.kind} accent={member.accent} /><StatusPill value={member.status} /></div><h3>{member.display_name}</h3><span>{member.role}</span><p>{member.authority}</p><footer><b>{items.filter((item) => item.assignee_id === member.id && item.state !== "complete").length}</b><span>assigned items</span><em>Cannot approve gates</em></footer></article>)}</div></section>
   </>;

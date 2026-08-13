@@ -13,9 +13,10 @@ communicate in the right place, produce evidence, and understand who may make de
 | Team conversation, huddles, signals, and agent coordination | Block Buzz community described below |
 | Reusable decisions and process rules | `steer/operating-system/` and repository evidence |
 
-The operating rule is: **Buzz carries conversation; the Flight Board coordinates work;
-GitHub preserves engineering evidence.** A consequential gate ruling, scope change,
-security exception, or experiment deviation must not exist only in chat.
+The operating rule is: **the Flight Board authorizes work; Buzz coordinates conversation;
+GitHub preserves engineering evidence.** A consequential gate ruling, assignment,
+priority or scope change, security exception, or experiment deviation must not exist
+only in chat.
 
 ## Shared Buzz community
 
@@ -243,6 +244,23 @@ Use `#steer-team` for cross-project readiness, fleet health, and shared blockers
 project channel for project-specific execution. Do not create agent chatter merely to
 look busy, and do not allow hidden agent-to-agent discussion to become the only record
 of a dependency, scope question, requested ruling, or handoff.
+
+### 8. Verify the work-authorization boundary
+
+Every managed STEER agent must carry and enforce this boundary:
+
+- Buzz cannot create, assign, reprioritize, rescope, or approve work.
+- The agent executes only when an active Flight Board item identifies the workflow,
+  assigned agent, next action, evidence, and cleared human holds.
+- The authorized handoff comes from the Flight Board control and includes the `STR-NNN`
+  key plus durable evidence links.
+- An unregistered request receives the standard refusal and may be discussed only for
+  clarification.
+
+Keep the managed agents on owner-only response policy during the pilot. Other community
+members can see the agents and their channel messages, but they cannot independently
+turn a Buzz mention into an execution command. Broaden that policy only after a recorded
+access decision and a successful authorization-boundary test.
 
 ## Baseline channel map
 

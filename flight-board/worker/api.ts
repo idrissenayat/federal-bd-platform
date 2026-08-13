@@ -1,3 +1,5 @@
+import { evaluateAgentDispatch } from "./authorization";
+
 type D1Result<T = Record<string, unknown>> = {
   results?: T[];
   meta?: { last_row_id?: number };
@@ -337,16 +339,53 @@ async function bootstrap(db: Database, user: User) {
     actions: JSON.parse(String((review as Record<string, unknown>).actions_json ?? "[]")),
     derived_tags: JSON.parse(String((review as Record<string, unknown>).derived_tags_json ?? "[]")),
   }));
+  const authorizedItems = (items.results ?? []).map((item) => ({
+    ...item,
+    dispatch_authorization: evaluateAgentDispatch(item as Record<string, unknown>),
+  }));
   return {
     generated_at: new Date().toISOString(),
     user: { ...user, role: currentMember?.role ?? "Contributor", authority: currentMember?.authority ?? "May own work", role_contexts: roleContexts(currentMember?.role ?? "Contributor") },
-    items: items.results ?? [],
+    items: authorizedItems,
     members: members.results ?? [],
     activity: activity.results ?? [],
     decisions: decisions.results ?? [],
     reviews: parsedReviews,
     notifications: notifications.results ?? [],
   };
+}
+
+async function authorizeAgentDispatch(db: Database, user: User, itemId: number) {
+  const item = await db.prepare(
+    `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind, m.role AS assignee_role
+     FROM work_items w LEFT JOIN members m ON m.id = w.assignee_id WHERE w.id = ?`,
+  ).bind(itemId).first<Record<string, unknown>>();
+  if (!item) return json({ error: "Work item not found." }, 404);
+
+  const authorization = evaluateAgentDispatch(item);
+  if (!authorization.authorized || !authorization.handoff_message) {
+    return json({ error: authorization.summary, authorization }, 409);
+  }
+
+  const now = new Date().toISOString();
+  await db.batch([
+    db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'dispatch_authorized', ?, ?)")
+      .bind(itemId, user.id, `authorized agent handoff to ${String(item.assignee_name)} in ${authorization.channel}`, now),
+    db.prepare(
+      `INSERT OR IGNORE INTO notifications
+       (dedupe_key, item_id, member_id, recipient_role, kind, title, body, channel, status, created_at)
+       VALUES (?, ?, ?, ?, 'agent_handoff', ?, ?, 'Block Buzz', 'queued', ?)`,
+    ).bind(
+      `dispatch-${itemId}-${now}`,
+      itemId,
+      String(item.assignee_id),
+      String(item.assignee_role ?? "Assigned agent"),
+      `${String(item.key)} authorized for agent handoff`,
+      authorization.handoff_message,
+      now,
+    ),
+  ]);
+  return json({ ok: true, authorization, message: authorization.handoff_message });
 }
 
 async function createItem(request: Request, db: Database, user: User) {
@@ -768,6 +807,8 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "PATCH" && itemMatch) return updateItem(request, env.DB, user, Number(itemMatch[1]));
     const reviewMatch = url.pathname.match(/^\/api\/items\/(\d+)\/reviews$/);
     if (request.method === "POST" && reviewMatch) return runCriticReview(env.DB, user, Number(reviewMatch[1]));
+    const dispatchMatch = url.pathname.match(/^\/api\/items\/(\d+)\/dispatch$/);
+    if (request.method === "POST" && dispatchMatch) return authorizeAgentDispatch(env.DB, user, Number(dispatchMatch[1]));
     const workflowMatch = url.pathname.match(/^\/api\/items\/(\d+)\/workflow$/);
     if (request.method === "POST" && workflowMatch) return transitionItem(request, env.DB, user, Number(workflowMatch[1]));
     const decisionMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decisions$/);
