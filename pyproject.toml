@@ -2,6 +2,7 @@
 name = "federal-bd-platform"
 version = "0.0.0"
 description = "STEER Agentic SDLC validation project and federal BD test vehicle"
+license = "Apache-2.0"
 requires-python = "==3.12.*"
 dependencies = []
 

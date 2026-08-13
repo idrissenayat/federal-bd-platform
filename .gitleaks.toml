@@ -1,0 +1,12 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Ignore generated Flight Board output; source and tracked files remain scanned."
+paths = [
+  '''^flight-board/dist/''',
+  '''^flight-board/node_modules/''',
+  '''^flight-board/\.next/''',
+  '''^flight-board/\.vinext/''',
+  '''^flight-board/\.wrangler/''',
+]
