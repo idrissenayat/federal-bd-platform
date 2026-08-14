@@ -1187,10 +1187,13 @@ function Backlog({ items, onOpen, onCreate }: { items: WorkItem[]; onOpen: (item
           <StatusPill value={`${open.filter((item) => item.state === "blocked").length} Blocked`} kind="blocked" />
         </div>
       </header>
-      <div className="backlog-table">
-        <div className="table-head"><span>Work item</span><span>State</span><span>Phase</span><span>Priority</span><span>Workflow</span><span>Owner</span><span>Gate</span></div>
-        {visibleItems.map((item) => <button className={`table-row state-${item.state}`} key={item.id} onClick={() => onOpen(item)}><span className="title-cell"><b>{item.key}</b><div><strong>{item.title}</strong><small>{item.next_action}</small></div></span><span><StatusPill value={item.state === "complete" ? "Closed" : item.state} /></span><span><StatusPill value={item.phase} /></span><span><StatusPill value={item.priority} /></span><span><StatusPill value={item.workflow} /></span><span className="owner-cell"><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><span><StatusPill value={item.gate} kind="gate" /></span></button>)}
-        {visibleItems.length === 0 && <div className="backlog-empty"><strong>No {scope} items</strong><span>Choose another filter or add the next work item to the backlog.</span></div>}
+      <span className="backlog-scroll-hint" aria-hidden="true">Swipe horizontally to see Owner and Gate →</span>
+      <div className="backlog-table-scroll" role="region" aria-label="Scrollable Product Backlog table">
+        <div className="backlog-table">
+          <div className="table-head"><span>Work item</span><span>State</span><span>Phase</span><span>Priority</span><span>Workflow</span><span>Owner</span><span>Gate</span></div>
+          {visibleItems.map((item) => <button className={`table-row state-${item.state}`} key={item.id} onClick={() => onOpen(item)}><span className="title-cell"><b>{item.key}</b><div><strong>{item.title}</strong><small>{item.next_action}</small></div></span><span><StatusPill value={item.state === "complete" ? "Closed" : item.state} /></span><span><StatusPill value={item.phase} /></span><span><StatusPill value={item.priority} /></span><span><StatusPill value={item.workflow} /></span><span className="owner-cell"><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><span><StatusPill value={item.gate} kind="gate" /></span></button>)}
+          {visibleItems.length === 0 && <div className="backlog-empty"><strong>No {scope} items</strong><span>Choose another filter or add the next work item to the backlog.</span></div>}
+        </div>
       </div>
     </section>
   </>;
