@@ -13,5 +13,9 @@ test("keeps the full Product Backlog table inside a viewport-width scroll region
 
 test("explains the horizontal gesture on small screens", () => {
   assert.match(page, /Swipe horizontally to see Owner and Gate/);
-  assert.match(css, /@media \(max-width: 680px\)[\s\S]*\.backlog-scroll-hint \{[^}]*display: flex;/);
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*\.backlog-scroll-hint \{[^}]*display: flex;/);
+});
+
+test("moves navigation above the workspace before it crowds the table", () => {
+  assert.match(css, /@media \(max-width: 1180px\)[\s\S]*\.main-workspace \{ margin-left: 0; width: 100%; \}/);
 });
