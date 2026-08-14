@@ -934,6 +934,11 @@ function itemMatchesRole(item: WorkItem, role: RoleContext, reviews: AgentReview
   return Boolean(item.assignee_id);
 }
 
+export function itemVisibleInMyWork(item: WorkItem, userId: string, role: RoleContext, reviews: AgentReview[]) {
+  if (item.state === "complete") return false;
+  return item.assignee_id === userId || itemMatchesRole(item, role, reviews);
+}
+
 function RoleWorkCard({ item, canAct, saving, onOpen, onDecision, onTransition }: { item: WorkItem; canAct: boolean; saving: boolean; onOpen: (item: WorkItem) => void; onDecision: (item: WorkItem) => void; onTransition: (item: WorkItem, action: "START_REWORK" | "RESUBMIT") => Promise<void> }) {
   const needsDecision = ["Needed now", "Resubmitted"].includes(item.decision_status);
   const returned = item.decision_status === "Changes requested";
@@ -1006,7 +1011,7 @@ function FlowPulse({ items, activity, generatedAt, onOpen }: { items: WorkItem[]
 function MyWork({ user, generatedAt, actingRole, onRoleChange, items, activity, reviews, notifications, members, saving, onOpen, onDecision, onTransition, onReadNotification }: { user: Bootstrap["user"]; generatedAt: string; actingRole: RoleContext; onRoleChange: (role: RoleContext) => void; items: WorkItem[]; activity: Activity[]; reviews: AgentReview[]; notifications: Notification[]; members: Member[]; saving: boolean; onOpen: (item: WorkItem) => void; onDecision: (item: WorkItem) => void; onTransition: (item: WorkItem, action: "START_REWORK" | "RESUBMIT") => Promise<void>; onReadNotification: (id: number) => Promise<void> }) {
   const role = roleCockpits.find((candidate) => candidate.id === actingRole) ?? roleCockpits[0];
   const canAct = user.role_contexts.includes(actingRole);
-  const relevant = items.filter((item) => item.state !== "complete" && itemMatchesRole(item, actingRole, reviews));
+  const relevant = items.filter((item) => itemVisibleInMyWork(item, user.id, actingRole, reviews));
   const rulings = relevant.filter((item) => ["Needed now", "Resubmitted"].includes(item.decision_status));
   const returns = relevant.filter((item) => ["Changes requested", "Rework"].includes(item.decision_status));
   const moving = relevant.filter((item) => ["active", "blocked"].includes(item.state) && !["Needed now", "Resubmitted", "Changes requested", "Rework"].includes(item.decision_status));
