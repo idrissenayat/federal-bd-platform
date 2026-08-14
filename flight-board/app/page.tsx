@@ -167,7 +167,7 @@ type CodeReviewData = {
   };
   checks: { total: number; failed: number; pending: number; successful: number; all_green: boolean; items: Array<{ name: string; status: string; conclusion: string | null; url: string | null }> };
   files: Array<{ filename: string; status: string; additions: number; deletions: number; changes: number; patch: string | null; blob_url?: string }>;
-  ai_review: { recommendation: string; summary: string; findings: CodeReviewFinding[]; dependencies: string[]; impacts: string[]; actions: string[]; proposed_change_instructions: string };
+  ai_review: { recommendation: string; summary: string; findings: CodeReviewFinding[]; dependencies: string[]; impacts: string[]; actions: string[]; proposed_change_instructions: string; proposed_acceptance_reasoning: string };
   history: Array<{ id: number; head_sha: string; action: string; reasoning: string; actor_email: string | null; github_delivery: string; github_url: string | null; created_at: string }>;
   controls: { accepted_head: boolean; can_merge: boolean; merge_confirmation: string; exact_head_required: boolean };
 };
@@ -369,8 +369,8 @@ function CodeReviewWorkspace({ item, data, loading, saving, error, action, reaso
         <form className="code-decision-panel" onSubmit={onSubmit}>
           <header><div><span>Authenticated human action</span><h3>Record what should happen next</h3></div><code>{pull.head_sha.slice(0, 12)}</code></header>
           <div className="code-action-options">
-            <label htmlFor="code-action-accept" className={action === "ACCEPT" ? "selected" : ""}><input id="code-action-accept" aria-label="Accept this exact revision" type="radio" name="codeAction" value="ACCEPT" checked={action === "ACCEPT"} onChange={() => onAction("ACCEPT")} /><span><strong>Accept revision</strong><small>Record human acceptance for this exact commit. Merge remains separate.</small></span></label>
-            <label htmlFor="code-action-changes" className={action === "REQUEST_CHANGES" ? "selected" : ""}><input id="code-action-changes" aria-label="Request changes to this revision" type="radio" name="codeAction" value="REQUEST_CHANGES" checked={action === "REQUEST_CHANGES"} onChange={() => { onAction("REQUEST_CHANGES"); if (!reasoning.trim() && data.ai_review.proposed_change_instructions) onReasoning(data.ai_review.proposed_change_instructions); }} /><span><strong>Request changes</strong><small>Send actionable instructions and require a fresh review after the next push.</small></span></label>
+            <label htmlFor="code-action-accept" className={action === "ACCEPT" ? "selected" : ""}><input id="code-action-accept" aria-label="Accept this exact revision" type="radio" name="codeAction" value="ACCEPT" checked={action === "ACCEPT"} onChange={() => { onAction("ACCEPT"); onReasoning(data.ai_review.proposed_acceptance_reasoning); }} /><span><strong>Accept revision</strong><small>Record human acceptance for this exact commit. Merge remains separate.</small></span></label>
+            <label htmlFor="code-action-changes" className={action === "REQUEST_CHANGES" ? "selected" : ""}><input id="code-action-changes" aria-label="Request changes to this revision" type="radio" name="codeAction" value="REQUEST_CHANGES" checked={action === "REQUEST_CHANGES"} onChange={() => { onAction("REQUEST_CHANGES"); onReasoning(data.ai_review.proposed_change_instructions); }} /><span><strong>Request changes</strong><small>Send actionable instructions and require a fresh review after the next push.</small></span></label>
             <label htmlFor="code-action-merge" className={action === "MERGE" ? "selected" : ""}><input id="code-action-merge" aria-label="Merge this accepted revision" type="radio" name="codeAction" value="MERGE" checked={action === "MERGE"} disabled={!data.controls.can_merge} onChange={() => onAction("MERGE")} /><span><strong>Merge accepted revision</strong><small>{data.controls.can_merge ? "Available after acceptance and green checks." : "Locked until this exact commit is accepted and green."}</small></span></label>
           </div>
           {action === "REQUEST_CHANGES" && data.ai_review.proposed_change_instructions && <div className="code-ai-draft"><span>◇ AI-proposed instructions · editable</span><pre>{data.ai_review.proposed_change_instructions}</pre><button type="button" onClick={() => onReasoning(data.ai_review.proposed_change_instructions)}>Use this draft</button></div>}
@@ -551,6 +551,7 @@ export default function Home() {
     try {
       const payload = await api(`/api/items/${item.id}/code-review`) as CodeReviewData;
       setCodeReviewData(payload);
+      setCodeReasoning((current) => current.trim() ? current : payload.ai_review.proposed_acceptance_reasoning);
       setCodeReviewError(null);
       setError(null);
     } catch (caught) {

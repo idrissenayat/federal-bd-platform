@@ -37,6 +37,23 @@ test("keeps human acceptance explicit for a small verified change", () => {
   assert.equal(review.recommendation, "Ready for human acceptance");
   assert.equal(review.findings.length, 0);
   assert.ok(review.dependencies.some((value) => value.includes("exact displayed head commit")));
+  assert.match(review.proposed_acceptance_reasoning, /All reported checks are complete and green/);
+  assert.match(review.proposed_acceptance_reasoning, /exact displayed commit/);
+});
+
+test("prepares acceptance reasoning that acknowledges highlighted concerns", () => {
+  const review = codeReviewBrief(
+    { draft: false, mergeable: true, additions: 40, deletions: 4, changed_files: 2 },
+    [
+      { filename: "worker/api.ts", status: "modified", additions: 38, deletions: 4, changes: 42 },
+      { filename: "tests/api.test.ts", status: "modified", additions: 2, deletions: 0, changes: 2 },
+    ],
+    { all_green: true, failed: 0, pending: 0, total: 2 },
+  );
+
+  assert.equal(review.recommendation, "Review highlighted concerns");
+  assert.match(review.proposed_acceptance_reasoning, /High-impact controls changed/);
+  assert.match(review.proposed_acceptance_reasoning, /does not authorize merge/);
 });
 
 test("turns a public GitHub patch into reviewable changed files", () => {

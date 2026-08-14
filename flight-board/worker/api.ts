@@ -1020,7 +1020,15 @@ export function codeReviewBrief(
       ? `${concerns} material concern${concerns === 1 ? "" : "s"} deserves explicit human judgment before acceptance.`
       : "Checks are green and no material risk signal was visible in the available pull-request metadata. Human inspection is still required.";
   const proposedChangeInstructions = ranked.filter((finding) => finding.severity !== "note").map((finding, index) => `${index + 1}. ${finding.title}\nRequired change: ${finding.action}\nReason: ${finding.detail}`).join("\n\n");
-  return { recommendation, summary, findings: ranked, dependencies: [...new Set(dependencies)].slice(0, 5), impacts: [...new Set(impacts)].slice(0, 4), actions: [...new Set(actions)].slice(0, 5), proposed_change_instructions: proposedChangeInstructions };
+  const reviewedConcerns = ranked.filter((finding) => finding.severity === "should-fix").map((finding) => finding.title);
+  const proposedAcceptanceReasoning = blockers ? "" : [
+    "All reported checks are complete and green, and the available review shows no blocking condition for this revision.",
+    reviewedConcerns.length
+      ? `I reviewed the highlighted concern${reviewedConcerns.length === 1 ? "" : "s"} (${reviewedConcerns.join("; ")}) against the work-item outcome and find the documented controls and follow-up boundaries acceptable.`
+      : "I reviewed the changed files against the work-item outcome and found no material concern that requires rework.",
+    "This acceptance applies only to the exact displayed commit. It does not authorize merge, and any new push requires a fresh review.",
+  ].join(" ");
+  return { recommendation, summary, findings: ranked, dependencies: [...new Set(dependencies)].slice(0, 5), impacts: [...new Set(impacts)].slice(0, 4), actions: [...new Set(actions)].slice(0, 5), proposed_change_instructions: proposedChangeInstructions, proposed_acceptance_reasoning: proposedAcceptanceReasoning };
 }
 
 async function loadCodeReview(db: Database, env: Env, itemId: number) {
