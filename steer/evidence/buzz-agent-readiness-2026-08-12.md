@@ -148,6 +148,34 @@ owner then sent signed `!shutdown` event
 `9da0f0b526615deb0169d2d9aff29dbf860e481883514d79c3bd506eedc74682`,
 and the temporary harness exited cleanly.
 
+## Persistent Railway Builder proof — 2026-08-13
+
+The persistent Builder worker is deployed in Railway service
+`steer-agent-builder` (`4689e21d-fe47-4ea9-a369-0ec835f4b515`) from
+`idrissenayat/federal-bd-platform` branch `codex/buzz-agent-onboarding`. Deployment
+`98b3819f-99eb-4783-a5ee-2a763db8c558` succeeded from commit `cf7b61a` with the
+OpenAI-compatible Responses runtime and model `gpt-5.6-luna`. Provider and identity
+credentials remain sealed Railway variables and are not recorded here.
+
+The cloud Builder identity
+`1bcd9d68ce9a04cd17bf7e96d71e237654d38eeb26dd8ea5a08ba1259a6baf12` was added to
+the visible `steer-team` channel `10ac2fb4-f7fc-4dbc-bb73-8c545f31a470`. Human owner
+`16e9720b67509b1dfce7372312f551097704f1a2ec4950ae826a6b729414bf91` published the
+signed owner-only proof mention
+`fe72fe571f97d72dffb7388e14e1f0c6ecb916ac62e0eefa5b446cf1b716762e`. The worker
+replied four seconds later:
+
+> STEER Builder online — I act only on explicitly authorized work and do not perform
+> project work without that authorization.
+
+Reply event `b02ae2f8857b562123b18b7a9db67c1fba54cf2e542baa7b44360f85351eb0a4` is signed
+by the cloud Builder public key. Railway restarted the service successfully, and both
+signed events remained queryable afterward. This proves persistent worker startup,
+relay/channel discovery, owner-only routing, model execution, signed reply publication,
+and restart retention. A separate persistent-worker non-owner rejection probe remains
+open before activating additional roles; the earlier shared-relay rejection and
+revocation proofs remain valid.
+
 ## Preserved correction trail
 
 The mistaken custom app is preserved in its own local repository at baseline commit
@@ -158,9 +186,8 @@ STEER communication architecture.
 
 ## Remaining work
 
-1. Select an approved runtime lane for each activated role, enter the corresponding
-   provider service credentials directly into Railway, and deploy persistent workers;
-   repeat owner-only ACP proofs for every activated identity.
+1. Repeat the persistent Railway deployment, owner-only ACP proof, and non-owner
+   rejection probe for the remaining six activated identities.
 2. Enroll each human teammate using their own key and GitHub identity; do not mint or
    retain human private keys on their behalf.
 3. Rehearse PostgreSQL restore and define backup coverage for the Railway object bucket;

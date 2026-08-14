@@ -53,10 +53,11 @@ Public keys and signed event IDs from both local and remote proofs live in
 The shared relay B1 communication slice is proven, including TLS reachability,
 enrollment, signed messages, denial, revocation, and restart retention. It is ready for
 controlled human onboarding. All seven reference agent identities are enrolled, profiled,
-and channel-scoped. Always-on workers remain default-closed until approved provider
-service credentials are supplied directly to Railway, each role has an assigned runtime,
-and remote ACP proofs pass. Backup restore, external alerting, GitHub B2 reconciliation,
-and a custom-domain decision remain open production controls.
+and channel-scoped. The Builder now has a persistent, owner-only Railway worker backed by
+the OpenAI-compatible runtime and a signed post-restart reply proof. The other six roles
+remain default-closed until their provider service credentials, runtime assignments, and
+remote ACP proofs are complete. Backup restore, external alerting, GitHub B2
+reconciliation, and a custom-domain decision remain open production controls.
 
 ## Railway worker deployment
 
@@ -69,8 +70,10 @@ Deploy one Railway service per activated identity from this repository and branc
 Set `RAILWAY_DOCKERFILE_PATH=/integrations/buzz/Dockerfile.worker`, then copy the
 non-secret settings from `railway-worker.env.example`. Add the identity's unique
 `BUZZ_PRIVATE_KEY`, its provider key, and its role-specific
-`BUZZ_AGENT_SYSTEM_PROMPT` only as sealed Railway service variables. Do not reuse a
-Buzz identity key between services.
+`BUZZ_AGENT_SYSTEM_PROMPT` only as sealed Railway service variables. Set
+`BUZZ_ACP_AGENT_OWNER` to the human owner's public key when using `owner-only`; without
+that public identity (or a verified `BUZZ_AUTH_TAG`), the harness intentionally drops
+every inbound event. Do not reuse a Buzz identity key between services.
 
 Start with one owner-only Builder proof before activating the remaining roles. A
 successful deployment must connect to the shared relay, discover only its assigned

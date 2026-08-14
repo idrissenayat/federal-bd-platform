@@ -64,8 +64,10 @@ identities:
     buzz_role: bot
     public_key: 1bcd9d68ce9a04cd17bf7e96d71e237654d38eeb26dd8ea5a08ba1259a6baf12
     enrollment_status: enrolled
-    worker_status: blocked-pending-provider-service-credentials
-    channels: [steer-huddle, signals, agent-escalations, learning-review]
+    worker_status: online-owner-only-railway
+    runtime: openai-compatible
+    model: gpt-5.6-luna
+    channels: [steer-team, steer-huddle, signals, agent-escalations, learning-review]
   - id: critic
     kind: agent
     steer_role: critic
