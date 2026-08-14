@@ -50,7 +50,7 @@ export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAut
   const evidenceUrl = value(item.evidence_url);
   const githubUrl = value(item.github_url);
   const gatePending = /pending/i.test(gate);
-  const gateClear = !decisionHoldStatuses.has(decisionStatus) && (!gatePending || decisionStatus === "Decided");
+  const gateClear = !decisionHoldStatuses.has(decisionStatus);
 
   const checks: DispatchCheck[] = [
     {
@@ -93,7 +93,11 @@ export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAut
       id: "gate",
       label: "Human holds are clear",
       met: gateClear,
-      detail: gateClear ? `${gate || "No gate"} does not require a human ruling before this handoff.` : `${gate || "A gate"} is still waiting on an authenticated human ruling.`,
+      detail: gateClear
+        ? gatePending && decisionStatus === "Waiting"
+          ? `${gate} is waiting for evidence preparation; no human ruling is queued yet.`
+          : `${gate || "No gate"} does not require a human ruling before this handoff.`
+        : `${gate || "A gate"} is still waiting on an authenticated human ruling.`,
     },
   ];
 

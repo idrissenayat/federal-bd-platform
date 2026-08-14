@@ -29,6 +29,7 @@ const decisionStatuses = ["Waiting", "Needed now", "Changes requested", "Rework"
 const buzzRelayHttpUrl = "https://blockbuzzmain-production-5bcb.up.railway.app";
 const buzzRelayWsUrl = "wss://blockbuzzmain-production-5bcb.up.railway.app";
 const allowedGitHubRepository = "idrissenayat/federal-bd-platform";
+const gateTwoExamNextAction = "Design a falsifiable Gate 2 Exam from the approved Intent Brief, attach the exact Exam revision, run a fresh Critic review, and present Gate 2 to the Interim Tech Lead. Do not implement before Gate 2 passes.";
 
 type PullRequestReference = { owner: string; repo: string; repository: string; number: number };
 
@@ -289,6 +290,52 @@ async function backfillReworkState(db: Database) {
   ).run();
 }
 
+async function backfillApprovedGateOneHandoffs(db: Database) {
+  const now = new Date().toISOString();
+  await db.batch([
+    db.prepare(
+      `UPDATE work_items
+       SET phase = 'Frame',
+           decision_authority = 'Interim Tech Lead',
+           assignee_id = 'agent-architect',
+           next_action = ?,
+           rework_instructions = NULL,
+           blocked_since = NULL,
+           updated_at = ?
+       WHERE gate = 'Gate 2 pending'
+         AND decision_status = 'Waiting'
+         AND phase = 'Sense'
+         AND EXISTS (
+           SELECT 1 FROM decisions d
+           WHERE d.item_id = work_items.id
+             AND d.gate = 'Gate 1 pending'
+             AND d.decision = 'APPROVED'
+         )`,
+    ).bind(gateTwoExamNextAction, now),
+    db.prepare(
+      `INSERT INTO activity (item_id, actor_id, action, detail, created_at)
+       SELECT w.id, 'system', 'workflow',
+              'Gate 1 approval advanced the item to Frame with an Architecture Agent handoff for Gate 2 Exam design.', ?
+       FROM work_items w
+       WHERE w.gate = 'Gate 2 pending'
+         AND w.decision_status = 'Waiting'
+         AND w.phase = 'Frame'
+         AND EXISTS (
+           SELECT 1 FROM decisions d
+           WHERE d.item_id = w.id
+             AND d.gate = 'Gate 1 pending'
+             AND d.decision = 'APPROVED'
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM activity a
+           WHERE a.item_id = w.id
+             AND a.action = 'workflow'
+             AND a.detail = 'Gate 1 approval advanced the item to Frame with an Architecture Agent handoff for Gate 2 Exam design.'
+         )`,
+    ).bind(now),
+  ]);
+}
+
 async function ensureSeedData(db: Database, user: User) {
   const count = await db.prepare("SELECT COUNT(*) AS count FROM work_items").first<{ count: number }>();
   if ((count?.count ?? 0) > 0) return;
@@ -340,6 +387,7 @@ async function bootstrap(db: Database, user: User) {
   await ensureHumanSeats(db);
   await ensureSeedData(db, user);
   await backfillReworkState(db);
+  await backfillApprovedGateOneHandoffs(db);
   const [items, members, activity, decisions, reviews, notifications, currentMember] = await Promise.all([
     db.prepare(
       `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind
@@ -701,6 +749,46 @@ function firstRequiredChange(reasoning: string) {
   return line?.slice("required change:".length).trim() || "Complete the requested changes in the linked evidence and resubmit for a fresh Critic review.";
 }
 
+export function decisionTransition(current: Record<string, unknown>, decision: string, reasoning = "") {
+  const gate = String(current.gate ?? "Gate pending");
+  let nextGate = gate;
+  let nextPhase = String(current.phase);
+  let nextStatus = decision === "APPROVED" ? "Decided" : "Changes requested";
+  let nextState = decision === "APPROVED" ? "active" : "blocked";
+  let nextAuthority = String(current.decision_authority ?? "");
+  let nextAssignee = current.assignee_id;
+  let nextAction = String(current.next_action);
+  let reworkInstructions: string | null = null;
+
+  if (decision === "APPROVED") {
+    if (gate === "Gate 1 pending") {
+      nextGate = "Gate 2 pending";
+      nextPhase = "Frame";
+      nextStatus = "Waiting";
+      nextAuthority = "Interim Tech Lead";
+      nextAssignee = "agent-architect";
+      nextAction = gateTwoExamNextAction;
+    }
+    if (gate === "Gate 2 pending") { nextGate = "Gate 2 passed"; nextPhase = "Engineer"; nextState = "active"; }
+    if (gate === "Gate 3 pending") { nextGate = "Gate 3 passed"; nextPhase = "Release"; nextState = "active"; }
+  } else {
+    nextAssignee = reworkAssigneeForGate(gate) ?? current.assignee_id;
+    reworkInstructions = reasoning;
+    nextAction = firstRequiredChange(reasoning);
+  }
+
+  return {
+    gate: nextGate,
+    phase: nextPhase,
+    decisionStatus: nextStatus,
+    state: nextState,
+    decisionAuthority: nextAuthority,
+    assigneeId: nextAssignee,
+    nextAction,
+    reworkInstructions,
+  };
+}
+
 async function decide(request: Request, db: Database, user: User, itemId: number) {
   const current = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
   if (!current) return json({ error: "Work item not found." }, 404);
@@ -737,38 +825,23 @@ async function decide(request: Request, db: Database, user: User, itemId: number
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(itemId, gate, decision, reasoning, user.id, user.email, review.id, review.evidence_url, review.evidence_revision, review.evidence_sha256, now).run();
 
-  let nextGate = gate;
-  let nextPhase = String(current.phase);
-  let nextStatus = decision === "APPROVED" ? "Decided" : "Changes requested";
-  let nextState = decision === "APPROVED" ? "active" : "blocked";
-  let nextAssignee = current.assignee_id;
-  let reworkInstructions: string | null = null;
-  let nextAction = String(current.next_action);
-  if (decision === "APPROVED") {
-    if (gate === "Gate 1 pending") { nextGate = "Gate 2 pending"; nextStatus = "Waiting"; }
-    if (gate === "Gate 2 pending") { nextGate = "Gate 2 passed"; nextPhase = "Engineer"; nextState = "active"; }
-    if (gate === "Gate 3 pending") { nextGate = "Gate 3 passed"; nextPhase = "Release"; nextState = "active"; }
-  } else {
-    nextAssignee = reworkAssigneeForGate(gate) ?? current.assignee_id;
-    reworkInstructions = reasoning;
-    nextAction = firstRequiredChange(reasoning);
-  }
-  const blockedSince = nextState === "blocked" ? current.blocked_since ?? now : null;
+  const transition = decisionTransition(current, decision, reasoning);
+  const blockedSince = transition.state === "blocked" ? current.blocked_since ?? now : null;
   await db.prepare(
-    "UPDATE work_items SET gate = ?, phase = ?, decision_status = ?, state = ?, assignee_id = ?, next_action = ?, rework_instructions = ?, blocked_since = ?, updated_at = ? WHERE id = ?",
-  ).bind(nextGate, nextPhase, nextStatus, nextState, nextAssignee, nextAction, reworkInstructions, blockedSince, now, itemId).run();
+    "UPDATE work_items SET gate = ?, phase = ?, decision_status = ?, state = ?, decision_authority = ?, assignee_id = ?, next_action = ?, rework_instructions = ?, blocked_since = ?, updated_at = ? WHERE id = ?",
+  ).bind(transition.gate, transition.phase, transition.decisionStatus, transition.state, transition.decisionAuthority, transition.assigneeId, transition.nextAction, transition.reworkInstructions, blockedSince, now, itemId).run();
   await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'decision', ?, ?)")
     .bind(itemId, user.id, `${gate}: ${decision} — ${reasoning}`, now).run();
   if (decision === "CHANGES_REQUESTED") {
-    const recipient = nextAssignee
-      ? await db.prepare("SELECT role FROM members WHERE id = ?").bind(nextAssignee).first<{ role: string }>()
+    const recipient = transition.assigneeId
+      ? await db.prepare("SELECT role FROM members WHERE id = ?").bind(transition.assigneeId).first<{ role: string }>()
       : null;
     await db.prepare(
       `INSERT OR IGNORE INTO notifications
        (dedupe_key, item_id, member_id, recipient_role, kind, title, body, channel, status, created_at)
        VALUES (?, ?, ?, ?, 'rework_requested', ?, ?, 'Block Buzz', 'queued', ?)`,
     ).bind(
-      `decision-${decisionResult.meta?.last_row_id ?? now}-changes`, itemId, nextAssignee,
+      `decision-${decisionResult.meta?.last_row_id ?? now}-changes`, itemId, transition.assigneeId,
       recipient?.role ?? "Evidence owner", `${String(current.key)} returned for changes`, reasoning, now,
     ).run();
   }
