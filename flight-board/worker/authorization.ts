@@ -1,5 +1,5 @@
 export type DispatchCheck = {
-  id: "record" | "workflow" | "assignee" | "state" | "scope" | "evidence" | "gate";
+  id: "record" | "workflow" | "assignee" | "state" | "scope" | "evidence" | "forecast" | "gate";
   label: string;
   met: boolean;
   detail: string;
@@ -18,6 +18,7 @@ export type DispatchCandidate = {
   next_action?: unknown;
   evidence_url?: unknown;
   github_url?: unknown;
+  delivery_forecast_json?: unknown;
 };
 
 export type AgentDispatchAuthorization = {
@@ -36,6 +37,21 @@ function value(input: unknown) {
   return String(input ?? "").trim();
 }
 
+function acceptedForecast(input: unknown) {
+  try {
+    const forecast = JSON.parse(value(input)) as Record<string, unknown>;
+    const dates = ["earliestCompletion", "likelyCompletion", "latestCompletion", "nextMilestoneAt", "phaseExitAt"].map((key) => new Date(String(forecast[key] ?? "")).getTime());
+    return Boolean(
+      forecast.acceptedAt && forecast.acceptedBy && forecast.nextMilestone && forecast.phaseExit && forecast.basis
+      && ["low", "medium", "high"].includes(String(forecast.confidence))
+      && dates.every(Number.isFinite) && dates[0] <= dates[1] && dates[1] <= dates[2]
+      && !forecast.reforecastRequiredReason,
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAuthorization {
   const key = value(item.key);
   const title = value(item.title);
@@ -51,6 +67,7 @@ export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAut
   const githubUrl = value(item.github_url);
   const gatePending = /pending/i.test(gate);
   const gateClear = !decisionHoldStatuses.has(decisionStatus);
+  const forecastAccepted = workflow !== "STEER" || acceptedForecast(item.delivery_forecast_json);
 
   const checks: DispatchCheck[] = [
     {
@@ -90,6 +107,14 @@ export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAut
       detail: evidenceUrl ? "The assigned agent has a durable brief, exam, or approved setup artifact to follow." : "Attach the controlling brief, exam, or approved setup evidence.",
     },
     {
+      id: "forecast",
+      label: "Owner forecast accepted",
+      met: forecastAccepted,
+      detail: forecastAccepted
+        ? workflow === "STEER" ? "The governed completion range, next milestone, confidence, and basis are accepted." : "This setup/control handoff is outside the STEER forecast gate."
+        : "The assigned delivery owner or named human authority must accept the range, confidence, basis, and next milestone before execution.",
+    },
+    {
       id: "gate",
       label: "Human holds are clear",
       met: gateClear,
@@ -105,7 +130,7 @@ export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAut
   const authorized = missing.length === 0;
   const channel = "#project-federal-bd-pilot";
   const handoffMessage = authorized
-    ? `[${key}] ${title} — Authorized Flight Board handoff to ${assigneeName}. State: In Progress. Next action: ${nextAction} Evidence: ${evidenceUrl} Engineering record: ${githubUrl} Buzz coordinates this handoff; scope, status, decisions, and evidence remain authoritative in the Flight Board and GitHub.`
+    ? `[${key}] ${title} — Authorized Flight Board handoff to ${assigneeName}. State: In Progress. Next action: ${nextAction} Owner forecast: ${workflow === "STEER" ? "accepted in STEER Work Economics" : "not required for this workflow"}. Evidence: ${evidenceUrl} Engineering record: ${githubUrl} Buzz coordinates this handoff; scope, forecast, status, decisions, and evidence remain authoritative in the Flight Board and GitHub.`
     : null;
 
   return {

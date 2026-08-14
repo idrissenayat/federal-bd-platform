@@ -17,6 +17,20 @@ const readyItem = {
   github_url: "https://github.com/example/repository/issues/14",
 };
 
+const acceptedForecast = JSON.stringify({
+  earliestCompletion: "2026-08-15T14:00:00.000Z",
+  likelyCompletion: "2026-08-15T18:00:00.000Z",
+  latestCompletion: "2026-08-16T18:00:00.000Z",
+  nextMilestone: "Builder evidence attached",
+  nextMilestoneAt: "2026-08-15T16:00:00.000Z",
+  phaseExit: "Move to Evaluate",
+  phaseExitAt: "2026-08-15T18:00:00.000Z",
+  basis: "Approved Exam and Builder plan",
+  confidence: "medium",
+  acceptedBy: "human-tech-lead",
+  acceptedAt: "2026-08-14T14:00:00.000Z",
+});
+
 test("authorizes an active, evidence-backed agent handoff", () => {
   const result = evaluateAgentDispatch(readyItem);
   assert.equal(result.authorized, true);
@@ -46,4 +60,26 @@ test("blocks queued work even when every other field is complete", () => {
   const result = evaluateAgentDispatch({ ...readyItem, state: "queued" });
   assert.equal(result.authorized, false);
   assert.ok(result.missing.includes("Execution state is active"));
+});
+
+test("blocks a STEER handoff until the delivery owner accepts a forecast", () => {
+  const result = evaluateAgentDispatch({ ...readyItem, workflow: "STEER" });
+  assert.equal(result.authorized, false);
+  assert.ok(result.missing.includes("Owner forecast accepted"));
+});
+
+test("authorizes a STEER handoff with an accepted, current forecast", () => {
+  const result = evaluateAgentDispatch({ ...readyItem, workflow: "STEER", delivery_forecast_json: acceptedForecast });
+  assert.equal(result.authorized, true);
+  assert.match(result.handoff_message ?? "", /Owner forecast: accepted in STEER Work Economics/);
+});
+
+test("blocks a STEER handoff when a material change requires reforecasting", () => {
+  const result = evaluateAgentDispatch({
+    ...readyItem,
+    workflow: "STEER",
+    delivery_forecast_json: JSON.stringify({ ...JSON.parse(acceptedForecast), reforecastRequiredReason: "Scope changed" }),
+  });
+  assert.equal(result.authorized, false);
+  assert.ok(result.missing.includes("Owner forecast accepted"));
 });

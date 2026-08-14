@@ -45,3 +45,15 @@ test("keeps a requested Gate 1 revision with the evidence owner", () => {
   assert.equal(transition.nextAction, "Clarify the success criteria.");
   assert.equal(transition.reworkInstructions, "Required change: Clarify the success criteria.");
 });
+
+test("turns a Gate 2 approval into a Builder implementation handoff", () => {
+  const transition = decisionTransition({
+    gate: "Gate 2 pending", phase: "Frame", state: "blocked", decision_authority: "Interim Tech Lead",
+    assignee_id: "agent-architect", next_action: "Design the Exam.", rework_instructions: null,
+  }, "APPROVED");
+
+  assert.equal(transition.gate, "Gate 2 passed");
+  assert.equal(transition.phase, "Engineer");
+  assert.equal(transition.assigneeId, "agent-builder");
+  assert.match(transition.nextAction, /Implement the exact approved Gate 2 Exam/);
+});

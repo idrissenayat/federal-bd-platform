@@ -2,6 +2,14 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { buildApprovalReasoningDraft, recommendGateDecision } from "./decision-reasoning";
+import type {
+  ActualEconomics,
+  DeliveryForecast,
+  PullForecast,
+  RealizedOutcome,
+  ValueHypothesis,
+  WorkEconomicsRecord,
+} from "../lib/work-economics";
 
 const phases = ["Sense", "Frame", "Engineer", "Evaluate", "Release", "Observe", "Learn"] as const;
 const priorities = ["Now", "Next", "Later"] as const;
@@ -35,7 +43,20 @@ type WorkItem = {
   rework_instructions: string | null;
   blocked_since: string | null;
   updated_at: string;
+  work_economics: WorkEconomicsRecord;
   dispatch_authorization: AgentDispatchAuthorization;
+};
+
+type WorkEconomicsEvent = {
+  id: number;
+  item_id: number;
+  item_key: string;
+  section: string;
+  action: string;
+  actor_name: string | null;
+  actor_role: string;
+  reason: string;
+  created_at: string;
 };
 
 type DispatchCheck = {
@@ -148,6 +169,8 @@ type Bootstrap = {
   decisions: Decision[];
   reviews: AgentReview[];
   notifications: Notification[];
+  work_economics_events: WorkEconomicsEvent[];
+  pull_forecast: PullForecast;
 };
 
 type BuzzStatus = {
@@ -291,6 +314,129 @@ function Avatar({ name, kind = "human", accent = "aqua" }: { name: string | null
 
 function Empty({ title, copy }: { title: string; copy: string }) {
   return <div className="empty-panel"><span>✓</span><h3>{title}</h3><p>{copy}</p></div>;
+}
+
+function datetimeLocal(value: string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return shifted.toISOString().slice(0, 16);
+}
+
+function isoFromForm(value: FormDataEntryValue | null) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
+}
+
+function numeric(form: FormData, name: string, fallback = 0) {
+  const parsed = Number(form.get(name));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function ForecastSummary({ item, compact = false }: { item: WorkItem; compact?: boolean }) {
+  const economics = item.work_economics;
+  const forecast = economics.forecast;
+  const value = economics.valueHypothesis;
+  const outcome = economics.realizedOutcome;
+  return <div className={`economics-summary ${compact ? "economics-summary-compact" : ""}`} aria-label={`Work Economics for ${item.key}`}>
+    <span><b>Value</b>{value ? `${value.primaryType} · ${value.confidence}` : "Unknown · Product Lead"}</span>
+    <span><b>Forecast</b>{forecast.state === "unknown" ? "Unknown · owner update required" : `${forecast.state} · ${forecast.confidence}`}</span>
+    {!compact && <span><b>Next</b>{forecast.nextMilestoneAt ? `${forecast.nextMilestone} · ${formatDate(forecast.nextMilestoneAt)}` : "Milestone and time required"}</span>}
+    <span><b>Outcome</b>{outcome?.status ?? "Not yet due"}</span>
+  </div>;
+}
+
+type EconomicsSection = "valueHypothesis" | "deliveryForecast" | "actualEconomics" | "realizedOutcome";
+
+function WorkEconomicsPanel({ item, events, saving, onSave }: {
+  item: WorkItem;
+  events: WorkEconomicsEvent[];
+  saving: boolean;
+  onSave: (section: EconomicsSection, value: Record<string, unknown>, reason: string) => Promise<void>;
+}) {
+  const economics = item.work_economics;
+  const value = economics.valueHypothesis;
+  const forecast = economics.deliveryForecast;
+  const actual = economics.actualEconomics;
+  const outcome = economics.realizedOutcome;
+
+  function submitValue(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const record: ValueHypothesis = {
+      primaryType: String(form.get("primaryType") ?? ""), beneficiary: String(form.get("beneficiary") ?? ""), outcomeMetric: String(form.get("outcomeMetric") ?? ""),
+      baseline: String(form.get("baseline") ?? ""), target: String(form.get("target") ?? ""), unit: String(form.get("unit") ?? ""), observationDate: String(form.get("observationDate") ?? ""),
+      outcomeOwner: String(form.get("outcomeOwner") ?? ""), impact: String(form.get("impact") ?? ""), timeCriticality: String(form.get("timeCriticality") ?? ""),
+      strategicAlignment: String(form.get("strategicAlignment") ?? ""), confidence: String(form.get("confidence") ?? "low") as ValueHypothesis["confidence"], evidence: String(form.get("evidence") ?? ""), advisory: false,
+    };
+    void onSave("valueHypothesis", record, String(form.get("auditReason") ?? "Value hypothesis accepted by Product Lead"));
+  }
+
+  function submitForecast(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const record: DeliveryForecast = {
+      sizeBand: String(form.get("sizeBand") ?? "M") as DeliveryForecast["sizeBand"], humanRole: String(form.get("humanRole") ?? "Delivery team"),
+      humanMinutesMin: numeric(form, "humanMinutesMin"), humanMinutesMax: numeric(form, "humanMinutesMax"), agentCostMin: numeric(form, "agentCostMin"), agentCostMax: numeric(form, "agentCostMax"),
+      currency: String(form.get("currency") ?? "USD"), expectedAttempts: numeric(form, "expectedAttempts", 1), complexity: numeric(form, "complexity", 3), uncertainty: numeric(form, "uncertainty", 3), coordination: numeric(form, "coordination", 3),
+      basis: String(form.get("basis") ?? ""), comparableItems: String(form.get("comparableItems") ?? ""), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      earliestCompletion: isoFromForm(form.get("earliestCompletion")), likelyCompletion: isoFromForm(form.get("likelyCompletion")), latestCompletion: isoFromForm(form.get("latestCompletion")),
+      confidence: String(form.get("confidence") ?? "low") as DeliveryForecast["confidence"], nextMilestone: String(form.get("nextMilestone") ?? ""), nextMilestoneAt: isoFromForm(form.get("nextMilestoneAt")),
+      phaseExit: String(form.get("phaseExit") ?? ""), phaseExitAt: isoFromForm(form.get("phaseExitAt")), freshnessHours: numeric(form, "freshnessHours", 24), acceptedBy: forecast?.acceptedBy ?? "", acceptedAt: forecast?.acceptedAt ?? "", updatedAt: forecast?.updatedAt ?? "", changeReason: String(form.get("changeReason") ?? ""),
+    };
+    void onSave("deliveryForecast", record, record.changeReason);
+  }
+
+  function submitActual(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const tokenValue = (name: string) => String(form.get(name) ?? "").trim() ? numeric(form, name) : null;
+    const record: ActualEconomics = {
+      humanRole: String(form.get("humanRole") ?? ""), humanActiveMinutes: numeric(form, "humanActiveMinutes"), provider: String(form.get("provider") ?? ""), model: String(form.get("model") ?? ""), attempts: numeric(form, "attempts"),
+      inputTokens: tokenValue("inputTokens"), outputTokens: tokenValue("outputTokens"), meteredCost: tokenValue("meteredCost"), currency: String(form.get("currency") ?? "USD"), agentExecutionMinutes: numeric(form, "agentExecutionMinutes"),
+      queueMinutes: numeric(form, "queueMinutes"), blockedMinutes: numeric(form, "blockedMinutes"), gateWaitMinutes: numeric(form, "gateWaitMinutes"), cycleMinutes: numeric(form, "cycleMinutes"), reworkMinutes: numeric(form, "reworkMinutes"), defects: numeric(form, "defects"), rollbacks: numeric(form, "rollbacks"),
+      telemetrySource: String(form.get("telemetrySource") ?? ""), completeness: String(form.get("completeness") ?? "missing") as ActualEconomics["completeness"], correctedBy: actual?.correctedBy ?? "", correctedAt: actual?.correctedAt ?? "", correctionReason: String(form.get("correctionReason") ?? ""),
+    };
+    void onSave("actualEconomics", record, record.correctionReason);
+  }
+
+  function submitOutcome(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const record: RealizedOutcome = {
+      status: String(form.get("status") ?? "not due") as RealizedOutcome["status"], observedMetric: String(form.get("observedMetric") ?? ""), observedResult: String(form.get("observedResult") ?? ""), unit: String(form.get("unit") ?? ""), observationDate: String(form.get("observationDate") ?? ""),
+      verifier: outcome?.verifier ?? "", evidence: String(form.get("evidence") ?? ""), confidence: String(form.get("confidence") ?? "low") as RealizedOutcome["confidence"], causalLimitations: String(form.get("causalLimitations") ?? ""), verifiedAt: outcome?.verifiedAt ?? "",
+    };
+    void onSave("realizedOutcome", record, String(form.get("auditReason") ?? `Outcome status recorded as ${record.status}`));
+  }
+
+  return <section className="work-economics" aria-labelledby={`economics-${item.id}`}>
+    <header><div><span>Decision brief · governed records</span><h3 id={`economics-${item.id}`}>Work Economics</h3></div><StatusPill value={economics.forecast.state} kind={economics.forecast.state} /></header>
+    <p className="economics-intro">Why might this matter? What do we expect it to take? What did it take? What changed? Effort, cost, elapsed time, and value stay separate.</p>
+    <ForecastSummary item={item} />
+    <div className={`forecast-callout forecast-${economics.forecast.state.replace(" ", "-")}`}><strong>{economics.forecast.state === "unknown" ? "Owner forecast required" : `${economics.forecast.state} · ${economics.forecast.confidence} confidence`}</strong><p>{economics.forecast.reason}</p>{economics.forecast.nextMilestoneAt && <small>Next: {economics.forecast.nextMilestone} · {formatDate(economics.forecast.nextMilestoneAt)} · Updated {economics.forecast.lastUpdatedAt ? formatDate(economics.forecast.lastUpdatedAt) : "unknown"}</small>}</div>
+
+    <details className="economics-record" open={!value}><summary><span>01</span><div><strong>Value hypothesis</strong><small>{value ? `${value.outcomeMetric}: ${value.baseline} → ${value.target} ${value.unit}` : "Unknown · Product Lead must accept before Gate 1"}</small></div><b>{value?.confidence ?? "unknown"}</b></summary><form onSubmit={submitValue}>
+      <div className="economics-form-grid"><label>Primary value type<select name="primaryType" defaultValue={value?.primaryType ?? "platform capability or reuse"}>{["revenue or mission enablement", "user/customer outcome", "time or operating-cost reduction", "risk, security, compliance, or reliability improvement", "learning or option value", "platform capability or reuse"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Beneficiary<input name="beneficiary" defaultValue={value?.beneficiary ?? ""} required /></label><label>Outcome metric<input name="outcomeMetric" defaultValue={value?.outcomeMetric ?? ""} required /></label><label>Baseline<input name="baseline" defaultValue={value?.baseline ?? ""} required /></label><label>Target<input name="target" defaultValue={value?.target ?? ""} required /></label><label>Native unit<input name="unit" defaultValue={value?.unit ?? ""} required /></label><label>Observation date<input name="observationDate" type="date" defaultValue={value?.observationDate ?? ""} required /></label><label>Outcome owner<input name="outcomeOwner" defaultValue={value?.outcomeOwner ?? ""} required /></label><label>Impact<select name="impact" defaultValue={value?.impact ?? "Medium"}>{["Low", "Medium", "High"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Time criticality<select name="timeCriticality" defaultValue={value?.timeCriticality ?? "Medium"}>{["Low", "Medium", "High"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Strategic alignment<select name="strategicAlignment" defaultValue={value?.strategicAlignment ?? "Medium"}>{["Low", "Medium", "High"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Confidence<select name="confidence" defaultValue={value?.confidence ?? "low"}>{["low", "medium", "high"].map((option) => <option key={option}>{option}</option>)}</select></label><label className="span-two">Evidence<input name="evidence" type="url" defaultValue={value?.evidence ?? ""} required /></label><label className="span-two">Audit reason<input name="auditReason" defaultValue="Product Lead accepted the value hypothesis and native-unit outcome contract." required /></label></div><button disabled={saving}>{saving ? "Saving…" : value ? "Save audited correction" : "Accept value hypothesis"}</button>
+    </form></details>
+
+    <details className="economics-record" open={!forecast || economics.forecast.state !== "on track"}><summary><span>02</span><div><strong>Delivery forecast</strong><small>{forecast ? `${forecast.sizeBand} · ${economics.forecast.likelyWindow}` : "Unknown · assigned delivery owner must accept a range"}</small></div><b>{economics.forecast.state}</b></summary><form onSubmit={submitForecast}>
+      <div className="economics-form-grid"><label>Size band<select name="sizeBand" defaultValue={forecast?.sizeBand ?? "M"}>{["XS", "S", "M", "L", "XL"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Human role total<input name="humanRole" defaultValue={forecast?.humanRole ?? "Delivery roles"} required /></label><label>Human minutes min<input name="humanMinutesMin" type="number" min="0" defaultValue={forecast?.humanMinutesMin ?? 0} required /></label><label>Human minutes max<input name="humanMinutesMax" type="number" min="0" defaultValue={forecast?.humanMinutesMax ?? 0} required /></label><label>Agent cost min<input name="agentCostMin" type="number" min="0" step="0.01" defaultValue={forecast?.agentCostMin ?? 0} required /></label><label>Agent cost max<input name="agentCostMax" type="number" min="0" step="0.01" defaultValue={forecast?.agentCostMax ?? 0} required /></label><label>Currency<input name="currency" defaultValue={forecast?.currency ?? "USD"} required /></label><label>Expected attempts<input name="expectedAttempts" type="number" min="0" defaultValue={forecast?.expectedAttempts ?? 1} required /></label>{(["complexity", "uncertainty", "coordination"] as const).map((name) => <label key={name}>{name[0].toUpperCase() + name.slice(1)} 1–5<input name={name} type="number" min="1" max="5" defaultValue={forecast?.[name] ?? 3} required /></label>)}<label>Confidence<select name="confidence" defaultValue={forecast?.confidence ?? "low"}>{["low", "medium", "high"].map((option) => <option key={option}>{option}</option>)}</select></label><label className="span-two">Basis / evidence<input name="basis" defaultValue={forecast?.basis ?? "Expert judgment; insufficient same-POD comparable history"} required /></label><label className="span-two">Comparable items<input name="comparableItems" defaultValue={forecast?.comparableItems ?? "None yet"} /></label><label>Earliest completion<input name="earliestCompletion" type="datetime-local" defaultValue={datetimeLocal(forecast?.earliestCompletion)} required /></label><label>Likely completion<input name="likelyCompletion" type="datetime-local" defaultValue={datetimeLocal(forecast?.likelyCompletion)} required /></label><label>Latest completion<input name="latestCompletion" type="datetime-local" defaultValue={datetimeLocal(forecast?.latestCompletion)} required /></label><label>Freshness hours<input name="freshnessHours" type="number" min="1" max="168" defaultValue={forecast?.freshnessHours ?? 24} required /></label><label>Next milestone<input name="nextMilestone" defaultValue={forecast?.nextMilestone ?? ""} required /></label><label>Milestone target<input name="nextMilestoneAt" type="datetime-local" defaultValue={datetimeLocal(forecast?.nextMilestoneAt)} required /></label><label>Phase exit<input name="phaseExit" defaultValue={forecast?.phaseExit ?? "Moving to Evaluate / QA"} required /></label><label>Phase-exit target<input name="phaseExitAt" type="datetime-local" defaultValue={datetimeLocal(forecast?.phaseExitAt)} required /></label><label className="span-two">Forecast / reforecast reason<input name="changeReason" defaultValue={forecast?.reforecastRequiredReason ? `Reforecast after ${forecast.reforecastRequiredReason}` : forecast?.changeReason ?? "Initial owner forecast accepted before execution"} required /></label></div><button disabled={saving}>{saving ? "Saving…" : forecast ? "Accept revised forecast" : "Accept delivery forecast"}</button>
+    </form></details>
+
+    <details className="economics-record"><summary><span>03</span><div><strong>Actual delivery economics</strong><small>{actual ? `${actual.humanActiveMinutes} human min · ${actual.completeness} agent telemetry` : "Unavailable until telemetry or an audited correction exists"}</small></div><b>{actual?.completeness ?? "unknown"}</b></summary><form onSubmit={submitActual}>
+      <div className="economics-form-grid"><label>Aggregated role<input name="humanRole" defaultValue={actual?.humanRole ?? "Delivery roles"} required /></label><label>Human active minutes<input name="humanActiveMinutes" type="number" min="0" defaultValue={actual?.humanActiveMinutes ?? 0} required /></label><label>Provider<input name="provider" defaultValue={actual?.provider ?? ""} /></label><label>Model<input name="model" defaultValue={actual?.model ?? ""} /></label><label>Attempts<input name="attempts" type="number" min="0" defaultValue={actual?.attempts ?? 0} required /></label><label>Input tokens<input name="inputTokens" type="number" min="0" defaultValue={actual?.inputTokens ?? ""} /></label><label>Output tokens<input name="outputTokens" type="number" min="0" defaultValue={actual?.outputTokens ?? ""} /></label><label>Metered cost<input name="meteredCost" type="number" min="0" step="0.01" defaultValue={actual?.meteredCost ?? ""} /></label><label>Currency<input name="currency" defaultValue={actual?.currency ?? "USD"} /></label>{(["agentExecutionMinutes", "queueMinutes", "blockedMinutes", "gateWaitMinutes", "cycleMinutes", "reworkMinutes", "defects", "rollbacks"] as const).map((name) => <label key={name}>{name.replace(/([A-Z])/g, " $1")}<input name={name} type="number" min="0" defaultValue={actual?.[name] ?? 0} required /></label>)}<label>Telemetry completeness<select name="completeness" defaultValue={actual?.completeness ?? "missing"}>{["complete", "partial", "missing"].map((option) => <option key={option}>{option}</option>)}</select></label><label className="span-two">Telemetry source<input name="telemetrySource" defaultValue={actual?.telemetrySource ?? "Provider telemetry unavailable; audited human entry"} required /></label><label className="span-two">Correction reason<input name="correctionReason" defaultValue={actual?.correctionReason ?? "Record role-aggregated actuals; no person-level timing retained"} required /></label></div><button disabled={saving}>{saving ? "Saving…" : actual ? "Save audited correction" : "Record actuals"}</button>
+    </form></details>
+
+    <details className="economics-record"><summary><span>04</span><div><strong>Realized outcome</strong><small>{outcome ? `${outcome.status}${outcome.observedResult ? ` · ${outcome.observedResult} ${outcome.unit}` : ""}` : "Not due · completion is not value realization"}</small></div><b>{outcome?.confidence ?? "unknown"}</b></summary><form onSubmit={submitOutcome}>
+      <div className="economics-form-grid"><label>Outcome status<select name="status" defaultValue={outcome?.status ?? "not due"}>{["not due", "pending evidence", "verified positive", "verified neutral", "verified negative", "inconclusive"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Observation date<input name="observationDate" type="date" defaultValue={outcome?.observationDate ?? ""} /></label><label>Observed metric<input name="observedMetric" defaultValue={outcome?.observedMetric ?? ""} /></label><label>Observed result<input name="observedResult" defaultValue={outcome?.observedResult ?? ""} /></label><label>Native unit<input name="unit" defaultValue={outcome?.unit ?? ""} /></label><label>Confidence<select name="confidence" defaultValue={outcome?.confidence ?? "low"}>{["low", "medium", "high"].map((option) => <option key={option}>{option}</option>)}</select></label><label className="span-two">Evidence<input name="evidence" type="url" defaultValue={outcome?.evidence ?? ""} /></label><label className="span-two">Causal limitations / competing explanations<textarea name="causalLimitations" defaultValue={outcome?.causalLimitations ?? ""} /></label><label className="span-two">Audit reason<input name="auditReason" defaultValue={`Outcome status recorded as ${outcome?.status ?? "not due"}; completion is not treated as realized value.`} required /></label></div><button disabled={saving}>{saving ? "Saving…" : "Record human-verified outcome"}</button>
+    </form></details>
+
+    <div className="economics-audit"><strong>Audit history</strong>{events.length ? events.slice(0, 8).map((event) => <div key={event.id}><span>{formatDate(event.created_at)}</span><p><b>{event.section}</b> {event.action} by {event.actor_name ?? event.actor_role}: {event.reason}</p></div>) : <p>No Work Economics record has been accepted yet.</p>}</div>
+  </section>;
 }
 
 function AgentDispatchControl({ item, dispatching, copied, onDispatch }: { item: WorkItem; dispatching: boolean; copied: boolean; onDispatch: () => void }) {
@@ -504,6 +650,7 @@ export default function Home() {
 
   const selected = data?.items.find((item) => item.id === selectedId) ?? null;
   const itemActivity = data?.activity.filter((event) => event.item_id === selectedId) ?? [];
+  const itemEconomicsEvents = data?.work_economics_events.filter((event) => event.item_id === selectedId) ?? [];
   const selectedReview = data?.reviews.find((review) => review.item_id === selectedId) ?? null;
   const freshSelectedReview = selected && selectedReview?.reviewed_item_updated_at === selected.updated_at ? selectedReview : null;
   const changeRequestDraft = freshSelectedReview ? buildChangeRequestDraft(freshSelectedReview) : "";
@@ -521,6 +668,18 @@ export default function Home() {
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The item could not be updated.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function updateWorkEconomics(id: number, section: EconomicsSection, value: Record<string, unknown>, reason: string) {
+    setSaving(true);
+    try {
+      await api(`/api/items/${id}/work-economics`, { method: "PATCH", body: JSON.stringify({ section, value, reason }) });
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The Work Economics record could not be updated.");
     } finally {
       setSaving(false);
     }
@@ -816,6 +975,7 @@ export default function Home() {
               onRoleChange={setActingRole}
               items={filteredItems}
               activity={data.activity}
+              pullForecast={data.pull_forecast}
               reviews={data.reviews}
               notifications={data.notifications}
               members={data.members}
@@ -886,6 +1046,13 @@ export default function Home() {
                   <label className="span-two">Engineering record<input key={`github-${selected.id}`} defaultValue={selected.github_url ?? ""} disabled={saving} placeholder="https://github.com/idrissenayat/federal-bd-platform/issues/31" onBlur={(event) => { const value = event.target.value.trim(); if (value !== (selected.github_url ?? "")) void updateItem(selected.id, { githubUrl: value || null }); }} /></label>
                 </div>
               </section>
+
+              <WorkEconomicsPanel
+                item={selected}
+                events={itemEconomicsEvents}
+                saving={saving}
+                onSave={(section, value, reason) => updateWorkEconomics(selected.id, section, value, reason)}
+              />
 
               <AgentDispatchControl item={selected} dispatching={dispatchingId === selected.id} copied={copiedHandoffId === selected.id} onDispatch={() => void authorizeBuzzHandoff(selected)} />
 
@@ -1036,7 +1203,7 @@ function RoleWorkCard({ item, canAct, saving, onOpen, onDecision, onTransition }
     if (inRework) return void onTransition(item, "RESUBMIT");
     onOpen(item);
   }
-  return <article className={`role-work-card state-${item.state}`}><header><span>{item.key} · {item.phase}</span><StatusPill value={item.decision_status} /></header><h3>{item.title}</h3><p>{["Changes requested", "Rework"].includes(item.decision_status) ? item.rework_instructions ?? item.next_action : item.next_action}</p><footer><span><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><button disabled={saving} onClick={act}>{action} →</button></footer></article>;
+  return <article className={`role-work-card state-${item.state}`}><header><span>{item.key} · {item.phase}</span><StatusPill value={item.decision_status} /></header><h3>{item.title}</h3><p>{["Changes requested", "Rework"].includes(item.decision_status) ? item.rework_instructions ?? item.next_action : item.next_action}</p><ForecastSummary item={item} compact /><footer><span><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><button disabled={saving} onClick={act}>{action} →</button></footer></article>;
 }
 
 function ageLabel(value: string | null, referenceTime: number) {
@@ -1049,7 +1216,7 @@ function ageLabel(value: string | null, referenceTime: number) {
   return `${Math.floor(hours / 24)}d`;
 }
 
-function FlowPulse({ items, activity, generatedAt, onOpen }: { items: WorkItem[]; activity: Activity[]; generatedAt: string; onOpen: (item: WorkItem) => void }) {
+function FlowPulse({ items, activity, generatedAt, pullForecast, onOpen }: { items: WorkItem[]; activity: Activity[]; generatedAt: string; pullForecast: PullForecast; onOpen: (item: WorkItem) => void }) {
   const wipLimit = 2;
   const referenceTime = new Date(generatedAt).getTime();
   const inFlight = items.filter((item) => ["active", "blocked"].includes(item.state));
@@ -1089,11 +1256,11 @@ function FlowPulse({ items, activity, generatedAt, onOpen }: { items: WorkItem[]
       <div><span>Waiting on agents</span><strong>{agentWaiting.length}</strong><em>{agentWaiting.length ? "Owned agent work" : "No agent handoff"}</em></div>
       <div className={blockers.length ? "metric-warn" : ""}><span>Oldest blocker</span><strong>{blockers.length ? ageLabel(blockers[0].blocked_since ?? blockers[0].updated_at, referenceTime) : "—"}</strong><em>{blockers[0]?.key ?? "No blockers"}</em></div>
     </div>
-    <div className="flow-next"><div><span>Next expected event</span><strong>{nextEvent}</strong><small>{nextItem ? `${nextItem.key} · Owner: ${nextOwner}` : nextOwner}</small></div>{nextItem && <button onClick={() => onOpen(nextItem)}>Open {nextItem.key} →</button>}<aside><span>{pullAllowed ? "WIP slot available" : "Pull paused"}</span><p>{pullAllowed ? "Finish role work, then pull the highest-priority ready backlog item." : "Do not start or create more delivery work. Finish, unblock, or explicitly stop something first."}</p></aside></div>
+    <div className="flow-next"><div><span>Next expected event</span><strong>{nextEvent}</strong><small>{nextItem ? `${nextItem.key} · Owner: ${nextOwner}` : nextOwner}</small></div>{nextItem && <button onClick={() => onOpen(nextItem)}>Open {nextItem.key} →</button>}<aside className={`pull-forecast pull-${pullForecast.status}`}><span>{pullForecast.headline}</span><p>{pullForecast.detail}</p>{pullForecast.missingOwners.length > 0 && <small>Forecast updates needed from: {pullForecast.missingOwners.join(", ")}</small>}</aside></div>
   </section>;
 }
 
-function MyWork({ user, generatedAt, actingRole, onRoleChange, items, activity, reviews, notifications, members, saving, onOpen, onDecision, onTransition, onReadNotification }: { user: Bootstrap["user"]; generatedAt: string; actingRole: RoleContext; onRoleChange: (role: RoleContext) => void; items: WorkItem[]; activity: Activity[]; reviews: AgentReview[]; notifications: Notification[]; members: Member[]; saving: boolean; onOpen: (item: WorkItem) => void; onDecision: (item: WorkItem) => void; onTransition: (item: WorkItem, action: "START_REWORK" | "RESUBMIT") => Promise<void>; onReadNotification: (id: number) => Promise<void> }) {
+function MyWork({ user, generatedAt, pullForecast, actingRole, onRoleChange, items, activity, reviews, notifications, members, saving, onOpen, onDecision, onTransition, onReadNotification }: { user: Bootstrap["user"]; generatedAt: string; pullForecast: PullForecast; actingRole: RoleContext; onRoleChange: (role: RoleContext) => void; items: WorkItem[]; activity: Activity[]; reviews: AgentReview[]; notifications: Notification[]; members: Member[]; saving: boolean; onOpen: (item: WorkItem) => void; onDecision: (item: WorkItem) => void; onTransition: (item: WorkItem, action: "START_REWORK" | "RESUBMIT") => Promise<void>; onReadNotification: (id: number) => Promise<void> }) {
   const role = roleCockpits.find((candidate) => candidate.id === actingRole) ?? roleCockpits[0];
   const canAct = user.role_contexts.includes(actingRole);
   const relevant = items.filter((item) => itemVisibleInMyWork(item, user.id, actingRole, reviews));
@@ -1110,7 +1277,7 @@ function MyWork({ user, generatedAt, actingRole, onRoleChange, items, activity, 
     <PageHeading eyebrow="Role cockpit" title={`${role.label} workspace`} copy={role.copy} actions={<div className={`role-authority ${canAct ? "held" : "view-only"}`}><span>{canAct ? "Acting authority" : "View only"}</span><strong>{canAct ? user.name : seat?.display_name ?? "Open seat"}</strong></div>} />
     <div className="role-switcher" role="tablist" aria-label="Human role workspaces">{roleCockpits.map((candidate) => <button role="tab" aria-selected={actingRole === candidate.id} className={actingRole === candidate.id ? "active" : ""} key={candidate.id} onClick={() => onRoleChange(candidate.id)}><span>{candidate.short}</span><small>{user.role_contexts.includes(candidate.id) ? "Your role" : "Shared view"}</small></button>)}</div>
 
-    <FlowPulse items={items} activity={activity} generatedAt={generatedAt} onOpen={onOpen} />
+    <FlowPulse items={items} activity={activity} generatedAt={generatedAt} pullForecast={pullForecast} onOpen={onOpen} />
 
     <section className="role-today">
       <div><span className="panel-eyebrow">Start here</span><h2>{rulings.length ? `${rulings.length} ruling${rulings.length === 1 ? "" : "s"} need judgment` : returns.length ? `${returns.length} returned item${returns.length === 1 ? "" : "s"} need movement` : "No urgent role action"}</h2><p>{canAct ? "Work the first consequential queue, then stop. STEER protects attention by making ownership and the next move explicit." : `You can inspect this cockpit, but ${seat?.display_name === "Open seat" || !seat ? "this role is not yet staffed" : seat.display_name + " holds this authority"}.`}</p></div>
@@ -1123,7 +1290,7 @@ function MyWork({ user, generatedAt, actingRole, onRoleChange, items, activity, 
     </div>
 
     <div className="role-lower-grid">
-      <section className="panel role-in-motion"><header><div><span className="panel-eyebrow">Role portfolio</span><h2>Running versus ready</h2></div><b>{moving.length + readyToPull.length}</b></header>{moving.length > 0 && <div className="portfolio-group-label"><span>In motion</span><b>{moving.length}</b></div>}{moving.slice(0, 5).map((item) => <button key={item.id} onClick={() => onOpen(item)}><span>{item.key}</span><div><strong>{item.title}</strong><small>{item.next_action}</small></div><StatusPill value={item.state} /></button>)}{readyToPull.length > 0 && <div className="portfolio-group-label ready"><span>Ready to pull</span><b>{readyToPull.length}</b><em>{teamWip >= 2 ? "WIP full" : "Capacity available"}</em></div>}{readyToPull.slice(0, 5).map((item) => <button key={item.id} onClick={() => onOpen(item)}><span>{item.key}</span><div><strong>{item.title}</strong><small>{item.next_action}</small></div><StatusPill value={teamWip >= 2 ? "Paused" : item.priority} kind={teamWip >= 2 ? "blocked" : item.priority} /></button>)}{!moving.length && !readyToPull.length && <Empty title="No role portfolio work" copy="Relevant running or pull-ready work appears here." />}</section>
+      <section className="panel role-in-motion"><header><div><span className="panel-eyebrow">Role portfolio</span><h2>Running versus ready</h2></div><b>{moving.length + readyToPull.length}</b></header>{moving.length > 0 && <div className="portfolio-group-label"><span>In motion</span><b>{moving.length}</b></div>}{moving.slice(0, 5).map((item) => <button key={item.id} onClick={() => onOpen(item)}><span>{item.key}</span><div><strong>{item.title}</strong><small>{item.next_action}</small><ForecastSummary item={item} compact /></div><StatusPill value={item.state} /></button>)}{readyToPull.length > 0 && <div className="portfolio-group-label ready"><span>Ready to pull</span><b>{readyToPull.length}</b><em>{teamWip >= 2 ? "WIP full" : "Capacity available"}</em></div>}{readyToPull.slice(0, 5).map((item) => <button key={item.id} onClick={() => onOpen(item)}><span>{item.key}</span><div><strong>{item.title}</strong><small>{item.next_action}</small><ForecastSummary item={item} compact /></div><StatusPill value={teamWip >= 2 ? "Paused" : item.priority} kind={teamWip >= 2 ? "blocked" : item.priority} /></button>)}{!moving.length && !readyToPull.length && <Empty title="No role portfolio work" copy="Relevant running or pull-ready work appears here." />}</section>
       <section className="panel notification-center"><header><div><span className="panel-eyebrow">Block Buzz outbox</span><h2>Role notifications</h2></div><b>{roleNotifications.filter((item) => item.status !== "read").length}</b></header>{roleNotifications.length ? roleNotifications.map((notification) => <article key={notification.id} className={notification.status === "read" ? "read" : ""}><span>◌</span><div><strong>{notification.title}</strong><p>{notification.body}</p><small>{notification.channel} · {notification.status} · {formatDate(notification.created_at)}</small></div>{notification.status !== "read" && <button onClick={() => void onReadNotification(notification.id)}>Mark read</button>}</article>) : <Empty title="No role signals yet" copy="Rework and resubmission events will create a durable Block Buzz-ready notification." />}</section>
     </div>
   </>;
@@ -1145,7 +1312,7 @@ function Overview({ items, activity, decisions, blocked, active, onOpen, onNavig
       <section className="panel focus-work-panel">
         <header><div><span className="panel-eyebrow">Current focus</span><h2>Do these next</h2></div><b>{focus.length}</b></header>
         <div className="focus-list">
-          {focus.length ? focus.map((item, index) => <button className="focus-item" key={item.id} onClick={() => onOpen(item)}><span className="focus-rank">{String(index + 1).padStart(2, "0")}</span><div className="focus-main"><div><span>{item.key}</span><StatusPill value={item.phase} /></div><h3>{item.title}</h3><p>{item.next_action}</p><footer><span><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><StatusPill value={item.gate} kind="gate" /></footer></div><b>→</b></button>) : <Empty title="No item is marked Now" copy="Promote one backlog item when the team is ready to focus." />}
+          {focus.length ? focus.map((item, index) => <button className="focus-item" key={item.id} onClick={() => onOpen(item)}><span className="focus-rank">{String(index + 1).padStart(2, "0")}</span><div className="focus-main"><div><span>{item.key}</span><StatusPill value={item.phase} /></div><h3>{item.title}</h3><p>{item.next_action}</p><ForecastSummary item={item} compact /><footer><span><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><StatusPill value={item.gate} kind="gate" /></footer></div><b>→</b></button>) : <Empty title="No item is marked Now" copy="Promote one backlog item when the team is ready to focus." />}
         </div>
       </section>
 
@@ -1165,7 +1332,7 @@ function Overview({ items, activity, decisions, blocked, active, onOpen, onNavig
 function FlightBoard({ items, onOpen, onMove, saving }: { items: WorkItem[]; onOpen: (item: WorkItem) => void; onMove: (id: number, changes: Record<string, unknown>) => Promise<void>; saving: boolean }) {
   return <>
     <PageHeading eyebrow="Seven-phase workflow" title="Flight Board" copy="Move evidence through STEER without losing the why. Human gates stay visible and cannot be crossed by an agent ruling." actions={<div className="board-legend"><span><i className="dot active" /> Active</span><span><i className="dot blocked" /> Blocked</span><span>◆ Human gate</span></div>} />
-    <div className="kanban-board">{phases.map((phase, phaseIndex) => { const phaseItems = items.filter((item) => item.phase === phase && item.state !== "complete"); return <section className="kanban-column" key={phase}><header><div><span className={`phase-dot phase-${phase.toLowerCase()}`} /><strong>{phase}</strong></div><b>{phaseItems.length}</b></header><p className="column-cue">{phaseCues[phase]}</p><div className="kanban-cards">{phaseItems.map((item) => <article className={`kanban-card state-${item.state}`} key={item.id}><button className="card-open" onClick={() => onOpen(item)}><div className="card-topline"><span>{item.key}</span><StatusPill value={item.priority} /></div><h3>{item.title}</h3><p>{item.next_action}</p><div className="card-tags"><StatusPill value={item.workflow} /><StatusPill value={item.gate} kind="gate" /></div><footer><span><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span>{item.decision_status === "Needed now" && <b title="Human decision required">◆</b>}</footer></button><div className="card-move"><button disabled={saving || phaseIndex === 0} aria-label={`Move ${item.key} backward`} onClick={() => void onMove(item.id, { phase: phases[phaseIndex - 1] })}>←</button><span>{item.state}</span><button disabled={saving || phaseIndex === phases.length - 1} aria-label={`Move ${item.key} forward`} onClick={() => void onMove(item.id, { phase: phases[phaseIndex + 1] })}>→</button></div></article>)}{phaseItems.length === 0 && <div className="column-empty">Clear airspace</div>}</div></section>; })}</div>
+    <div className="kanban-board">{phases.map((phase, phaseIndex) => { const phaseItems = items.filter((item) => item.phase === phase && item.state !== "complete"); return <section className="kanban-column" key={phase}><header><div><span className={`phase-dot phase-${phase.toLowerCase()}`} /><strong>{phase}</strong></div><b>{phaseItems.length}</b></header><p className="column-cue">{phaseCues[phase]}</p><div className="kanban-cards">{phaseItems.map((item) => <article className={`kanban-card state-${item.state}`} key={item.id}><button className="card-open" onClick={() => onOpen(item)}><div className="card-topline"><span>{item.key}</span><StatusPill value={item.priority} /></div><h3>{item.title}</h3><p>{item.next_action}</p><ForecastSummary item={item} compact /><div className="card-tags"><StatusPill value={item.workflow} /><StatusPill value={item.gate} kind="gate" /></div><footer><span><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span>{item.decision_status === "Needed now" && <b title="Human decision required">◆</b>}</footer></button><div className="card-move"><button disabled={saving || phaseIndex === 0} aria-label={`Move ${item.key} backward`} onClick={() => void onMove(item.id, { phase: phases[phaseIndex - 1] })}>←</button><span>{item.state}</span><button disabled={saving || phaseIndex === phases.length - 1} aria-label={`Move ${item.key} forward`} onClick={() => void onMove(item.id, { phase: phases[phaseIndex + 1] })}>→</button></div></article>)}{phaseItems.length === 0 && <div className="column-empty">Clear airspace</div>}</div></section>; })}</div>
   </>;
 }
 
@@ -1191,7 +1358,7 @@ function Backlog({ items, onOpen, onCreate }: { items: WorkItem[]; onOpen: (item
       <div className="backlog-table-scroll" role="region" aria-label="Scrollable Product Backlog table">
         <div className="backlog-table">
           <div className="table-head"><span>Work item</span><span>State</span><span>Phase</span><span>Priority</span><span>Workflow</span><span>Owner</span><span>Gate</span></div>
-          {visibleItems.map((item) => <button className={`table-row state-${item.state}`} key={item.id} onClick={() => onOpen(item)}><span className="title-cell"><b>{item.key}</b><div><strong>{item.title}</strong><small>{item.next_action}</small></div></span><span><StatusPill value={item.state === "complete" ? "Closed" : item.state} /></span><span><StatusPill value={item.phase} /></span><span><StatusPill value={item.priority} /></span><span><StatusPill value={item.workflow} /></span><span className="owner-cell"><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><span><StatusPill value={item.gate} kind="gate" /></span></button>)}
+          {visibleItems.map((item) => <button className={`table-row state-${item.state}`} key={item.id} onClick={() => onOpen(item)}><span className="title-cell"><b>{item.key}</b><div><strong>{item.title}</strong><small>{item.next_action}</small><ForecastSummary item={item} compact /></div></span><span><StatusPill value={item.state === "complete" ? "Closed" : item.state} /></span><span><StatusPill value={item.phase} /></span><span><StatusPill value={item.priority} /></span><span><StatusPill value={item.workflow} /></span><span className="owner-cell"><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><span><StatusPill value={item.gate} kind="gate" /></span></button>)}
           {visibleItems.length === 0 && <div className="backlog-empty"><strong>No {scope} items</strong><span>Choose another filter or add the next work item to the backlog.</span></div>}
         </div>
       </div>

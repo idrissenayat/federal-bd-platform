@@ -35,6 +35,10 @@ export const workItems = sqliteTable(
     githubUrl: text("github_url"),
     reworkInstructions: text("rework_instructions"),
     blockedSince: text("blocked_since"),
+    valueHypothesisJson: text("value_hypothesis_json"),
+    deliveryForecastJson: text("delivery_forecast_json"),
+    actualEconomicsJson: text("actual_economics_json"),
+    realizedOutcomeJson: text("realized_outcome_json"),
     createdBy: text("created_by").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -44,6 +48,23 @@ export const workItems = sqliteTable(
     index("idx_work_items_decision_status").on(table.decisionStatus),
     index("idx_work_items_assignee").on(table.assigneeId),
   ],
+);
+
+export const workEconomicsEvents = sqliteTable(
+  "work_economics_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    itemId: integer("item_id").notNull(),
+    section: text("section").notNull(),
+    action: text("action").notNull(),
+    actorId: text("actor_id").notNull(),
+    actorRole: text("actor_role").notNull(),
+    previousJson: text("previous_json"),
+    replacementJson: text("replacement_json"),
+    reason: text("reason").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_work_economics_item_created").on(table.itemId, table.createdAt)],
 );
 
 export const activity = sqliteTable(

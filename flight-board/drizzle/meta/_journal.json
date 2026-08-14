@@ -36,6 +36,13 @@
       "when": 1786717126839,
       "tag": "0004_plain_thunderbolts",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786737116891,
+      "tag": "0005_normal_iron_fist",
+      "breakpoints": true
     }
   ]
 }
