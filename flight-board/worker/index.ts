@@ -6,6 +6,7 @@ import { handleApi } from "./api";
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
+  GITHUB_TOKEN?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {

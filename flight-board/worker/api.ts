@@ -17,7 +17,7 @@ type Database = {
   batch(statements: Statement[]): Promise<unknown[]>;
 };
 
-type Env = { DB: Database };
+type Env = { DB: Database; GITHUB_TOKEN?: string };
 
 type User = { id: string; email: string | null; name: string };
 
@@ -28,6 +28,26 @@ const states = ["queued", "active", "blocked", "complete"];
 const decisionStatuses = ["Waiting", "Needed now", "Changes requested", "Rework", "Resubmitted", "Decided", "Not required"];
 const buzzRelayHttpUrl = "https://blockbuzzmain-production-5bcb.up.railway.app";
 const buzzRelayWsUrl = "wss://blockbuzzmain-production-5bcb.up.railway.app";
+const allowedGitHubRepository = "idrissenayat/federal-bd-platform";
+
+type PullRequestReference = { owner: string; repo: string; repository: string; number: number };
+
+type GitHubFile = {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  patch?: string;
+  blob_url?: string;
+};
+
+type GitHubCheck = {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  url: string | null;
+};
 
 type Finding = {
   severity: "blocker" | "should-fix" | "note";
@@ -170,6 +190,22 @@ async function ensureSchema(db: Database) {
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_role_created ON notifications (recipient_role, created_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_member_status ON notifications (member_id, status)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS code_reviews (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+      item_id integer NOT NULL,
+      repository text NOT NULL,
+      pull_number integer NOT NULL,
+      head_sha text NOT NULL,
+      action text NOT NULL,
+      reasoning text NOT NULL,
+      actor_id text NOT NULL,
+      actor_email text,
+      github_delivery text NOT NULL,
+      github_url text,
+      created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_code_reviews_item_created ON code_reviews (item_id, created_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_code_reviews_pr_head ON code_reviews (repository, pull_number, head_sha)"),
   ]);
   await ensureColumn(db, "work_items", "rework_instructions", "rework_instructions text");
   await ensureColumn(db, "work_items", "blocked_since", "blocked_since text");
@@ -790,6 +826,205 @@ async function getBuzzStatus() {
   }
 }
 
+export function pullRequestFromItem(item: Record<string, unknown>): PullRequestReference | null {
+  for (const value of [item.evidence_url, item.github_url]) {
+    if (!value) continue;
+    try {
+      const url = new URL(String(value));
+      const parts = url.pathname.split("/").filter(Boolean);
+      if (url.hostname !== "github.com" || parts[2] !== "pull" || !/^\d+$/.test(parts[3] ?? "")) continue;
+      const repository = `${parts[0]}/${parts[1]}`;
+      if (repository.toLowerCase() !== allowedGitHubRepository.toLowerCase()) return null;
+      return { owner: parts[0], repo: parts[1], repository, number: Number(parts[3]) };
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function githubHeaders(env: Env) {
+  const headers: Record<string, string> = {
+    accept: "application/vnd.github+json",
+    "user-agent": "steer-flight-board",
+    "x-github-api-version": "2022-11-28",
+  };
+  if (env.GITHUB_TOKEN) headers.authorization = `Bearer ${env.GITHUB_TOKEN}`;
+  return headers;
+}
+
+async function githubJson<T>(env: Env, path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`https://api.github.com${path}`, {
+    ...init,
+    headers: { ...githubHeaders(env), ...(init?.headers ?? {}) },
+    signal: AbortSignal.timeout(10000),
+  });
+  const payload = await response.json().catch(() => ({})) as T & { message?: string };
+  if (!response.ok) throw new Error(payload.message ?? `GitHub returned HTTP ${response.status}.`);
+  return payload;
+}
+
+export function codeReviewBrief(
+  pull: { draft: boolean; mergeable: boolean | null; additions: number; deletions: number; changed_files: number },
+  files: GitHubFile[],
+  checks: { all_green: boolean; failed: number; pending: number; total: number },
+) {
+  const findings: Finding[] = [];
+  const dependencies: string[] = [];
+  const impacts: string[] = [];
+  const actions: string[] = [];
+  const filenames = files.map((file) => file.filename.toLowerCase());
+  const codeFiles = filenames.filter((name) => /\.(ts|tsx|js|jsx|py|go|rs|java|rb|php|cs)$/.test(name));
+  const testFiles = filenames.filter((name) => /(^|\/)(test|tests|spec|specs)(\/|\.)|\.(test|spec)\./.test(name));
+  const sensitiveFiles = files.filter((file) => /(auth|authori[sz]|secret|credential|token|worker\/api|migration|schema|workflow|deploy|railway|\.github\/workflows)/i.test(file.filename));
+
+  if (pull.draft) findings.push({ severity: "blocker", title: "Pull request is still a draft", detail: "The author has not marked this revision ready for human review.", action: "Ask the author to mark the pull request ready before accepting or merging it." });
+  if (checks.failed) findings.push({ severity: "blocker", title: `${checks.failed} required check${checks.failed === 1 ? " is" : "s are"} failing`, detail: "A failing verification signal makes this revision unsafe to merge.", action: "Open the failed check, correct the cause, and wait for a green rerun." });
+  else if (checks.pending) findings.push({ severity: "blocker", title: `${checks.pending} check${checks.pending === 1 ? " is" : "s are"} still running`, detail: "The review cannot establish a verified revision until every reported check finishes.", action: "Wait for checks to finish, then refresh this review." });
+  else if (!checks.total) findings.push({ severity: "blocker", title: "No verification checks were reported", detail: "The platform cannot confirm that this exact commit passed automated verification.", action: "Configure or run the required checks before accepting the revision." });
+  if (pull.mergeable === false) findings.push({ severity: "blocker", title: "GitHub reports a merge conflict", detail: "The branch cannot be merged cleanly into its target.", action: "Resolve the conflict, push the updated branch, and review the new commit." });
+  if (sensitiveFiles.length) {
+    findings.push({ severity: "should-fix", title: "High-impact controls changed", detail: `${sensitiveFiles.slice(0, 4).map((file) => file.filename).join(", ")}${sensitiveFiles.length > 4 ? ` and ${sensitiveFiles.length - 4} more` : ""} affect runtime, authorization, data, delivery, or workflow behavior.`, action: "Inspect these files first and confirm authorization, rollback, migration, and operational effects." });
+    dependencies.push("Named human review of runtime, authorization, data, and delivery-control changes.");
+    impacts.push("A defect in these files could change who may act, how durable records are stored, or how the shared service is deployed.");
+  }
+  if (codeFiles.length && !testFiles.length) findings.push({ severity: "should-fix", title: "Code changed without an obvious test-file update", detail: "Existing tests may cover the change, but the file list does not make that relationship visible.", action: "Confirm the changed behavior is exercised by an existing test or add focused coverage." });
+  if ((pull.additions + pull.deletions) > 800 || pull.changed_files > 30) findings.push({ severity: "should-fix", title: "Review scope is large", detail: `${pull.changed_files} files and ${pull.additions + pull.deletions} changed lines increase the chance of an overlooked dependency.`, action: "Review by concern and consider splitting unrelated changes before merge." });
+  if (filenames.some((name) => /(package-lock|pnpm-lock|yarn\.lock|requirements|poetry\.lock|go\.sum)/.test(name))) {
+    dependencies.push("Third-party dependency and supply-chain review.");
+    impacts.push("Dependency updates can alter build output and introduce transitive risk without visible application-code changes.");
+  }
+  dependencies.push("The decision remains bound to the exact displayed head commit; any new push requires a fresh review.");
+  if (!checks.all_green) impacts.push("Merge remains disabled until the exact displayed commit has a complete green check set.");
+
+  const ranked = findings.sort((a, b) => ({ blocker: 0, "should-fix": 1, note: 2 }[a.severity] - { blocker: 0, "should-fix": 1, note: 2 }[b.severity])).slice(0, 4);
+  for (const finding of ranked) actions.push(finding.action);
+  if (!ranked.length) actions.push("Read the summary and changed files, confirm the change matches the work item, then record your acceptance.");
+  const blockers = ranked.filter((finding) => finding.severity === "blocker").length;
+  const concerns = ranked.filter((finding) => finding.severity === "should-fix").length;
+  const recommendation = blockers ? "Do not merge yet" : concerns ? "Review highlighted concerns" : "Ready for human acceptance";
+  const summary = blockers
+    ? `${blockers} blocking condition${blockers === 1 ? "" : "s"} must be resolved before merge.`
+    : concerns
+      ? `${concerns} material concern${concerns === 1 ? "" : "s"} deserves explicit human judgment before acceptance.`
+      : "Checks are green and no material risk signal was visible in the available pull-request metadata. Human inspection is still required.";
+  const proposedChangeInstructions = ranked.filter((finding) => finding.severity !== "note").map((finding, index) => `${index + 1}. ${finding.title}\nRequired change: ${finding.action}\nReason: ${finding.detail}`).join("\n\n");
+  return { recommendation, summary, findings: ranked, dependencies: [...new Set(dependencies)].slice(0, 5), impacts: [...new Set(impacts)].slice(0, 4), actions: [...new Set(actions)].slice(0, 5), proposed_change_instructions: proposedChangeInstructions };
+}
+
+async function loadCodeReview(db: Database, env: Env, itemId: number) {
+  const item = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
+  if (!item) return json({ error: "Work item not found." }, 404);
+  const reference = pullRequestFromItem(item);
+  if (!reference) return json({ error: `Attach a pull request from ${allowedGitHubRepository} to this work item's evidence or engineering record.` }, 409);
+  const basePath = `/repos/${reference.owner}/${reference.repo}`;
+  const pull = await githubJson<{
+    number: number; title: string; body: string | null; html_url: string; state: string; draft: boolean; mergeable: boolean | null;
+    mergeable_state?: string; additions: number; deletions: number; changed_files: number; commits: number; updated_at: string;
+    user: { login: string }; base: { ref: string }; head: { ref: string; sha: string };
+  }>(env, `${basePath}/pulls/${reference.number}`);
+  const [files, checkRuns, combinedStatus, history] = await Promise.all([
+    githubJson<GitHubFile[]>(env, `${basePath}/pulls/${reference.number}/files?per_page=100`),
+    githubJson<{ check_runs: Array<{ name: string; status: string; conclusion: string | null; html_url: string | null }> }>(env, `${basePath}/commits/${pull.head.sha}/check-runs?per_page=100`).catch(() => ({ check_runs: [] })),
+    githubJson<{ statuses: Array<{ context: string; state: string; target_url: string | null }> }>(env, `${basePath}/commits/${pull.head.sha}/status`).catch(() => ({ statuses: [] })),
+    db.prepare("SELECT * FROM code_reviews WHERE item_id = ? AND repository = ? AND pull_number = ? ORDER BY created_at DESC LIMIT 20").bind(itemId, reference.repository, reference.number).all(),
+  ]);
+  const checks: GitHubCheck[] = [
+    ...checkRuns.check_runs.map((check) => ({ name: check.name, status: check.status, conclusion: check.conclusion, url: check.html_url })),
+    ...combinedStatus.statuses.map((status) => ({ name: status.context, status: status.state === "pending" ? "in_progress" : "completed", conclusion: status.state === "success" ? "success" : status.state === "pending" ? null : status.state, url: status.target_url })),
+  ];
+  const uniqueChecks = [...new Map(checks.map((check) => [check.name, check])).values()];
+  const failureConclusions = new Set(["failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale", "error"]);
+  const failed = uniqueChecks.filter((check) => check.conclusion && failureConclusions.has(check.conclusion)).length;
+  const pending = uniqueChecks.filter((check) => check.status !== "completed" || check.conclusion === null).length;
+  const checkSummary = { total: uniqueChecks.length, failed, pending, successful: uniqueChecks.filter((check) => ["success", "neutral", "skipped"].includes(check.conclusion ?? "")).length, all_green: uniqueChecks.length > 0 && failed === 0 && pending === 0 };
+  const latest = (history.results ?? [])[0] as Record<string, unknown> | undefined;
+  const acceptedHead = latest?.head_sha === pull.head.sha && latest?.action === "ACCEPT";
+  const canMerge = pull.state === "open" && !pull.draft && pull.mergeable !== false && checkSummary.all_green && acceptedHead;
+  return json({
+    connection: { read: true, write: Boolean(env.GITHUB_TOKEN), repository: reference.repository, message: env.GITHUB_TOKEN ? "GitHub actions are connected." : "Review is available. A repository credential is still required for GitHub write and merge actions." },
+    pull_request: { number: pull.number, title: pull.title, body: pull.body, url: pull.html_url, state: pull.state, draft: pull.draft, mergeable: pull.mergeable, mergeable_state: pull.mergeable_state ?? "unknown", author: pull.user.login, base_ref: pull.base.ref, head_ref: pull.head.ref, head_sha: pull.head.sha, additions: pull.additions, deletions: pull.deletions, changed_files: pull.changed_files, commits: pull.commits, updated_at: pull.updated_at },
+    checks: { ...checkSummary, items: uniqueChecks },
+    files: files.map((file) => ({ ...file, patch: file.patch?.slice(0, 12000) ?? null })),
+    ai_review: codeReviewBrief(pull, files, checkSummary),
+    history: history.results ?? [],
+    controls: { accepted_head: acceptedHead, can_merge: canMerge, merge_confirmation: `MERGE ${String(item.key)}`, exact_head_required: true },
+  });
+}
+
+async function deliverGitHubReview(env: Env, reference: PullRequestReference, action: "ACCEPT" | "REQUEST_CHANGES", headSha: string, reasoning: string) {
+  const reviewEvent = action === "ACCEPT" ? "APPROVE" : "REQUEST_CHANGES";
+  const path = `/repos/${reference.owner}/${reference.repo}/pulls/${reference.number}/reviews`;
+  try {
+    const review = await githubJson<{ html_url?: string }>(env, path, { method: "POST", body: JSON.stringify({ body: reasoning, event: reviewEvent, commit_id: headSha }) });
+    return { delivery: "formal_review", url: review.html_url ?? `https://github.com/${reference.repository}/pull/${reference.number}` };
+  } catch (error) {
+    const heading = action === "ACCEPT" ? "STEER human acceptance" : "STEER changes requested";
+    const comment = await githubJson<{ html_url?: string }>(env, `/repos/${reference.owner}/${reference.repo}/issues/${reference.number}/comments`, { method: "POST", body: JSON.stringify({ body: `## ${heading}\n\n${reasoning}\n\nReviewed in STEER Work Management against commit \`${headSha}\`.` }) });
+    return { delivery: `comment_fallback:${error instanceof Error ? error.message : "formal review unavailable"}`, url: comment.html_url ?? `https://github.com/${reference.repository}/pull/${reference.number}` };
+  }
+}
+
+async function actOnCodeReview(request: Request, db: Database, env: Env, user: User, itemId: number) {
+  if (!env.GITHUB_TOKEN) return json({ error: "GitHub write actions are not connected yet. Add the repository credential to the hosted STEER environment first." }, 503);
+  const item = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
+  if (!item) return json({ error: "Work item not found." }, 404);
+  const reference = pullRequestFromItem(item);
+  if (!reference) return json({ error: "This work item is not linked to an approved pull request." }, 409);
+  const member = await db.prepare("SELECT kind, role FROM members WHERE id = ?").bind(user.id).first<{ kind: string; role: string }>();
+  if (member?.kind !== "human") return json({ error: "Only an authenticated human member may review or merge code." }, 403);
+  const body = await request.json() as Record<string, unknown>;
+  const action = String(body.action ?? "");
+  const reasoning = String(body.reasoning ?? "").trim();
+  const suppliedHead = String(body.headSha ?? "");
+  if (!['ACCEPT', 'REQUEST_CHANGES', 'MERGE'].includes(action)) return json({ error: "Choose accept, request changes, or merge." }, 400);
+  if (reasoning.length < 12) return json({ error: "Add concise reasoning so the engineering record preserves why." }, 400);
+  const basePath = `/repos/${reference.owner}/${reference.repo}`;
+  const pull = await githubJson<{ state: string; draft: boolean; mergeable: boolean | null; head: { sha: string } }>(env, `${basePath}/pulls/${reference.number}`);
+  if (pull.head.sha !== suppliedHead) return json({ error: "The pull request changed after you opened it. Refresh and review the new commit before acting." }, 409);
+  if (pull.state !== "open") return json({ error: "This pull request is no longer open." }, 409);
+  const now = new Date().toISOString();
+  let delivery: { delivery: string; url: string };
+  if (action === "MERGE") {
+    const allowedRole = ["Product Lead", "Tech Lead", "Platform", "Ops Lead"].some((role) => member.role.includes(role));
+    if (!allowedRole) return json({ error: "Your STEER role may review code but is not authorized to merge shared work." }, 403);
+    if (String(body.confirmation ?? "") !== `MERGE ${String(item.key)}`) return json({ error: `Type MERGE ${String(item.key)} to confirm this consequential action.` }, 400);
+    const latest = await db.prepare("SELECT action, head_sha FROM code_reviews WHERE item_id = ? AND repository = ? AND pull_number = ? ORDER BY created_at DESC LIMIT 1").bind(itemId, reference.repository, reference.number).first<{ action: string; head_sha: string }>();
+    if (latest?.action !== "ACCEPT" || latest.head_sha !== pull.head.sha) return json({ error: "Record human acceptance for this exact commit before merging it." }, 409);
+    const status = await githubJson<{ statuses: Array<{ state: string }> }>(env, `${basePath}/commits/${pull.head.sha}/status`).catch(() => ({ statuses: [] }));
+    const runs = await githubJson<{ check_runs: Array<{ status: string; conclusion: string | null }> }>(env, `${basePath}/commits/${pull.head.sha}/check-runs?per_page=100`).catch(() => ({ check_runs: [] }));
+    const reported = status.statuses.length + runs.check_runs.length;
+    const green = reported > 0 && status.statuses.every((check) => check.state === "success") && runs.check_runs.every((check) => check.status === "completed" && ["success", "neutral", "skipped"].includes(check.conclusion ?? ""));
+    if (!green) return json({ error: "All checks for this exact commit must be complete and green before merge." }, 409);
+    if (pull.draft || pull.mergeable === false) return json({ error: "The pull request is draft or not currently mergeable." }, 409);
+    const merged = await githubJson<{ merged: boolean; message: string; sha?: string }>(env, `${basePath}/pulls/${reference.number}/merge`, { method: "PUT", body: JSON.stringify({ sha: pull.head.sha, merge_method: "squash", commit_title: `${String(item.key)}: ${String(item.title)}` }) });
+    if (!merged.merged) return json({ error: merged.message || "GitHub did not merge the pull request." }, 409);
+    delivery = { delivery: "merged", url: `https://github.com/${reference.repository}/pull/${reference.number}` };
+  } else {
+    delivery = await deliverGitHubReview(env, reference, action as "ACCEPT" | "REQUEST_CHANGES", pull.head.sha, reasoning);
+  }
+  await db.batch([
+    db.prepare(`INSERT INTO code_reviews (item_id, repository, pull_number, head_sha, action, reasoning, actor_id, actor_email, github_delivery, github_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(itemId, reference.repository, reference.number, pull.head.sha, action, reasoning, user.id, user.email, delivery.delivery, delivery.url, now),
+    db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'code_review', ?, ?)")
+      .bind(itemId, user.id, `PR #${reference.number}: ${action.replace('_', ' ')} for commit ${pull.head.sha.slice(0, 12)} — ${reasoning}`, now),
+  ]);
+  if (action === "REQUEST_CHANGES") {
+    await db.prepare("UPDATE work_items SET state = 'blocked', next_action = ?, rework_instructions = ?, blocked_since = ?, updated_at = ? WHERE id = ?")
+      .bind(firstRequiredChange(reasoning), reasoning, now, now, itemId).run();
+    if (item.assignee_id) {
+      const recipient = await db.prepare("SELECT role FROM members WHERE id = ?").bind(item.assignee_id).first<{ role: string }>();
+      await db.prepare(`INSERT OR IGNORE INTO notifications (dedupe_key, item_id, member_id, recipient_role, kind, title, body, channel, status, created_at) VALUES (?, ?, ?, ?, 'code_changes_requested', ?, ?, 'Block Buzz', 'queued', ?)`)
+        .bind(`code-review-${itemId}-${pull.head.sha}-changes`, itemId, item.assignee_id, recipient?.role ?? "Work owner", `${String(item.key)} code changes requested`, reasoning, now).run();
+    }
+  } else if (action === "ACCEPT") {
+    await db.prepare("UPDATE work_items SET state = 'active', next_action = 'Human acceptance is recorded for the exact pull-request commit. Complete the separate merge confirmation when ready.', rework_instructions = NULL, blocked_since = NULL, updated_at = ? WHERE id = ?").bind(now, itemId).run();
+  } else if (action === "MERGE") {
+    await db.prepare("UPDATE work_items SET next_action = 'Pull request merged. Verify the deployment or operational outcome, then close this work item.', updated_at = ? WHERE id = ?").bind(now, itemId).run();
+  }
+  return json({ ok: true, action, delivery: delivery.delivery, url: delivery.url }, 201);
+}
+
 export async function handleApi(request: Request, env: Env): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/")) return null;
@@ -809,6 +1044,9 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "POST" && reviewMatch) return runCriticReview(env.DB, user, Number(reviewMatch[1]));
     const dispatchMatch = url.pathname.match(/^\/api\/items\/(\d+)\/dispatch$/);
     if (request.method === "POST" && dispatchMatch) return authorizeAgentDispatch(env.DB, user, Number(dispatchMatch[1]));
+    const codeReviewMatch = url.pathname.match(/^\/api\/items\/(\d+)\/code-review$/);
+    if (request.method === "GET" && codeReviewMatch) return loadCodeReview(env.DB, env, Number(codeReviewMatch[1]));
+    if (request.method === "POST" && codeReviewMatch) return actOnCodeReview(request, env.DB, env, user, Number(codeReviewMatch[1]));
     const workflowMatch = url.pathname.match(/^\/api\/items\/(\d+)\/workflow$/);
     if (request.method === "POST" && workflowMatch) return transitionItem(request, env.DB, user, Number(workflowMatch[1]));
     const decisionMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decisions$/);
