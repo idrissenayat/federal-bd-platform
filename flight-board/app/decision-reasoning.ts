@@ -18,6 +18,40 @@ type GateReview = {
   evidence_sha256: string | null;
 };
 
+export type GateDecisionRecommendation = {
+  action: "APPROVED" | "CHANGES_REQUESTED";
+  label: "AI recommends Approve" | "AI recommends Request changes";
+  reason: string;
+};
+
+export function recommendGateDecision(review: GateReview): GateDecisionRecommendation {
+  if (!review.evidence_sha256) {
+    return {
+      action: "CHANGES_REQUESTED",
+      label: "AI recommends Request changes",
+      reason: "The Critic review is not bound to exact evidence. Attach a resolvable revision and run a fresh review before approval.",
+    };
+  }
+
+  const blockers = review.findings.filter((finding) => finding.severity === "blocker");
+  if (blockers.length) {
+    return {
+      action: "CHANGES_REQUESTED",
+      label: "AI recommends Request changes",
+      reason: `Resolve ${blockers.length} blocking condition${blockers.length === 1 ? "" : "s"} before approval: ${blockers.map((finding) => finding.title).join("; ")}.`,
+    };
+  }
+
+  const concerns = review.findings.filter((finding) => finding.severity === "should-fix");
+  return {
+    action: "APPROVED",
+    label: "AI recommends Approve",
+    reason: concerns.length
+      ? `The exact evidence-bound Critic review found no blocking condition. Preserve ${concerns.length} should-fix concern${concerns.length === 1 ? "" : "s"} as mandatory downstream controls: ${concerns.map((finding) => finding.title).join("; ")}.`
+      : "The exact evidence-bound Critic review found no blocking condition or material concern requiring changes at this gate.",
+  };
+}
+
 function approvalBoundary(gate: string) {
   if (/gate 1/i.test(gate)) return "This approval authorizes Exam design only; it does not authorize credentials, implementation, release, or a later gate.";
   if (/gate 2/i.test(gate)) return "This approval authorizes implementation only against the signed brief and exam; it does not authorize release or Gate 3.";

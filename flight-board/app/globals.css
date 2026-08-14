@@ -509,6 +509,17 @@ body { font-size: 14px; }
 .flow-metrics em,
 .flow-next > div strong { overflow: visible; text-overflow: clip; white-space: normal; }
 
+.radio-card.ai-recommended { background: linear-gradient(145deg, #f0f8e7, #fff7cf); border-color: #b9ce8f; box-shadow: 0 0 0 2px rgba(140,169,82,.1); }
+.radio-card em { color: #5d762d; font-size: 11px; font-style: normal; font-weight: 850; letter-spacing: .06em; line-height: 1.5; margin-bottom: 3px; text-transform: uppercase; }
+.gate-ai-recommendation { background: linear-gradient(145deg, #f0f8e7, #fff8dc); border: 1px solid #bfd095; border-radius: 10px; margin: 0 0 13px; padding: 13px; }
+.gate-ai-recommendation.recommendation-changes { background: linear-gradient(145deg, #fff0f2, #fff6d9); border-color: #e1b4bc; }
+.gate-ai-recommendation header { display: flex; flex-direction: column; gap: 4px; }
+.gate-ai-recommendation header span { color: #627a31; font-size: 11px; font-weight: 850; letter-spacing: .08em; line-height: 1.5; text-transform: uppercase; }
+.gate-ai-recommendation.recommendation-changes header span { color: #a6475b; }
+.gate-ai-recommendation header strong { font-size: 14px; line-height: 1.4; }
+.gate-ai-recommendation p, .gate-ai-recommendation small { color: #64704c; display: block; font-size: 11px; line-height: 1.55; margin: 7px 0 0; }
+.gate-ai-recommendation small { color: #7f806e; }
+
 @media (max-width: 680px) {
   .page-heading h1 { font-size: 32px; }
   .side-nav button { font-size: 12px; }
