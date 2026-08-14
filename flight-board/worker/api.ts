@@ -434,21 +434,39 @@ async function createItem(request: Request, db: Database, user: User) {
   const assigneeId = body.assigneeId ? String(body.assigneeId) : null;
   if (title.length < 3 || description.length < 10) return json({ error: "Add a clear title and description." }, 400);
   if (!phases.includes(phase) || !priorities.includes(priority) || !workflows.includes(workflow)) return json({ error: "Invalid workflow fields." }, 400);
-  const next = await db.prepare("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM work_items").first<{ next_id: number }>();
-  const key = `STR-${String(next?.next_id ?? Date.now()).padStart(3, "0")}`;
   const now = new Date().toISOString();
-  const result = await db.prepare(
-    `INSERT INTO work_items
-     (key, title, description, phase, priority, workflow, state, gate, decision_status,
-      decision_authority, assignee_id, next_action, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'queued', 'Gate 1 pending', 'Waiting', 'Product Lead', ?, ?, ?, ?, ?)`,
-  ).bind(key, title, description, phase, priority, workflow, assigneeId, String(body.nextAction ?? "Frame the intended outcome and prepare Gate 1 evidence."), user.id, now, now).run();
+  let key = "";
+  let result: { meta?: { last_row_id?: number } } | null = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const existing = await db.prepare("SELECT key FROM work_items").all<{ key: string }>();
+    key = nextWorkItemKey((existing.results ?? []).map((item) => item.key));
+    try {
+      result = await db.prepare(
+        `INSERT INTO work_items
+         (key, title, description, phase, priority, workflow, state, gate, decision_status,
+          decision_authority, assignee_id, next_action, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'queued', 'Gate 1 pending', 'Waiting', 'Product Lead', ?, ?, ?, ?, ?)`,
+      ).bind(key, title, description, phase, priority, workflow, assigneeId, String(body.nextAction ?? "Frame the intended outcome and prepare Gate 1 evidence."), user.id, now, now).run();
+      break;
+    } catch (error) {
+      if (!/UNIQUE constraint failed: work_items\.key/i.test(String(error)) || attempt === 2) throw error;
+    }
+  }
+  if (!result) return json({ error: "A unique work-item key could not be reserved. Retry the request." }, 409);
   const itemId = result.meta?.last_row_id;
   if (itemId) {
     await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'created', ?, ?)")
       .bind(itemId, user.id, `${key} created in ${phase}`, now).run();
   }
   return json({ ok: true, key }, 201);
+}
+
+export function nextWorkItemKey(existingKeys: string[]) {
+  const highest = existingKeys.reduce((maximum, key) => {
+    const match = /^STR-(\d+)$/.exec(key);
+    return match ? Math.max(maximum, Number.parseInt(match[1], 10)) : maximum;
+  }, 0);
+  return `STR-${String(highest + 1).padStart(3, "0")}`;
 }
 
 async function updateItem(request: Request, db: Database, user: User, itemId: number) {
