@@ -29,6 +29,13 @@
       "when": 1786636327672,
       "tag": "0003_young_sugar_man",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786717126839,
+      "tag": "0004_plain_thunderbolts",
+      "breakpoints": true
     }
   ]
 }

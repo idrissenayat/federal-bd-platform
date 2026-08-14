@@ -125,3 +125,25 @@ export const notifications = sqliteTable(
     index("idx_notifications_member_status").on(table.memberId, table.status),
   ],
 );
+
+export const codeReviews = sqliteTable(
+  "code_reviews",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    itemId: integer("item_id").notNull(),
+    repository: text("repository").notNull(),
+    pullNumber: integer("pull_number").notNull(),
+    headSha: text("head_sha").notNull(),
+    action: text("action").notNull(),
+    reasoning: text("reasoning").notNull(),
+    actorId: text("actor_id").notNull(),
+    actorEmail: text("actor_email"),
+    githubDelivery: text("github_delivery").notNull(),
+    githubUrl: text("github_url"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("idx_code_reviews_item_created").on(table.itemId, table.createdAt),
+    index("idx_code_reviews_pr_head").on(table.repository, table.pullNumber, table.headSha),
+  ],
+);

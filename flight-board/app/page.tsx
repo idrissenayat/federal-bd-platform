@@ -157,6 +157,21 @@ type BuzzStatus = {
   checked_at: string;
 };
 
+type CodeReviewFinding = AgentFinding;
+
+type CodeReviewData = {
+  connection: { read: boolean; write: boolean; repository: string; message: string };
+  pull_request: {
+    number: number; title: string; body: string | null; url: string; state: string; draft: boolean; mergeable: boolean | null; mergeable_state: string;
+    author: string; base_ref: string; head_ref: string; head_sha: string; additions: number; deletions: number; changed_files: number; commits: number; updated_at: string;
+  };
+  checks: { total: number; failed: number; pending: number; successful: number; all_green: boolean; items: Array<{ name: string; status: string; conclusion: string | null; url: string | null }> };
+  files: Array<{ filename: string; status: string; additions: number; deletions: number; changes: number; patch: string | null; blob_url?: string }>;
+  ai_review: { recommendation: string; summary: string; findings: CodeReviewFinding[]; dependencies: string[]; impacts: string[]; actions: string[]; proposed_change_instructions: string };
+  history: Array<{ id: number; head_sha: string; action: string; reasoning: string; actor_email: string | null; github_delivery: string; github_url: string | null; created_at: string }>;
+  controls: { accepted_head: boolean; can_merge: boolean; merge_confirmation: string; exact_head_required: boolean };
+};
+
 const navigation: { id: View; label: string; icon: string }[] = [
   { id: "my-work", label: "My Work", icon: "✦" },
   { id: "overview", label: "Overview", icon: "◫" },
@@ -187,6 +202,10 @@ const phaseCues: Record<string, string> = {
 function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Recently" : new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
+}
+
+function linkedPullRequest(item: WorkItem) {
+  return [item.evidence_url, item.github_url].some((value) => value && /^https:\/\/github\.com\/idrissenayat\/federal-bd-platform\/pull\/\d+\/?(?:[?#].*)?$/i.test(value));
 }
 
 function initials(name: string | null) {
@@ -288,6 +307,76 @@ function buildChangeRequestDraft(review: AgentReview) {
   ].filter(Boolean).join("\n\n");
 }
 
+function CodeReviewWorkspace({ item, data, loading, saving, error, action, reasoning, confirmation, onAction, onReasoning, onConfirmation, onClose, onRefresh, onSubmit }: {
+  item: WorkItem;
+  data: CodeReviewData | null;
+  loading: boolean;
+  saving: boolean;
+  error: string | null;
+  action: "ACCEPT" | "REQUEST_CHANGES" | "MERGE";
+  reasoning: string;
+  confirmation: string;
+  onAction: (action: "ACCEPT" | "REQUEST_CHANGES" | "MERGE") => void;
+  onReasoning: (value: string) => void;
+  onConfirmation: (value: string) => void;
+  onClose: () => void;
+  onRefresh: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const pull = data?.pull_request;
+  return <div className="code-review-scrim">
+    <section className="code-review-workspace" role="dialog" aria-modal="true" aria-labelledby="code-review-title">
+      <header className="code-review-topbar">
+        <div><span>STEER code review · {item.key}</span><h2 id="code-review-title">{pull ? `PR #${pull.number} · ${pull.title}` : "Loading pull request…"}</h2></div>
+        <div><button type="button" className="secondary-button" disabled={loading} onClick={onRefresh}>{loading ? "Refreshing…" : "Refresh"}</button><button type="button" aria-label="Close code review" onClick={onClose}>×</button></div>
+      </header>
+      {error && <div className="code-review-error"><span>!</span><div><strong>Action needs attention</strong><p>{error}</p></div></div>}
+      {loading && !data ? <div className="code-review-loading"><span>◇</span><strong>Preparing the exact review revision</strong><p>Reading the pull request, checks, and changed files…</p></div> : data && pull ? <div className="code-review-content">
+        <section className="pr-summary-card">
+          <div className="pr-identity"><div><span>{data.connection.repository} · {pull.head_ref} → {pull.base_ref}</span><strong>{pull.title}</strong><p>{pull.body || "No pull-request summary was provided."}</p></div><StatusPill value={pull.draft ? "Draft" : pull.state} kind={pull.draft ? "review" : "ready"} /></div>
+          <dl><div><dt>Exact commit</dt><dd><code>{pull.head_sha.slice(0, 12)}</code></dd></div><div><dt>Files</dt><dd>{pull.changed_files}</dd></div><div><dt>Change</dt><dd><b className="addition">+{pull.additions}</b> <b className="deletion">−{pull.deletions}</b></dd></div><div><dt>Author</dt><dd>@{pull.author}</dd></div></dl>
+          <div className={`github-connection ${data.connection.write ? "connected" : "needs-setup"}`}><span>{data.connection.write ? "✓" : "!"}</span><div><strong>{data.connection.write ? "GitHub actions connected" : "GitHub review is read-only"}</strong><p>{data.connection.message}</p></div></div>
+        </section>
+
+        <section className="code-review-grid">
+          <article className="code-ai-brief">
+            <header><div><span>◇ AI risk brief · advisory</span><h3>{data.ai_review.recommendation}</h3></div><StatusPill value={data.ai_review.findings.some((finding) => finding.severity === "blocker") ? "Action needed" : "Human review"} kind={data.ai_review.findings.some((finding) => finding.severity === "blocker") ? "blocked" : "review"} /></header>
+            <p className="code-ai-summary">{data.ai_review.summary}</p>
+            <div className="code-findings">{data.ai_review.findings.length ? data.ai_review.findings.map((finding, index) => <div className={`code-finding finding-${finding.severity}`} key={`${finding.title}-${index}`}><span>{finding.severity === "blocker" ? "!" : "△"}</span><div><strong>{finding.title}</strong><p>{finding.detail}</p><small>Next: {finding.action}</small></div></div>) : <div className="code-clear"><span>✓</span><div><strong>No material risk signal found</strong><p>Inspect the changed files and confirm the work-item outcome before accepting.</p></div></div>}</div>
+            <div className="code-context-columns"><div><h4>Dependencies</h4><ul>{data.ai_review.dependencies.map((value) => <li key={value}>{value}</li>)}</ul></div><div><h4>Impact</h4><ul>{data.ai_review.impacts.length ? data.ai_review.impacts.map((value) => <li key={value}>{value}</li>) : <li>No additional downstream impact identified.</li>}</ul></div></div>
+          </article>
+
+          <aside className={`check-panel ${data.checks.all_green ? "checks-green" : "checks-blocked"}`}>
+            <header><div><span>Verification</span><h3>{data.checks.all_green ? "All checks are green" : "Merge is blocked"}</h3></div><b>{data.checks.successful}/{data.checks.total}</b></header>
+            <div>{data.checks.items.length ? data.checks.items.map((check) => <div className="check-row" key={check.name}><span>{check.conclusion === "success" || check.conclusion === "neutral" || check.conclusion === "skipped" ? "✓" : check.status !== "completed" ? "…" : "!"}</span><div><strong>{check.name}</strong><small>{check.conclusion ?? check.status}</small></div></div>) : <p>No checks were reported for this commit.</p>}</div>
+            <footer><strong>{data.controls.accepted_head ? "✓ Human acceptance recorded" : "Human acceptance still required"}</strong><small>{data.controls.can_merge ? "This exact commit is eligible for confirmed merge." : "Resolve the signals above before merge."}</small></footer>
+          </aside>
+        </section>
+
+        <section className="changed-files-panel">
+          <header><div><span>Changed files</span><h3>Inspect what will change</h3></div><b>{data.files.length} file{data.files.length === 1 ? "" : "s"}</b></header>
+          <div className="changed-files-list">{data.files.map((file) => <details key={file.filename}><summary><span className={`file-status status-${file.status}`}>{file.status}</span><strong>{file.filename}</strong><small><b className="addition">+{file.additions}</b> <b className="deletion">−{file.deletions}</b></small></summary>{file.patch ? <pre>{file.patch}</pre> : <p>GitHub did not provide an inline patch for this file.</p>}</details>)}</div>
+        </section>
+
+        <form className="code-decision-panel" onSubmit={onSubmit}>
+          <header><div><span>Authenticated human action</span><h3>Record what should happen next</h3></div><code>{pull.head_sha.slice(0, 12)}</code></header>
+          <div className="code-action-options">
+            <label htmlFor="code-action-accept" className={action === "ACCEPT" ? "selected" : ""}><input id="code-action-accept" aria-label="Accept this exact revision" type="radio" name="codeAction" value="ACCEPT" checked={action === "ACCEPT"} onChange={() => onAction("ACCEPT")} /><span><strong>Accept revision</strong><small>Record human acceptance for this exact commit. Merge remains separate.</small></span></label>
+            <label htmlFor="code-action-changes" className={action === "REQUEST_CHANGES" ? "selected" : ""}><input id="code-action-changes" aria-label="Request changes to this revision" type="radio" name="codeAction" value="REQUEST_CHANGES" checked={action === "REQUEST_CHANGES"} onChange={() => { onAction("REQUEST_CHANGES"); if (!reasoning.trim() && data.ai_review.proposed_change_instructions) onReasoning(data.ai_review.proposed_change_instructions); }} /><span><strong>Request changes</strong><small>Send actionable instructions and require a fresh review after the next push.</small></span></label>
+            <label htmlFor="code-action-merge" className={action === "MERGE" ? "selected" : ""}><input id="code-action-merge" aria-label="Merge this accepted revision" type="radio" name="codeAction" value="MERGE" checked={action === "MERGE"} disabled={!data.controls.can_merge} onChange={() => onAction("MERGE")} /><span><strong>Merge accepted revision</strong><small>{data.controls.can_merge ? "Available after acceptance and green checks." : "Locked until this exact commit is accepted and green."}</small></span></label>
+          </div>
+          {action === "REQUEST_CHANGES" && data.ai_review.proposed_change_instructions && <div className="code-ai-draft"><span>◇ AI-proposed instructions · editable</span><pre>{data.ai_review.proposed_change_instructions}</pre><button type="button" onClick={() => onReasoning(data.ai_review.proposed_change_instructions)}>Use this draft</button></div>}
+          <label className="code-reasoning">Reasoning<textarea required minLength={12} value={reasoning} onChange={(event) => onReasoning(event.target.value)} placeholder={action === "ACCEPT" ? "Explain why this exact revision is acceptable." : action === "MERGE" ? "Explain why the accepted revision is ready to merge." : "Give specific, executable change instructions."} /></label>
+          {action === "MERGE" && <label className="merge-confirmation">Final confirmation<span>Type <code>{data.controls.merge_confirmation}</code></span><input required value={confirmation} onChange={(event) => onConfirmation(event.target.value)} placeholder={data.controls.merge_confirmation} /></label>}
+          <footer><div><strong>Human authority stays explicit.</strong><span>Accepting never merges. A new commit invalidates this review.</span></div><button type="submit" disabled={saving || !data.connection.write || (action === "MERGE" && confirmation !== data.controls.merge_confirmation)}>{saving ? "Recording…" : action === "ACCEPT" ? "Record acceptance" : action === "REQUEST_CHANGES" ? "Submit change request" : "Confirm & merge"}</button></footer>
+        </form>
+
+        {data.history.length > 0 && <section className="code-review-history"><header><span>Audit trail</span><h3>Prior actions for this pull request</h3></header>{data.history.map((entry) => <article key={entry.id}><span>{entry.action === "ACCEPT" ? "✓" : entry.action === "MERGE" ? "↗" : "!"}</span><div><strong>{entry.action.replace("_", " ")} · {entry.head_sha.slice(0, 12)}</strong><p>{entry.reasoning}</p><small>{entry.actor_email ?? "Authenticated human"} · {formatDate(entry.created_at)} · {entry.github_delivery}</small></div></article>)}</section>}
+      </div> : null}
+    </section>
+  </div>;
+}
+
 export default function Home() {
   const [data, setData] = useState<Bootstrap | null>(null);
   const [view, setView] = useState<View>("my-work");
@@ -309,6 +398,13 @@ export default function Home() {
   const [buzzCopied, setBuzzCopied] = useState(false);
   const [dispatchingId, setDispatchingId] = useState<number | null>(null);
   const [copiedHandoffId, setCopiedHandoffId] = useState<number | null>(null);
+  const [codeReviewOpen, setCodeReviewOpen] = useState(false);
+  const [codeReviewData, setCodeReviewData] = useState<CodeReviewData | null>(null);
+  const [codeReviewLoading, setCodeReviewLoading] = useState(false);
+  const [codeReviewError, setCodeReviewError] = useState<string | null>(null);
+  const [codeAction, setCodeAction] = useState<"ACCEPT" | "REQUEST_CHANGES" | "MERGE">("ACCEPT");
+  const [codeReasoning, setCodeReasoning] = useState("");
+  const [mergeConfirmation, setMergeConfirmation] = useState("");
 
   async function load() {
     try {
@@ -439,6 +535,63 @@ export default function Home() {
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The notification could not be updated.");
+    }
+  }
+
+  async function loadCodeReview(item: WorkItem) {
+    setCodeReviewLoading(true);
+    try {
+      const payload = await api(`/api/items/${item.id}/code-review`) as CodeReviewData;
+      setCodeReviewData(payload);
+      setCodeReviewError(null);
+      setError(null);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "The pull-request review could not be loaded.";
+      setCodeReviewError(message);
+      setError(message);
+    } finally {
+      setCodeReviewLoading(false);
+    }
+  }
+
+  function openCodeReview(item: WorkItem) {
+    setSelectedId(item.id);
+    setCodeReviewOpen(true);
+    setCodeReviewData(null);
+    setCodeReviewError(null);
+    setCodeAction("ACCEPT");
+    setCodeReasoning("");
+    setMergeConfirmation("");
+    void loadCodeReview(item);
+  }
+
+  function closeCodeReview() {
+    setCodeReviewOpen(false);
+    setCodeReviewData(null);
+    setCodeReviewError(null);
+    setMergeConfirmation("");
+  }
+
+  async function submitCodeReviewAction(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected || !codeReviewData) return;
+    setSaving(true);
+    try {
+      await api(`/api/items/${selected.id}/code-review`, {
+        method: "POST",
+        body: JSON.stringify({ action: codeAction, reasoning: codeReasoning, confirmation: mergeConfirmation, headSha: codeReviewData.pull_request.head_sha }),
+      });
+      await Promise.all([load(), loadCodeReview(selected)]);
+      setCodeAction(codeAction === "ACCEPT" ? "MERGE" : "ACCEPT");
+      setCodeReasoning("");
+      setMergeConfirmation("");
+      setCodeReviewError(null);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "The code-review action could not be completed.";
+      setCodeReviewError(message);
+      setError(message);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -669,6 +822,7 @@ export default function Home() {
 
               <section className="detail-section">
                 <h3>Evidence & engineering record</h3>
+                {linkedPullRequest(selected) && <button type="button" className="open-code-review" onClick={() => openCodeReview(selected)}><span>⌘</span><div><strong>Review pull request inside STEER</strong><small>Summary, checks, changed files, AI risk brief, human action, and confirmed merge</small></div><b>Open →</b></button>}
                 <div className="evidence-links">
                   {selected.evidence_url ? <a href={selected.evidence_url} target="_blank" rel="noreferrer"><span>▤</span><div><strong>Evidence artifact</strong><small>{selected.evidence_url}</small></div><b>↗</b></a> : <div className="missing-evidence">No evidence link attached yet.</div>}
                   {selected.github_url && <a href={selected.github_url} target="_blank" rel="noreferrer"><span>⌂</span><div><strong>GitHub record</strong><small>Authoritative engineering trail</small></div><b>↗</b></a>}
@@ -684,6 +838,23 @@ export default function Home() {
           </aside>
         </div>
       )}
+
+      {selected && codeReviewOpen && <CodeReviewWorkspace
+        item={selected}
+        data={codeReviewData}
+        loading={codeReviewLoading}
+        saving={saving}
+        error={codeReviewError}
+        action={codeAction}
+        reasoning={codeReasoning}
+        confirmation={mergeConfirmation}
+        onAction={setCodeAction}
+        onReasoning={setCodeReasoning}
+        onConfirmation={setMergeConfirmation}
+        onClose={closeCodeReview}
+        onRefresh={() => void loadCodeReview(selected)}
+        onSubmit={submitCodeReviewAction}
+      />}
 
       {createOpen && (
         <div className="modal-scrim">
