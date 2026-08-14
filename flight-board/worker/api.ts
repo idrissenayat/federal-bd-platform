@@ -864,6 +864,117 @@ async function githubJson<T>(env: Env, path: string, init?: RequestInit): Promis
   return payload;
 }
 
+function decodeGitPath(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('"') || !trimmed.endsWith('"')) return trimmed;
+  try {
+    return JSON.parse(trimmed) as string;
+  } catch {
+    return trimmed.slice(1, -1);
+  }
+}
+
+export function parseGitHubPatch(patchText: string): GitHubFile[] {
+  const files: GitHubFile[] = [];
+  let current: (GitHubFile & { lines: string[] }) | null = null;
+
+  const finish = () => {
+    if (!current) return;
+    const { lines, ...file } = current;
+    files.push({ ...file, patch: lines.join("\n").slice(0, 12000) });
+  };
+
+  for (const line of patchText.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      finish();
+      const match = line.match(/^diff --git (?:"a\/(.+)"|a\/(.+)) (?:"b\/(.+)"|b\/(.+))$/);
+      const filename = decodeGitPath(match?.[3] ?? match?.[4] ?? match?.[1] ?? match?.[2] ?? "unknown-file");
+      current = { filename, status: "modified", additions: 0, deletions: 0, changes: 0, lines: [line] };
+      continue;
+    }
+    if (!current) continue;
+    current.lines.push(line);
+    if (line.startsWith("new file mode ")) current.status = "added";
+    else if (line.startsWith("deleted file mode ")) current.status = "removed";
+    else if (line.startsWith("rename to ")) {
+      current.status = "renamed";
+      current.filename = decodeGitPath(line.slice("rename to ".length));
+    } else if (line.startsWith("+") && !line.startsWith("+++")) current.additions += 1;
+    else if (line.startsWith("-") && !line.startsWith("---")) current.deletions += 1;
+    current.changes = current.additions + current.deletions;
+  }
+  finish();
+  return files;
+}
+
+async function patchFingerprint(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function loadPublicPatchSnapshot(
+  reference: PullRequestReference,
+  item: Record<string, unknown>,
+  history: D1Result,
+) {
+  try {
+    const url = `https://github.com/${reference.repository}/pull/${reference.number}.patch`;
+    const response = await fetch(url, {
+      headers: { accept: "text/plain", "user-agent": "steer-flight-board" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) throw new Error(`Public patch returned HTTP ${response.status}.`);
+    const patchText = (await response.text()).slice(0, 1_000_000);
+    const files = parseGitHubPatch(patchText);
+    if (!files.length) throw new Error("The public patch did not contain any changed files.");
+    const fingerprint = await patchFingerprint(patchText);
+    const additions = files.reduce((total, file) => total + file.additions, 0);
+    const deletions = files.reduce((total, file) => total + file.deletions, 0);
+    const checkSummary = { total: 0, failed: 0, pending: 0, successful: 0, all_green: false };
+    const pull = {
+      draft: false,
+      mergeable: null,
+      additions,
+      deletions,
+      changed_files: files.length,
+    };
+    return json({
+      connection: {
+        read: true,
+        write: false,
+        repository: reference.repository,
+        message: "GitHub's public API limit is temporarily exhausted. STEER loaded a public patch snapshot so you can inspect the changed files. Verified checks and actions require the repository credential.",
+      },
+      pull_request: {
+        number: reference.number,
+        title: `PR #${reference.number} public review snapshot`,
+        body: "This read-only snapshot contains the public code changes. Exact branch metadata, check results, and mergeability remain unverified until the GitHub connection is available.",
+        url: `https://github.com/${reference.repository}/pull/${reference.number}`,
+        state: "snapshot",
+        draft: false,
+        mergeable: null,
+        mergeable_state: "unverified",
+        author: "unverified",
+        base_ref: "base branch",
+        head_ref: "public patch",
+        head_sha: `snapshot-${fingerprint}`,
+        additions,
+        deletions,
+        changed_files: files.length,
+        commits: 0,
+        updated_at: new Date().toISOString(),
+      },
+      checks: { ...checkSummary, items: [] },
+      files,
+      ai_review: codeReviewBrief(pull, files, checkSummary),
+      history: history.results ?? [],
+      controls: { accepted_head: false, can_merge: false, merge_confirmation: `MERGE ${String(item.key)}`, exact_head_required: false },
+    });
+  } catch {
+    return json({ error: "GitHub review data is temporarily unavailable. Connect the repository credential or retry after the public limit resets." }, 503);
+  }
+}
+
 export function codeReviewBrief(
   pull: { draft: boolean; mergeable: boolean | null; additions: number; deletions: number; changed_files: number },
   files: GitHubFile[],
@@ -918,17 +1029,25 @@ async function loadCodeReview(db: Database, env: Env, itemId: number) {
   const reference = pullRequestFromItem(item);
   if (!reference) return json({ error: `Attach a pull request from ${allowedGitHubRepository} to this work item's evidence or engineering record.` }, 409);
   const basePath = `/repos/${reference.owner}/${reference.repo}`;
-  const pull = await githubJson<{
+  const history = await db.prepare("SELECT * FROM code_reviews WHERE item_id = ? AND repository = ? AND pull_number = ? ORDER BY created_at DESC LIMIT 20").bind(itemId, reference.repository, reference.number).all();
+  let pull: {
     number: number; title: string; body: string | null; html_url: string; state: string; draft: boolean; mergeable: boolean | null;
     mergeable_state?: string; additions: number; deletions: number; changed_files: number; commits: number; updated_at: string;
     user: { login: string }; base: { ref: string }; head: { ref: string; sha: string };
-  }>(env, `${basePath}/pulls/${reference.number}`);
-  const [files, checkRuns, combinedStatus, history] = await Promise.all([
-    githubJson<GitHubFile[]>(env, `${basePath}/pulls/${reference.number}/files?per_page=100`),
-    githubJson<{ check_runs: Array<{ name: string; status: string; conclusion: string | null; html_url: string | null }> }>(env, `${basePath}/commits/${pull.head.sha}/check-runs?per_page=100`).catch(() => ({ check_runs: [] })),
-    githubJson<{ statuses: Array<{ context: string; state: string; target_url: string | null }> }>(env, `${basePath}/commits/${pull.head.sha}/status`).catch(() => ({ statuses: [] })),
-    db.prepare("SELECT * FROM code_reviews WHERE item_id = ? AND repository = ? AND pull_number = ? ORDER BY created_at DESC LIMIT 20").bind(itemId, reference.repository, reference.number).all(),
-  ]);
+  };
+  let files: GitHubFile[];
+  let checkRuns: { check_runs: Array<{ name: string; status: string; conclusion: string | null; html_url: string | null }> };
+  let combinedStatus: { statuses: Array<{ context: string; state: string; target_url: string | null }> };
+  try {
+    pull = await githubJson(env, `${basePath}/pulls/${reference.number}`);
+    [files, checkRuns, combinedStatus] = await Promise.all([
+      githubJson<GitHubFile[]>(env, `${basePath}/pulls/${reference.number}/files?per_page=100`),
+      githubJson<{ check_runs: Array<{ name: string; status: string; conclusion: string | null; html_url: string | null }> }>(env, `${basePath}/commits/${pull.head.sha}/check-runs?per_page=100`).catch(() => ({ check_runs: [] })),
+      githubJson<{ statuses: Array<{ context: string; state: string; target_url: string | null }> }>(env, `${basePath}/commits/${pull.head.sha}/status`).catch(() => ({ statuses: [] })),
+    ]);
+  } catch {
+    return loadPublicPatchSnapshot(reference, item, history);
+  }
   const checks: GitHubCheck[] = [
     ...checkRuns.check_runs.map((check) => ({ name: check.name, status: check.status, conclusion: check.conclusion, url: check.html_url })),
     ...combinedStatus.statuses.map((status) => ({ name: status.context, status: status.state === "pending" ? "in_progress" : "completed", conclusion: status.state === "success" ? "success" : status.state === "pending" ? null : status.state, url: status.target_url })),
