@@ -40,6 +40,12 @@ test("work-economics UI is responsive and does not rely on color alone", () => {
   assert.match(page, /Conflicting telemetry/);
   assert.match(page, /Partial provider data/);
   assert.match(page, /Contributing WIP items and ranges/);
+  assert.match(page, /Last forecast update:/);
+  assert.match(page, /Target:/);
+  assert.match(page, /entry\.nextMilestone/);
+  assert.match(page, /entry\.updatedAt/);
+  assert.match(page, /Work type/);
+  assert.match(page, /item\.work_type/);
   assert.match(css, /economics-summary-compact span[^}]*font-size:\s*12px/);
   assert.match(css, /economics-record form > button[^}]*color:\s*#39232d/);
 });

@@ -71,6 +71,7 @@ test("material workflow changes require a reforecast", () => {
   assert.match(materialForecastChange(["title", "description"]) ?? "", /scope title changed.*scope description changed/);
   assert.match(materialForecastChange(["assigneeId", "phase"]) ?? "", /owner changed, phase changed/);
   assert.match(materialForecastChange(["gate", "testResult", "dependency", "blocker"]) ?? "", /gate decision.*test result.*dependency.*blocker/);
+  assert.match(materialForecastChange(["workType"]) ?? "", /work type changed/);
 });
 
 test("server-side authority excludes agents and preserves named human roles", () => {
@@ -122,6 +123,9 @@ test("expert judgment is low confidence and Gate 1 requires verified evidence", 
   assert.equal(gateOneValueReady(JSON.stringify({ ...value, evidenceStatus: "unverified" })), false);
   assert.match(validateWorkEconomics("valueHypothesis", { ...value, unit: "US dollars", valueMode: "non-monetary" }) ?? "", /Monetary value language/);
   assert.match(validateWorkEconomics("valueHypothesis", { ...value, unit: "US dollars", valueMode: "monetary", currency: "", period: "" }) ?? "", /currency, period/);
+  assert.match(validateWorkEconomics("valueHypothesis", { ...value, unit: "milliseconds", valueMode: "monetary", currency: "USD", period: "monthly" }) ?? "", /supported native currency unit compatible/);
+  assert.equal(validateWorkEconomics("valueHypothesis", { ...value, unit: "US dollars", valueMode: "monetary", currency: "USD", period: "monthly" }), null);
+  assert.match(validateWorkEconomics("valueHypothesis", { ...value, unit: "EUR", valueMode: "monetary", currency: "USD", period: "monthly" }) ?? "", /compatible/);
 });
 
 test("actual delivery facts fail closed on invalid durations, events, conflicts, and client completion facts", () => {
@@ -168,13 +172,16 @@ test("pull forecast exposes every contributing WIP item and range", () => {
   ], 2, now);
   assert.deepEqual(result.contributors.map((entry) => entry.itemKey), ["STR-017", "STR-018"]);
   assert.ok(result.contributors.every((entry) => entry.earliest && entry.latest));
+  assert.ok(result.contributors.every((entry) => entry.nextMilestone === "Move to Evaluate / QA" && entry.nextMilestoneAt && entry.updatedAt));
 });
 
 test("service levels use only same-POD/work-type completed history and show sample size", () => {
   const actual = (cycleMinutes: number): ActualEconomics => ({ humanRoleTotals: [], agentTelemetry: [], durationFacts: { agentExecutionMinutes: 1, queueMinutes: 1, blockedMinutes: 0, gateWaitMinutes: 0, cycleMinutes }, reworkEvents: [], defectEvents: [], rollbackEvents: [], telemetrySource: "events", completeness: "complete", completionAt: now, likelyVarianceMinutes: null, correctedBy: "member-ops", correctedAt: now, correctionReason: "System facts", advisory: null, acceptanceState: "no proposal" });
-  const records = [60, 90, 120, 150, 180].map((minutes) => ({ pod_id: "pod-a", workflow: "STEER", work_economics: { ...economics(forecast), actualEconomics: actual(minutes) } }));
-  records.push({ pod_id: "pod-b", workflow: "STEER", work_economics: { ...economics(forecast), actualEconomics: actual(999) } });
+  const records = [60, 90, 120, 150, 180].map((minutes, index) => ({ pod_id: "pod-a", workflow: index % 2 ? "STEER" : "Control", work_type: "Platform capability", work_economics: { ...economics(forecast), actualEconomics: actual(minutes) } }));
+  records.push({ pod_id: "pod-a", workflow: "STEER", work_type: "Product feature", work_economics: { ...economics(forecast), actualEconomics: actual(999) } });
+  records.push({ pod_id: "pod-b", workflow: "STEER", work_type: "Platform capability", work_economics: { ...economics(forecast), actualEconomics: actual(999) } });
+  records.push({ pod_id: "pod-a", workflow: "STEER", work_type: "Unclassified", work_economics: { ...economics(forecast), actualEconomics: actual(999) } });
   const result = buildServiceLevelDistributions(records);
   assert.equal(result.length, 1);
-  assert.deepEqual(result[0], { podId: "pod-a", workType: "STEER", sampleSize: 5, percentile: 85, lowHours: 1, medianHours: 2, highHours: 3 });
+  assert.deepEqual(result[0], { podId: "pod-a", workType: "Platform capability", sampleSize: 5, percentile: 85, lowHours: 1, medianHours: 2, highHours: 3 });
 });

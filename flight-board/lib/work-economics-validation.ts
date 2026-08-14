@@ -12,6 +12,23 @@ const allowedAggregateRoles = new Set([
 ]);
 const personKey = /person|employee|email|individual|ranking|rank|score|compensation|utilization|productivity/i;
 const emailValue = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
+const monetaryUnitAliases: Record<string, string> = {
+  "$": "USD", usd: "USD", usdollar: "USD", usdollars: "USD", dollar: "USD", dollars: "USD",
+  "€": "EUR", eur: "EUR", euro: "EUR", euros: "EUR",
+  "£": "GBP", gbp: "GBP", pound: "GBP", pounds: "GBP", poundsterling: "GBP",
+  cad: "CAD", canadiandollar: "CAD", canadiandollars: "CAD",
+  aud: "AUD", australiandollar: "AUD", australiandollars: "AUD",
+  jpy: "JPY", yen: "JPY", japaneseyen: "JPY",
+  chf: "CHF", swissfranc: "CHF", swissfrancs: "CHF",
+  cny: "CNY", yuan: "CNY", renminbi: "CNY",
+  inr: "INR", rupee: "INR", rupees: "INR", indianrupee: "INR", indianrupees: "INR",
+};
+
+function compatibleMonetaryUnit(unit: unknown, currency: unknown) {
+  const currencyCode = String(currency ?? "").trim().toUpperCase();
+  const normalizedUnit = String(unit ?? "").trim().toLowerCase().replace(/[.\s_-]+/g, "");
+  return monetaryUnitAliases[normalizedUnit] === currencyCode;
+}
 
 function ownKeys(value: Record<string, unknown>, allowed: readonly string[], path: string) {
   const unexpected = Object.keys(value).find((key) => !allowed.includes(key));
@@ -104,6 +121,7 @@ function validateValue(value: Record<string, unknown>): string | null {
   }
   const monetary = value.valueMode === "monetary";
   if (monetary && (!present(value.currency) || !present(value.period) || !present(value.assumptions))) return "Monetary value requires currency, period, and visible assumptions.";
+  if (monetary && !compatibleMonetaryUnit(value.unit, value.currency)) return "Monetary value requires a supported native currency unit compatible with the selected currency (for example USD or US dollars with USD).";
   return validateAdvisory(value.advisory ?? null, "valueHypothesis.advisory");
 }
 
@@ -141,7 +159,7 @@ function validateDelivery(value: Record<string, unknown>): string | null {
     if (error) return error;
     if (![value.serviceLevel.podId, value.serviceLevel.workType].every(present) || !nonNegative(value.serviceLevel.sampleSize) || Number(value.serviceLevel.sampleSize) < 5 || !nonNegative(value.serviceLevel.percentile) || !nonNegative(value.serviceLevel.lowHours) || !nonNegative(value.serviceLevel.highHours)) return "Comparable history requires at least five same-POD/work-type observations and a visible distribution.";
   } else if (value.basisKind !== "expert judgment") return "Basis kind must be expert judgment or comparable history.";
-  if (value.blockedSince && (!present(value.unblockOwner) || !present(value.unblockAction) || (!present(value.cannotForecastUntil) && !validIso(value.latestCompletion)))) return "Blocked forecasts require unblock owner/action and a revised window or explicit cannot-forecast dependency.";
+  if (value.blockedSince && (!present(value.unblockOwner) || !present(value.unblockAction) || !present(value.cannotForecastUntil))) return "Blocked forecasts require blocked-since, unblock owner/action, and an explicit cannot-forecast dependency.";
   if (!acceptanceStates.has(String(value.acceptanceState))) return "Choose a valid human acceptance state.";
   return validateAdvisory(value.advisory ?? null, "deliveryForecast.advisory");
 }

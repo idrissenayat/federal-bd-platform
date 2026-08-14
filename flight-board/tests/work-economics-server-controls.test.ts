@@ -42,6 +42,14 @@ const forecast = {
   acceptedBy: "member-a", acceptedAt: "2026-08-14T15:00:00.000Z", updatedAt: "2026-08-14T15:00:00.000Z", changeReason: "Initial forecast", advisory: null, acceptanceState: "no proposal", deliveryOwnerId: "member-a",
 };
 
+function completedActual(cycleMinutes: number) {
+  return {
+    humanRoleTotals: [], agentTelemetry: [], durationFacts: { agentExecutionMinutes: 5, queueMinutes: 2, blockedMinutes: 0, gateWaitMinutes: 1, cycleMinutes },
+    reworkEvents: [], defectEvents: [], rollbackEvents: [], telemetrySource: "workflow events", completeness: "complete", completionAt: "2026-08-14T18:30:00.000Z", likelyVarianceMinutes: 30,
+    correctedBy: "member-a", correctedAt: "2026-08-14T18:30:00.000Z", correctionReason: "Authoritative completed history", advisory: null, acceptanceState: "no proposal",
+  };
+}
+
 async function setup() {
   const db = new D1Database();
   const initialized = await handleApi(request("member-a", "/api/bootstrap"), { DB: db });
@@ -142,4 +150,46 @@ test("actuals normalize queryable delivery facts and replace client completion a
   assert.deepEqual(deliveryEvents, [
     { event_kind: "defect", total: 1 }, { event_kind: "rework", total: 1 }, { event_kind: "rollback", total: 1 },
   ]);
+});
+
+test("comparable service levels use explicit work type and never workflow treatment", async () => {
+  const { db, itemId } = await setup();
+  db.sqlite.prepare("UPDATE members SET role = 'Tech Lead' WHERE id = 'member-a'").run();
+  db.sqlite.prepare("UPDATE work_items SET work_type = 'Platform capability' WHERE id = ?").run(itemId);
+  const insert = db.sqlite.prepare(`INSERT INTO work_items
+    (key,title,description,phase,priority,workflow,work_type,state,gate,decision_status,decision_authority,next_action,pod_id,actual_economics_json,created_by,created_at,updated_at)
+    VALUES (?,?,?,?,?,'STEER','Product feature','complete','Gate 3 passed','Decided','Product Lead','Observe outcome','pod-a',?,'member-a','2026-08-14T14:00:00.000Z','2026-08-14T18:30:00.000Z')`);
+  [60, 90, 120, 150, 180].forEach((minutes, index) => insert.run(`STR-${910 + index}`, `History ${index}`, "Completed unrelated work type", "Observe", "Later", JSON.stringify(completedActual(minutes))));
+  const comparable = { ...forecast, basisKind: "comparable history", confidence: "high", comparableItems: "Five current-POD platform capability items" };
+  const unrelatedResponse = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", { section: "deliveryForecast", value: comparable, reason: "Do not mix workflow with work type" }), { DB: db });
+  assert.equal(unrelatedResponse?.status, 409);
+  db.sqlite.prepare("UPDATE work_items SET workflow = 'Control', work_type = 'Platform capability' WHERE key LIKE 'STR-91%'").run();
+  const matchingResponse = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", { section: "deliveryForecast", value: comparable, reason: "Use exact explicit work-type history" }), { DB: db });
+  assert.equal(matchingResponse?.status, 200, await matchingResponse?.text());
+  const stored = JSON.parse(String(db.sqlite.prepare("SELECT delivery_forecast_json FROM work_items WHERE id = ?").get(itemId)!.delivery_forecast_json));
+  assert.equal(stored.serviceLevel.workType, "Platform capability");
+  assert.equal(stored.serviceLevel.sampleSize, 5);
+});
+
+test("blocked forecast acceptance preserves the authoritative blocker dependency contract", async () => {
+  const { db, itemId } = await setup();
+  db.sqlite.prepare("UPDATE members SET role = 'Tech Lead' WHERE id = 'member-a'").run();
+  const authoritativeBlockedSince = "2026-08-14T16:00:00.000Z";
+  const previous = { ...forecast, blockedSince: authoritativeBlockedSince, unblockOwner: "Tech Lead", unblockAction: "Resolve provider outage", cannotForecastUntil: "Cannot forecast until provider access is restored", reforecastRequiredReason: "state or blocker changed", reforecastRequiredAt: authoritativeBlockedSince };
+  db.sqlite.prepare("UPDATE work_items SET state = 'blocked', blocked_since = ?, delivery_forecast_json = ? WHERE id = ?").run(authoritativeBlockedSince, JSON.stringify(previous), itemId);
+  const erased = { ...forecast, blockedSince: null, unblockOwner: "", unblockAction: "", cannotForecastUntil: "", changeReason: "Attempt to clear blocker contract" };
+  const denied = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", { section: "deliveryForecast", value: erased, reason: "Blocked contract must remain" }), { DB: db });
+  assert.equal(denied?.status, 400);
+  assert.equal(db.sqlite.prepare("SELECT delivery_forecast_json FROM work_items WHERE id = ?").get(itemId)!.delivery_forecast_json, JSON.stringify(previous));
+
+  const valid = { ...forecast, blockedSince: "client-value-must-not-win", unblockOwner: "Tech Lead", unblockAction: "Restore provider access", cannotForecastUntil: "Cannot forecast until provider credentials are restored", changeReason: "Blocked forecast revised with explicit dependency" };
+  const accepted = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", { section: "deliveryForecast", value: valid, reason: "Preserve authoritative blocker contract" }), { DB: db });
+  assert.equal(accepted?.status, 200, await accepted?.text());
+  const stored = JSON.parse(String(db.sqlite.prepare("SELECT delivery_forecast_json FROM work_items WHERE id = ?").get(itemId)!.delivery_forecast_json));
+  assert.equal(stored.blockedSince, authoritativeBlockedSince);
+  assert.equal(stored.unblockOwner, "Tech Lead");
+  assert.match(stored.cannotForecastUntil, /credentials are restored/);
+  const audit = db.sqlite.prepare("SELECT previous_json, replacement_json FROM work_economics_events WHERE item_id = ? AND section = 'deliveryForecast' ORDER BY id DESC LIMIT 1").get(itemId)!;
+  assert.equal(audit.previous_json, JSON.stringify(previous));
+  assert.equal(JSON.parse(String(audit.replacement_json)).blockedSince, authoritativeBlockedSince);
 });

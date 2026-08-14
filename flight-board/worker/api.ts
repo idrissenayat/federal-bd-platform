@@ -5,6 +5,7 @@ import {
   completionVarianceMinutes,
   materialForecastChange,
   serializeSection,
+  WORK_TYPES,
   workEconomicsFromRow,
   type DeliveryForecast,
 } from "../lib/work-economics";
@@ -213,6 +214,7 @@ async function ensureSchema(db: Database) {
       phase text NOT NULL,
       priority text NOT NULL,
       workflow text NOT NULL,
+      work_type text DEFAULT 'Unclassified' NOT NULL,
       state text NOT NULL,
       gate text NOT NULL,
       decision_status text NOT NULL,
@@ -378,6 +380,8 @@ async function ensureSchema(db: Database) {
   await ensureColumn(db, "work_items", "realized_outcome_json", "realized_outcome_json text");
   await ensureColumn(db, "members", "pod_id", "pod_id text NOT NULL DEFAULT 'steer-flight-team'");
   await ensureColumn(db, "work_items", "pod_id", "pod_id text NOT NULL DEFAULT 'steer-flight-team'");
+  await ensureColumn(db, "work_items", "work_type", "work_type text NOT NULL DEFAULT 'Unclassified'");
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_work_items_pod_work_type_state ON work_items (pod_id, work_type, state)").run();
   await ensureColumn(db, "work_items", "delivery_owner_id", "delivery_owner_id text");
   await ensureColumn(db, "work_items", "outcome_owner_id", "outcome_owner_id text");
   await ensureColumn(db, "work_economics_agent_facts", "conflict_reason", "conflict_reason text NOT NULL DEFAULT ''");
@@ -701,11 +705,12 @@ async function createItem(request: Request, db: Database, user: User) {
   const phase = String(body.phase ?? "Sense");
   const priority = String(body.priority ?? "Next");
   const workflow = String(body.workflow ?? "Unassigned");
+  const workType = String(body.workType ?? "Unclassified");
   const assigneeId = body.assigneeId ? String(body.assigneeId) : null;
   const requestedGitHubUrl = String(body.githubUrl ?? "").trim();
   const githubUrl = requestedGitHubUrl ? normalizeEngineeringRecordUrl(requestedGitHubUrl) : null;
   if (title.length < 3 || description.length < 10) return json({ error: "Add a clear title and description." }, 400);
-  if (!phases.includes(phase) || !priorities.includes(priority) || !workflows.includes(workflow)) return json({ error: "Invalid workflow fields." }, 400);
+  if (!phases.includes(phase) || !priorities.includes(priority) || !workflows.includes(workflow) || !WORK_TYPES.includes(workType as typeof WORK_TYPES[number])) return json({ error: "Invalid workflow or work-type fields." }, 400);
   if (requestedGitHubUrl && !githubUrl) return json({ error: `Engineering record must be an issue or pull request from ${allowedGitHubRepository}.` }, 400);
   if (assigneeId) {
     const assignee = await db.prepare("SELECT id FROM members WHERE id = ? AND pod_id = ?").bind(assigneeId, actor.pod_id ?? "steer-flight-team").first<{ id: string }>();
@@ -720,10 +725,10 @@ async function createItem(request: Request, db: Database, user: User) {
     try {
       result = await db.prepare(
         `INSERT INTO work_items
-         (key, title, description, phase, priority, workflow, state, gate, decision_status,
+         (key, title, description, phase, priority, workflow, work_type, state, gate, decision_status,
           decision_authority, assignee_id, next_action, github_url, pod_id, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'queued', 'Gate 1 pending', 'Waiting', 'Product Lead', ?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(key, title, description, phase, priority, workflow, assigneeId, String(body.nextAction ?? "Frame the intended outcome and prepare Gate 1 evidence."), githubUrl, actor.pod_id ?? "steer-flight-team", user.id, now, now).run();
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', 'Gate 1 pending', 'Waiting', 'Product Lead', ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(key, title, description, phase, priority, workflow, workType, assigneeId, String(body.nextAction ?? "Frame the intended outcome and prepare Gate 1 evidence."), githubUrl, actor.pod_id ?? "steer-flight-team", user.id, now, now).run();
       break;
     } catch (error) {
       if (!/UNIQUE constraint failed: work_items\.key/i.test(String(error)) || attempt === 2) throw error;
@@ -756,6 +761,7 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
     phase: { column: "phase", values: phases },
     priority: { column: "priority", values: priorities },
     workflow: { column: "workflow", values: workflows },
+    workType: { column: "work_type", values: [...WORK_TYPES] },
     state: { column: "state", values: states },
     decisionStatus: { column: "decision_status", values: decisionStatuses },
     assigneeId: { column: "assignee_id" },
@@ -944,11 +950,13 @@ async function serverVerifiedEvidence(url: unknown) {
 }
 
 async function authoritativeServiceLevel(db: Database, current: Record<string, unknown>) {
-  const rows = await db.prepare("SELECT * FROM work_items WHERE pod_id = ? AND workflow = ? AND state = 'complete'")
-    .bind(current.pod_id ?? "steer-flight-team", current.workflow).all<Record<string, unknown>>();
+  const workType = String(current.work_type ?? "Unclassified");
+  if (!WORK_TYPES.includes(workType as typeof WORK_TYPES[number]) || workType === "Unclassified") return null;
+  const rows = await db.prepare("SELECT * FROM work_items WHERE pod_id = ? AND work_type = ? AND state = 'complete'")
+    .bind(current.pod_id ?? "steer-flight-team", workType).all<Record<string, unknown>>();
   const now = new Date().toISOString();
   const records = (rows.results ?? []).map((row) => ({ ...row, work_economics: safeEconomicsFromRow(row, now) })) as unknown as Array<Record<string, unknown> & { work_economics: ReturnType<typeof safeEconomicsFromRow> }>;
-  return buildServiceLevelDistributions(records).find((entry) => entry.podId === String(current.pod_id ?? "steer-flight-team") && entry.workType === String(current.workflow)) ?? null;
+  return buildServiceLevelDistributions(records).find((entry) => entry.podId === String(current.pod_id ?? "steer-flight-team") && entry.workType === workType) ?? null;
 }
 
 async function authoritativeCompletionAt(db: Database, current: Record<string, unknown>, itemId: number) {
@@ -973,6 +981,17 @@ async function updateWorkEconomics(request: Request, db: Database, user: User, i
   const value = { ...(body.value as Record<string, unknown>) };
   const now = new Date().toISOString();
   if (section === "deliveryForecast") {
+    if (String(current.state) === "blocked") {
+      value.blockedSince = String(current.blocked_since ?? current.updated_at ?? now);
+      if (![value.unblockOwner, value.unblockAction, value.cannotForecastUntil].every((entry) => typeof entry === "string" && entry.trim().length > 0)) {
+        return json({ error: "Blocked work must retain an unblock owner, unblock action, and cannot-forecast dependency before the forecast can be accepted." }, 400);
+      }
+    } else {
+      value.blockedSince = null;
+      value.unblockOwner = "";
+      value.unblockAction = "";
+      value.cannotForecastUntil = "";
+    }
     const distribution = String(value.basisKind) === "comparable history" ? await authoritativeServiceLevel(db, current) : null;
     if (String(value.basisKind) === "comparable history" && !distribution) return json({ error: "Comparable history is unavailable until five completed same-POD/work-type observations exist." }, 409);
     value.serviceLevel = distribution ? { podId: distribution.podId, workType: distribution.workType, sampleSize: distribution.sampleSize, percentile: distribution.percentile, lowHours: distribution.lowHours, highHours: distribution.highHours } : null;

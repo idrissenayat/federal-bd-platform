@@ -40,11 +40,16 @@ test("Work Economics migration and rollback preserve existing work", () => {
   db.exec(normalizedMigration);
   const deliveryEventMigration = readFileSync(new URL("../drizzle/0007_melodic_the_initiative.sql", import.meta.url), "utf8").replaceAll("--> statement-breakpoint", "");
   db.exec(deliveryEventMigration);
+  const workTypeMigration = readFileSync(new URL("../drizzle/0008_shiny_calypso.sql", import.meta.url), "utf8").replaceAll("--> statement-breakpoint", "");
+  db.exec(workTypeMigration);
   const migrated = db.prepare("SELECT key, title, value_hypothesis_json, delivery_forecast_json, actual_economics_json, realized_outcome_json FROM work_items WHERE key = 'STR-001'").get() as Record<string, unknown>;
   assert.equal(migrated.title, "Existing work");
   assert.equal(migrated.value_hypothesis_json, null);
   assert.equal(migrated.delivery_forecast_json, null);
   assert.equal(db.prepare("SELECT pod_id FROM work_items WHERE key = 'STR-001'").get()!.pod_id, "steer-flight-team");
+  assert.equal(db.prepare("SELECT work_type FROM work_items WHERE key = 'STR-001'").get()!.work_type, "Unclassified");
+  db.prepare("UPDATE work_items SET work_type = 'Platform capability' WHERE key = 'STR-001'").run();
+  assert.equal(db.prepare("SELECT work_type FROM work_items WHERE key = 'STR-001'").get()!.work_type, "Platform capability");
   db.prepare("INSERT INTO work_economics_events (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at) VALUES (1, 'deliveryForecast', 'accepted', 'human-1', 'Tech Lead', NULL, '{}', 'initial', '2026-08-14')").run();
   assert.throws(() => db.exec("UPDATE work_economics_events SET reason = 'changed' WHERE id = 1"), /immutable/);
   assert.throws(() => db.exec("DELETE FROM work_economics_events WHERE id = 1"), /immutable/);
@@ -61,7 +66,7 @@ test("Work Economics migration and rollback preserve existing work", () => {
     VALUES (1, 'rework', 'Engineer', 30, 'Correct independent-test blocker', '2026-08-14', '2026-08-14')`).run();
   assert.equal(db.prepare("SELECT event_kind FROM work_economics_delivery_events WHERE item_id = 1").get()!.event_kind, "rework");
 
-  db.exec("DROP TABLE work_economics_delivery_events; ALTER TABLE work_economics_agent_facts DROP COLUMN conflict_reason; DROP TRIGGER work_economics_events_no_update; DROP TRIGGER work_economics_events_no_delete; DROP TABLE work_economics_agent_facts; DROP TABLE work_economics_duration_facts; DROP TABLE work_economics_human_facts; ALTER TABLE members DROP COLUMN pod_id; ALTER TABLE work_items DROP COLUMN outcome_owner_id; ALTER TABLE work_items DROP COLUMN delivery_owner_id; ALTER TABLE work_items DROP COLUMN pod_id; DROP TABLE work_economics_events; ALTER TABLE work_items DROP COLUMN realized_outcome_json; ALTER TABLE work_items DROP COLUMN actual_economics_json; ALTER TABLE work_items DROP COLUMN delivery_forecast_json; ALTER TABLE work_items DROP COLUMN value_hypothesis_json;");
+  db.exec("DROP INDEX idx_work_items_pod_work_type_state; ALTER TABLE work_items DROP COLUMN work_type; DROP TABLE work_economics_delivery_events; ALTER TABLE work_economics_agent_facts DROP COLUMN conflict_reason; DROP TRIGGER work_economics_events_no_update; DROP TRIGGER work_economics_events_no_delete; DROP TABLE work_economics_agent_facts; DROP TABLE work_economics_duration_facts; DROP TABLE work_economics_human_facts; ALTER TABLE members DROP COLUMN pod_id; ALTER TABLE work_items DROP COLUMN outcome_owner_id; ALTER TABLE work_items DROP COLUMN delivery_owner_id; ALTER TABLE work_items DROP COLUMN pod_id; DROP TABLE work_economics_events; ALTER TABLE work_items DROP COLUMN realized_outcome_json; ALTER TABLE work_items DROP COLUMN actual_economics_json; ALTER TABLE work_items DROP COLUMN delivery_forecast_json; ALTER TABLE work_items DROP COLUMN value_hypothesis_json;");
   const rolledBack = db.prepare("SELECT key, title, next_action FROM work_items WHERE key = 'STR-001'").get() as Record<string, unknown>;
   assert.equal(rolledBack.key, "STR-001");
   assert.equal(rolledBack.title, "Existing work");

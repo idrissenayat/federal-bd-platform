@@ -4,7 +4,7 @@
 
 **Controlling Exam:** `steer/exams/0006-work-economics.md` at approved revision `65c9dcb209a6`
 
-**Trigger:** second-cycle independent Test Agent revision `48a870379418c9bafee0ab5eb726f414c48726eb`
+**Trigger:** final independent Test Agent retest at branch revision `b64e4c1bc300871b4dada8b3296ab1dfa58938fd`, recorded in `steer/evidence/0006-work-economics-test-agent-final-retest.md`
 
 **Boundary:** implementation/test evidence only. Independent retest, Critic, specialists, cooling-off, Gate 3, merge, deploy, and release remain blocked.
 
@@ -21,6 +21,13 @@
 9. Route-level axe reports zero serious/critical findings on the rendered Work Economics surface. Automated endpoint contrast is >=4.5:1; compact text is >=12px. Human keyboard/screen-reader/200% checks still require the Product Designer.
 10. Audit still reports two high and four moderate dependency findings. `0006-dependency-security-disposition.md` records reachability and safe alternatives; an authenticated Security ruling remains mandatory.
 
+Final-retest corrections:
+
+11. Monetary mode now uses an explicit currency-unit alias registry and fails closed unless the native value unit resolves to the declared currency. For example, `milliseconds` with `USD` and `EUR` with `USD` are rejected, while `US dollars` with `USD` is normalized and accepted.
+12. `work_items.work_type` is a persisted, indexed taxonomy field separate from the STEER/Control workflow treatment. Service-level cohorts are now exact same-POD/same-work-type completed items; `Unclassified` records cannot form a cohort.
+13. POD FlowPulse exposes every contributing WIP item's owner, next milestone, next target, completion range, confidence, and last forecast update, including the next expected item.
+14. While authoritative item state is `blocked`, the server binds `blockedSince` to stored state and rejects attempts to clear the unblock owner, unblock action, or cannot-forecast dependency. Valid replacements retain both prior and replacement audit evidence.
+
 Should-fix corrections: pull forecast returns every contributing WIP item/window; gate waits model agent completion and human target separately; permission/conflict/partial/unavailable states name the owner and corrective action; D1 triggers prohibit audit event update/delete; `Rework` is no longer incorrectly treated as an execution hold after the human starts it.
 
 ## Exam map
@@ -32,19 +39,19 @@ Should-fix corrections: pull forecast returns every contributing WIP item/window
 | A-03 | Advisory/acceptance UI; named-owner/POD tests | Product/Tech review |
 | A-04 | Prior/replacement events + D1 immutability trigger test | Platform privilege review |
 | B-01 | Exact value schema + Gate 1 fail-closed test | Product ruling |
-| B-02 | Verified URL, assumptions, monetary semantics validation | Product/Legal ruling |
+| B-02 | Verified URL, assumptions, explicit compatible currency-unit registry, and monetary semantics validation | Product/Legal ruling |
 | B-03 | AI driver/evidence/omission/acceptance rendering test | UX review |
 | C-01 | Per-role/per-provider range schemas and projections | Delivery review |
 | C-02 | Separate calendar/effort fields and UI test | — |
-| C-03 | Dynamic API test rejects fabricated cohort; server derives exact same-POD/work-type distribution | Calibration review after cohort |
+| C-03 | Persisted `work_type` taxonomy is separate from workflow treatment; dynamic API test rejects fabricated/cross-type cohorts and derives exact same-POD/work-type distribution | Calibration review after cohort |
 | C-04 | No conversion/score code; anti-ranking tests | Independent review |
 | C-05 | Exact-schema/current-state named-owner dispatch tests reject stale/late/reforecast records | Tech Lead |
-| D-01 | Complete ForecastSummary used in all named views; static test | Narrow/200% human check |
+| D-01 | Complete ForecastSummary used in all named views; POD pulse renders each contributor's owner, milestone, target, range, confidence, and last update | Narrow/200% human check |
 | D-02 | Phase-exit fields/UI | — |
 | D-03 | State/reason unit tests | — |
 | D-04 | Expanded material-change tests and server hooks | Independent API retest |
 | D-05 | Stale/missed-milestone tests | — |
-| D-06 | Blocked/unblock/dependency schema and reforecast hooks | Workflow UX review |
+| D-06 | Blocked/unblock/dependency schema, authoritative blocked-time binding, fail-closed replacement controls, and immutable replacement audit test | Workflow UX review |
 | D-07 | Separate agent-complete/human-target fields and reason | Human gate review |
 | D-08 | Dynamic actuals-after-completion test proves workflow-derived time and recomputed variance | Calibration review |
 | E-01 | Pull range/item/confidence/freshness tests | — |
@@ -65,18 +72,18 @@ Should-fix corrections: pull forecast returns every contributing WIP item/window
 ## Changed implementation and automated evidence
 
 - Contracts/calculation: `flight-board/lib/work-economics.ts`, `work-economics-validation.ts`
-- Server/storage: `worker/api.ts`, `worker/authorization.ts`, `db/schema.ts`, migrations `0005`, `0006`, and `0007`
+- Server/storage: `worker/api.ts`, `worker/authorization.ts`, `db/schema.ts`, migrations `0005`, `0006`, `0007`, and `0008`
 - Human UI: `app/page.tsx`, `app/globals.css`
 - Tests: work-economics unit, security wiring, migration/rollback, accessibility/contrast, static responsive UI, authorization/rework dispatch, plus the existing application suite
 - Governance: updated data inventory and dependency Security disposition
 
 ## Builder verification result
 
-- `npm test`: 72 passed, 0 failed (production build, 11 static/UI/security tests and 61 TypeScript/API/domain/migration/accessibility/calibration tests).
+- `npm test`: 74 passed, 0 failed (production build, 11 static/UI/security tests and 63 TypeScript/API/domain/migration/accessibility/calibration tests).
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - `git diff --check`: passed.
-- `./scripts/run-semgrep.sh`: passed with 0 blocking findings after replacing Work Economics server stamping with explicit allowlisted assignments.
+- `./scripts/run-semgrep.sh`: 252 rules on 143 tracked targets, 0 findings (one generated snapshot over 1 MB skipped by the repository policy).
 - `uv run pytest tests/test_repository_contract.py -q`: 3 passed.
 - `npm audit --audit-level=critical`: command passed at the configured threshold; report remains 0 critical, 2 high, 4 moderate. Exact non-reachability evidence and unsafe proposed downgrade paths are recorded separately and remain Security-owned.
 

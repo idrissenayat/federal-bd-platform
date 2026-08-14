@@ -1,6 +1,17 @@
 export type Confidence = "low" | "medium" | "high";
 export type ForecastState = "on track" | "at risk" | "late" | "unknown";
 
+export const WORK_TYPES = [
+  "Product feature",
+  "Platform capability",
+  "Defect correction",
+  "Research / discovery",
+  "Operations / infrastructure",
+  "Governance / process",
+  "Unclassified",
+] as const;
+export type WorkType = typeof WORK_TYPES[number];
+
 export type AiAdvisory = {
   source: "AI";
   recommendation: string;
@@ -171,7 +182,7 @@ export type PullForecast = {
   confidence: Confidence | "unknown";
   missingOwners: string[];
   updatedAt: string | null;
-  contributors: Array<{ itemKey: string; owner: string; earliest: string | null; likely: string | null; latest: string | null; confidence: Confidence | "unknown"; state: ForecastState }>;
+  contributors: Array<{ itemKey: string; owner: string; earliest: string | null; likely: string | null; latest: string | null; nextMilestone: string; nextMilestoneAt: string | null; updatedAt: string | null; confidence: Confidence | "unknown"; state: ForecastState }>;
 };
 
 export type ServiceLevelDistribution = { podId: string; workType: string; sampleSize: number; percentile: number; lowHours: number; medianHours: number; highHours: number };
@@ -275,6 +286,9 @@ export function buildPullForecast(items: ForecastableItem[], wipLimit = 2, nowIs
     earliest: item.work_economics.deliveryForecast?.earliestCompletion ?? null,
     likely: item.work_economics.deliveryForecast?.likelyCompletion ?? null,
     latest: item.work_economics.deliveryForecast?.latestCompletion ?? null,
+    nextMilestone: item.work_economics.forecast.nextMilestone,
+    nextMilestoneAt: item.work_economics.forecast.nextMilestoneAt || null,
+    updatedAt: item.work_economics.forecast.lastUpdatedAt,
     confidence: item.work_economics.forecast.confidence,
     state: item.work_economics.forecast.state,
   }));
@@ -307,7 +321,7 @@ export function buildPullForecast(items: ForecastableItem[], wipLimit = 2, nowIs
 }
 
 export function materialForecastChange(keys: string[]) {
-  const labels: Record<string, string> = { title: "scope title changed", description: "scope description changed", phase: "phase changed", state: "state or blocker changed", assigneeId: "owner changed", nextAction: "expected milestone changed", evidenceUrl: "dependency or test evidence changed", priority: "priority changed", workflow: "workflow changed", gate: "gate decision changed", testResult: "test result changed", dependency: "dependency changed", blocker: "blocker changed" };
+  const labels: Record<string, string> = { title: "scope title changed", description: "scope description changed", phase: "phase changed", state: "state or blocker changed", assigneeId: "owner changed", nextAction: "expected milestone changed", evidenceUrl: "dependency or test evidence changed", priority: "priority changed", workflow: "workflow changed", workType: "work type changed", gate: "gate decision changed", testResult: "test result changed", dependency: "dependency changed", blocker: "blocker changed" };
   const changes = keys.filter((key) => key in labels).map((key) => labels[key]);
   return changes.length ? changes.join(", ") : null;
 }
@@ -318,13 +332,14 @@ export function completionVarianceMinutes(forecast: DeliveryForecast | null, com
   return likely === null || completed === null ? null : Math.round((completed - likely) / 60_000);
 }
 
-export function buildServiceLevelDistributions(items: Array<{ pod_id?: unknown; workflow?: unknown; work_economics: WorkEconomicsRecord }>): ServiceLevelDistribution[] {
+export function buildServiceLevelDistributions(items: Array<{ pod_id?: unknown; work_type?: unknown; work_economics: WorkEconomicsRecord }>): ServiceLevelDistribution[] {
   const cohorts = new Map<string, number[]>();
   for (const item of items) {
     const cycleMinutes = item.work_economics.actualEconomics?.durationFacts.cycleMinutes;
     if (typeof cycleMinutes !== "number" || !Number.isFinite(cycleMinutes) || cycleMinutes < 0 || !item.work_economics.actualEconomics?.completionAt) continue;
     const podId = String(item.pod_id ?? "steer-flight-team");
-    const workType = String(item.workflow ?? "unknown");
+    const workType = String(item.work_type ?? "Unclassified");
+    if (!WORK_TYPES.includes(workType as WorkType) || workType === "Unclassified") continue;
     const key = `${podId}\u0000${workType}`;
     cohorts.set(key, [...(cohorts.get(key) ?? []), cycleMinutes / 60]);
   }

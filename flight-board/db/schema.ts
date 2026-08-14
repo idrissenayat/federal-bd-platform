@@ -26,6 +26,7 @@ export const workItems = sqliteTable(
     phase: text("phase").notNull(),
     priority: text("priority").notNull(),
     workflow: text("workflow").notNull(),
+    workType: text("work_type").notNull().default("Unclassified"),
     state: text("state").notNull(),
     gate: text("gate").notNull(),
     decisionStatus: text("decision_status").notNull(),
@@ -51,6 +52,7 @@ export const workItems = sqliteTable(
     index("idx_work_items_phase_state").on(table.phase, table.state),
     index("idx_work_items_decision_status").on(table.decisionStatus),
     index("idx_work_items_assignee").on(table.assigneeId),
+    index("idx_work_items_pod_work_type_state").on(table.podId, table.workType, table.state),
   ],
 );
 
