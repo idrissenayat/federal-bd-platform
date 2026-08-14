@@ -94,7 +94,7 @@
 - **Security:** dependency audit, secret scan, authorization/IDOR tests, membership-at-delivery tests, replay/forgery tests, input validation/escaping, rate-limit tests, and provider-scope review pass.
 - **Privacy/legal:** event data inventory records field, purpose, lawful/organizational basis, audience, retention, deletion, provider location/terms, and monitoring disclosure; named Privacy/Legal authority approves before Gate 3.
 - **Accessibility:** automated axe scan has zero serious/critical issues on changed surfaces; keyboard, screen reader, 200% zoom, narrow-screen, non-color severity, focus, and timezone checks pass.
-- **Performance:** pulse and feed reads must not block authoritative STEER mutations; define and verify a pre-Gate-3 p95 read/render budget from dogfood baseline, and record any exception rather than inventing a threshold now.
+- **Performance:** pulse and feed reads must not block authoritative STEER mutations; define and verify a pre-Gate-3 p95 read/render target from the dogfood baseline, and record any exception rather than inventing a threshold now.
 - **Rollback:** disabling the Buzz adapter is documented and tested without disabling STEER; event backlog, replay decision, provider credential rotation, and pulse recovery steps name the Platform/Ops authority.
 
 ## Outcome instrumentation
