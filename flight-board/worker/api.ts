@@ -918,15 +918,15 @@ async function loadPublicPatchSnapshot(
   history: D1Result,
 ) {
   try {
-    const url = `https://github.com/${reference.repository}/pull/${reference.number}.patch`;
+    const url = `https://github.com/${reference.repository}/pull/${reference.number}.diff`;
     const response = await fetch(url, {
       headers: { accept: "text/plain", "user-agent": "steer-flight-board" },
       signal: AbortSignal.timeout(10000),
     });
-    if (!response.ok) throw new Error(`Public patch returned HTTP ${response.status}.`);
+    if (!response.ok) throw new Error(`Public diff returned HTTP ${response.status}.`);
     const patchText = (await response.text()).slice(0, 1_000_000);
     const files = parseGitHubPatch(patchText);
-    if (!files.length) throw new Error("The public patch did not contain any changed files.");
+    if (!files.length) throw new Error("The public diff did not contain any changed files.");
     const fingerprint = await patchFingerprint(patchText);
     const additions = files.reduce((total, file) => total + file.additions, 0);
     const deletions = files.reduce((total, file) => total + file.deletions, 0);
@@ -943,12 +943,12 @@ async function loadPublicPatchSnapshot(
         read: true,
         write: false,
         repository: reference.repository,
-        message: "GitHub's public API limit is temporarily exhausted. STEER loaded a public patch snapshot so you can inspect the changed files. Verified checks and actions require the repository credential.",
+        message: "GitHub's public API limit is temporarily exhausted. STEER loaded a public diff snapshot so you can inspect the changed files. Verified checks and actions require the repository credential.",
       },
       pull_request: {
         number: reference.number,
         title: `PR #${reference.number} public review snapshot`,
-        body: "This read-only snapshot contains the public code changes. Exact branch metadata, check results, and mergeability remain unverified until the GitHub connection is available.",
+        body: "This read-only snapshot contains the consolidated public code changes. Exact branch metadata, check results, and mergeability remain unverified until the GitHub connection is available.",
         url: `https://github.com/${reference.repository}/pull/${reference.number}`,
         state: "snapshot",
         draft: false,
