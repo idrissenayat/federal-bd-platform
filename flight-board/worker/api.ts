@@ -938,6 +938,7 @@ async function loadPublicPatchSnapshot(
       deletions,
       changed_files: files.length,
     };
+    const aiReview = codeReviewBrief(pull, files, checkSummary);
     return json({
       connection: {
         read: true,
@@ -966,7 +967,8 @@ async function loadPublicPatchSnapshot(
       },
       checks: { ...checkSummary, items: [] },
       files,
-      ai_review: codeReviewBrief(pull, files, checkSummary),
+      ai_review: aiReview,
+      decision_guidance: codeReviewDecisionGuidance(aiReview, checkSummary, false, false),
       history: history.results ?? [],
       controls: { accepted_head: false, can_merge: false, merge_confirmation: `MERGE ${String(item.key)}`, exact_head_required: false },
     });
@@ -1031,6 +1033,41 @@ export function codeReviewBrief(
   return { recommendation, summary, findings: ranked, dependencies: [...new Set(dependencies)].slice(0, 5), impacts: [...new Set(impacts)].slice(0, 4), actions: [...new Set(actions)].slice(0, 5), proposed_change_instructions: proposedChangeInstructions, proposed_acceptance_reasoning: proposedAcceptanceReasoning };
 }
 
+export function codeReviewDecisionGuidance(
+  review: { findings: Finding[] },
+  checks: { all_green: boolean; failed: number; pending: number; total: number },
+  acceptedHead: boolean,
+  canMerge: boolean,
+) {
+  const blockers = review.findings.filter((finding) => finding.severity === "blocker");
+  const concerns = review.findings.filter((finding) => finding.severity === "should-fix");
+  const concernSummary = concerns.length ? ` Confirm the highlighted concern${concerns.length === 1 ? "" : "s"} before recording the decision.` : "";
+  const accept = acceptedHead
+    ? { status: "Already recorded", tone: "complete", reason: "Human acceptance is already bound to this exact commit." }
+    : blockers.length
+      ? { status: "Not recommended", tone: "blocked", reason: `Resolve ${blockers.length} blocking condition${blockers.length === 1 ? "" : "s"} before accepting this revision.` }
+      : { status: "Recommended now", tone: "recommended", reason: `No blocking condition remains and all reported checks are green.${concernSummary}` };
+  const requestChanges = blockers.length
+    ? { status: "Recommended now", tone: "recommended", reason: `The AI review found ${blockers.length} blocking condition${blockers.length === 1 ? "" : "s"}; send the proposed instructions and require a fresh revision.` }
+    : { status: "Not recommended", tone: "neutral", reason: "No blocking defect was found. Use this only if your file review identifies a specific required change." };
+  const merge = canMerge
+    ? { status: "Recommended next", tone: "recommended", reason: "Human acceptance is recorded for this exact commit and every reported check is green." }
+    : !acceptedHead
+      ? { status: "Not ready", tone: "neutral", reason: "Record human acceptance for this exact commit before considering merge." }
+      : !checks.all_green
+        ? { status: "Blocked", tone: "blocked", reason: checks.failed ? "Resolve the failing checks before merge." : checks.pending ? "Wait for the pending checks before merge." : "A complete green check set is required before merge." }
+        : { status: "Not ready", tone: "neutral", reason: "Refresh the pull request and resolve its remaining merge condition before proceeding." };
+  const recommendedAction = canMerge ? "MERGE" : blockers.length ? "REQUEST_CHANGES" : !acceptedHead && checks.all_green ? "ACCEPT" : "WAIT";
+  const headline = recommendedAction === "MERGE" ? "Merge the accepted revision"
+    : recommendedAction === "REQUEST_CHANGES" ? "Request changes before acceptance"
+      : recommendedAction === "ACCEPT" ? "Accept this exact revision"
+        : "Wait for the required signals";
+  const summary = recommendedAction === "ACCEPT" ? accept.reason
+    : recommendedAction === "REQUEST_CHANGES" ? requestChanges.reason
+      : merge.reason;
+  return { recommended_action: recommendedAction, headline, summary, actions: { accept, request_changes: requestChanges, merge } };
+}
+
 async function loadCodeReview(db: Database, env: Env, itemId: number) {
   const item = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
   if (!item) return json({ error: "Work item not found." }, 404);
@@ -1068,12 +1105,14 @@ async function loadCodeReview(db: Database, env: Env, itemId: number) {
   const latest = (history.results ?? [])[0] as Record<string, unknown> | undefined;
   const acceptedHead = latest?.head_sha === pull.head.sha && latest?.action === "ACCEPT";
   const canMerge = pull.state === "open" && !pull.draft && pull.mergeable !== false && checkSummary.all_green && acceptedHead;
+  const aiReview = codeReviewBrief(pull, files, checkSummary);
   return json({
     connection: { read: true, write: Boolean(env.GITHUB_TOKEN), repository: reference.repository, message: env.GITHUB_TOKEN ? "GitHub actions are connected." : "Review is available. A repository credential is still required for GitHub write and merge actions." },
     pull_request: { number: pull.number, title: pull.title, body: pull.body, url: pull.html_url, state: pull.state, draft: pull.draft, mergeable: pull.mergeable, mergeable_state: pull.mergeable_state ?? "unknown", author: pull.user.login, base_ref: pull.base.ref, head_ref: pull.head.ref, head_sha: pull.head.sha, additions: pull.additions, deletions: pull.deletions, changed_files: pull.changed_files, commits: pull.commits, updated_at: pull.updated_at },
     checks: { ...checkSummary, items: uniqueChecks },
     files: files.map((file) => ({ ...file, patch: file.patch?.slice(0, 12000) ?? null })),
-    ai_review: codeReviewBrief(pull, files, checkSummary),
+    ai_review: aiReview,
+    decision_guidance: codeReviewDecisionGuidance(aiReview, checkSummary, acceptedHead, canMerge),
     history: history.results ?? [],
     controls: { accepted_head: acceptedHead, can_merge: canMerge, merge_confirmation: `MERGE ${String(item.key)}`, exact_head_required: true },
   });
