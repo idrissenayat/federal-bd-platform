@@ -13,7 +13,7 @@ operating model.
 | Review | Pull request + fresh-context Critic | Diff, Critic findings, human rulings, and required checks are preserved |
 | Release decision | Gate 3 evidence | Human decision is distinct from green CI and merge permission |
 | Documentation | Repository Markdown | Intent, design, decisions, operations, and learning are versioned with code |
-| Team communication | Block Buzz pilot + GitHub fallback | Named Nostr identities, signed events, spaces, routing, retention, revocation, and durable write-through pass B1 proofs |
+| Team communication | Block Buzz + GitHub evidence | Named identities and signed events pass B1; consequential outcomes link back to authoritative work and evidence |
 | Learning | Metrics ledger + weekly Learning Review | Flow, quality, outcome, cost, and human attention are reviewed and changes are limited |
 
 ## Shared GitHub surfaces
@@ -31,6 +31,10 @@ operating model.
   Hosted agent workers, backup restore, external alerting, and B2 GitHub reconciliation
   remain default-closed under `BUZZ-OPERATING-CONTRACT.md`.
 - **Security Advisories:** confidential vulnerability reporting.
+
+New humans and agents follow `TEAM-ONBOARDING.md`. Block Buzz is the live huddle,
+signals, and agent-coordination layer; GitHub remains the durable engineering and decision
+record. Buzz relay membership and private-channel membership are separate controls.
 
 ## Work states and WIP
 

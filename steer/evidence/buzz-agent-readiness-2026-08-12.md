@@ -172,9 +172,34 @@ Reply event `b02ae2f8857b562123b18b7a9db67c1fba54cf2e542baa7b44360f85351eb0a4` i
 by the cloud Builder public key. Railway restarted the service successfully, and both
 signed events remained queryable afterward. This proves persistent worker startup,
 relay/channel discovery, owner-only routing, model execution, signed reply publication,
-and restart retention. A separate persistent-worker non-owner rejection probe remains
-open before activating additional roles; the earlier shared-relay rejection and
-revocation proofs remain valid.
+and restart retention.
+
+## Persistent owner-only rejection and reconnect control — 2026-08-14
+
+Test Agent
+`692f22559c40755774615c070956134867995f07f54c1f2507b905d3b9bb0a52`
+published signed mention
+`d69e557032ac90987ab3d1bc1a72fa30353a76009167b508390a160b31a6f9ee`
+to Builder in private `steer-huddle`. The event was accepted and remained queryable,
+but Builder published no reply during the response window. Human owner then published
+control mention
+`4c431eb48547e5726d15d0aa6429b3fc1e8ced8744ec364752aa8cd0f8141852`
+in the same channel. Builder replied four seconds later:
+
+> Owner control accepted.
+
+Reply event `19e908ffedd9e42c6455cafae4e9d0ea6ad4b25b94f8e46cc7928f5f3c2fb45f`
+is signed by the persistent Builder identity. The negative probe plus immediate positive
+control proves that `owner-only` rejected the non-owner event while the worker remained
+connected and able to execute authorized work.
+
+Railway logs contained nine brief TLS-close/WebSocket errors between 10:45 and 10:56 UTC.
+Every event recovered on autonomous reconnect attempt 1 and resubscribed to all five
+allowed channels; there were nine successes and no retry escalation or exhausted
+reconnect. The later owner control completed successfully at 13:56 UTC. This is recorded
+as transient connection churn with no observed delivery impact. External alerting and a
+longer observation window remain follow-up controls; heartbeat self-prompting stays off
+because it would invoke the model and is not required for reconnect recovery.
 
 ## Preserved correction trail
 
@@ -187,7 +212,7 @@ STEER communication architecture.
 ## Remaining work
 
 1. Repeat the persistent Railway deployment, owner-only ACP proof, and non-owner
-   rejection probe for the remaining six activated identities.
+   rejection probe for the remaining six identities when each role is activated.
 2. Enroll each human teammate using their own key and GitHub identity; do not mint or
    retain human private keys on their behalf.
 3. Rehearse PostgreSQL restore and define backup coverage for the Railway object bucket;

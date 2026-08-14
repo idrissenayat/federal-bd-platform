@@ -35,6 +35,7 @@
 - [ ] Scope matches the signed brief; no opportunistic additions.
 - [ ] The frozen exam was not weakened to fit the build.
 - [ ] New dependencies and licenses were reviewed.
+- [ ] Every commit is signed off under the Developer Certificate of Origin (`git commit -s`).
 - [ ] No credentials or restricted data entered code, fixtures, logs, prompts, or evidence.
 - [ ] Documentation and rollback/flag notes are updated where applicable.
 - [ ] Gate 3 is still treated as a separate human release decision.

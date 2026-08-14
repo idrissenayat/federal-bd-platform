@@ -1,80 +1,85 @@
-# STEER Agentic SDLC Validation Project
+# STEER — an open Agentic SDLC
 
-This repository is first an evaluation of **STEER as an Agentic SDLC**. The federal business-development platform is the demanding, real-world product used to test the framework—not the main claim being evaluated.
+STEER is an experimental, open-source operating model for delivering software with
+humans and AI agents as one governed team. It combines outcome-oriented work management,
+intent briefs, executable exams, explicit human gates, bounded agent roles, durable
+evidence, and a learning loop that improves the system without silently weakening it.
 
-The product remains important: it must discover credible contract opportunities, analyze fit, recommend a bid/no-bid posture, and move an approved opportunity into the next business-development stage. But shipping that software alone does not prove STEER works. The project must compare STEER with a credible conventional workflow and report speed, quality, human attention, cost, product outcomes, bypasses, and failures.
+STEER is not tied to one industry, model provider, code host, or chat product. An
+organization can adopt the operating model, run the reference Work Management platform,
+create one or more PODs, assign several projects to each POD, and add temporary human or
+agent specialists through permission-scoped adapters.
 
-## Primary research question
+> **Maturity:** experimental / pre-1.0. We use STEER to build STEER and publish the
+> evidence, limitations, and changes. Do not interpret the current pilot as proof that
+> STEER is universally better than Scrum or Kanban.
 
-Does STEER deliver independently useful, verified software outcomes faster or with less qualified human effort than a good Kanban-style control workflow, without degrading quality, safety, cost, or team experience?
+## The distribution
 
-The primary comparison keeps the people, repository, models, tools, CI, and engineering standards as similar as possible. The process changes; the control is not intentionally weakened. Historical human-centric Scrum/Kanban data may provide context, but it is not treated as a clean causal comparison.
+| Layer | Purpose | Current location |
+|---|---|---|
+| **STEER Core** | Vendor-neutral lifecycle, gates, guardrails, roles, templates, metrics, and learning rules | [`steer/`](steer/) and [`docs/steer/`](docs/steer/) |
+| **STEER Work Management** | Reference application for portfolios, PODs, projects, work authorization, reviews, and human decisions | [`flight-board/`](flight-board/) |
+| **STEER Adapters** | Replaceable contracts for work tracking, source control, communication, agents, identity, CI, evidence, and observability | [`docs/steer/TOOL-ADAPTERS.md`](docs/steer/TOOL-ADAPTERS.md) |
+| **STEER Labs** | Real projects that dogfood the framework and produce comparable evidence | Federal BD pilot in [`docs/product/`](docs/product/) |
 
-Read [the STEER experiment charter](steer/EXPERIMENT-CHARTER.md) before the product documents.
+The current application began as a single-POD Federal BD pilot. The governed extension
+to organizations, multiple PODs, multiple projects per POD, and specialist plugins is
+specified in [brief 0004](steer/briefs/0004-multi-pod-platform.md) and its
+[exam](steer/exams/0004-multi-pod-platform.md), tracked by
+[GitHub issue 16](https://github.com/idrissenayat/federal-bd-platform/issues/16). It will
+not enter implementation until STEER Gates 1 and 2 are approved.
 
-## Test vehicle: product boundary
+## Start here
 
-The first release covers federal **contract** opportunities—not grants—and stops after the human bid/no-bid decision creates either a capture record or a no-bid archive entry.
+- **Adopting STEER:** read the [adoption and installation guide](docs/steer/ADOPTION.md).
+- **Understanding the method:** read the [operating model](docs/steer/OPERATING-MODEL.md).
+- **Designing an installation:** read the [reference architecture](docs/steer/REFERENCE-ARCHITECTURE.md)
+  and [tool adapter contracts](docs/steer/TOOL-ADAPTERS.md).
+- **Joining this team:** follow [team onboarding](steer/TEAM-ONBOARDING.md), then use the
+  [Flight Board](https://steer-flight-board.idriss-enayat.chatgpt.site/).
+- **Contributing:** read [CONTRIBUTING.md](CONTRIBUTING.md), [GOVERNANCE.md](GOVERNANCE.md),
+  and [SECURITY.md](SECURITY.md).
 
-The platform will:
-
-1. Discover new and changed notices from approved official sources.
-2. Preserve the raw source and a verifiable provenance record.
-3. Normalize, deduplicate, and connect notice revisions.
-4. Evaluate eligibility, fit, timing, strategic value, risks, and missing information.
-5. Produce an explainable `BID`, `NO_BID`, or `REVIEW` recommendation with citations and confidence.
-6. Require a human decision before advancing to Capture or closing the opportunity.
-7. Record the decision and eventual result so the model can be calibrated.
-
-The platform will not submit responses, contact government personnel, or send external messages without explicit human action. The MVP accepts public, unclassified information only.
-
-## First product flight
-
-The initial vertical slice is:
-
-`SAM.gov notice → immutable evidence → normalized opportunity → contractor-fit analysis → sourced recommendation → human decision → Capture/Archive`
-
-SAM.gov is the live-notice system of record. USAspending award data provides historical context. Agency forecasts and SBA SUBNet are governed follow-on adapters because their interfaces and semantics differ from SAM.gov.
-
-## Repository map
-
-| Path | Purpose |
-|---|---|
-| `steer/` | STEER v2 operating system, briefs, exams, reviews, and signals |
-| `steer/EXPERIMENT-CHARTER.md` | Primary question, control workflow, allocation, measures, and claim rules |
-| `steer/CONTROL-WORKFLOW.md` | Credible agent-assisted Kanban comparison condition |
-| `steer/EXPERIMENT-REGISTER.md` | Frozen configuration, cohort allocation, deviations, and status |
-| `docs/product/` | Product charter, pipeline, decision rubric, and company-profile contract |
-| `docs/architecture/` | System design and trust boundaries |
-| `docs/sources/` | Approved-source register and ingestion rules |
-| `apps/api/` | API boundary; implementation begins after Gates 1 and 2 |
-| `apps/web/` | Analyst review experience; not required for the first ingestion tracer |
-| `workers/ingestion/` | Source polling, evidence capture, parsing, and enrichment |
-| `packages/domain/` | Source-independent opportunity and decision contracts |
-| `tests/fixtures/` | Sanitized official-source fixtures and expected outputs |
-
-## Current status
-
-- Repository and STEER controls: established.
-- STEER-versus-control experiment: defined; baseline execution not started.
-- Product charter, source policy, architecture, and decision rubric: drafted.
-- Brief `0002`: setup tracer drafted.
-- Brief `0003`: first real opportunity-intelligence slice drafted.
-- Gate 1: awaiting product-owner approval and a completed contractor profile.
-- Gate 2: exam drafted; implementation has not started.
-
-Start with [the experiment charter](steer/EXPERIMENT-CHARTER.md), then review [the product charter](docs/product/PRODUCT-CHARTER.md), complete [the company profile](docs/product/COMPANY-PROFILE.md), and approve the first real brief.
-
-Before any product implementation, bootstrap and verify the shared environment:
+To verify a development environment:
 
 ```bash
 ./scripts/bootstrap-environment.sh
 ./scripts/gauntlet.sh
 ```
 
-The readiness levels, evidence, and remaining delivery blockers are recorded in
-[`steer/ENVIRONMENT-READINESS.md`](steer/ENVIRONMENT-READINESS.md).
+The reference Work Management application has its own setup instructions in
+[`flight-board/README.md`](flight-board/README.md).
 
-Team delivery uses the shared surfaces and rules in
-[`steer/TEAM-ENVIRONMENT.md`](steer/TEAM-ENVIRONMENT.md), with communication and
-escalation routing in [`steer/TEAM-COMMUNICATION.md`](steer/TEAM-COMMUNICATION.md).
+## The operating boundary
+
+The durable work hierarchy is:
+
+```text
+Organization
+└── POD (stable human + agent delivery unit)
+    ├── Project
+    │   └── Work item → brief → exam → build → evidence → human ruling
+    └── Specialist attachment (temporary, scoped, revocable)
+```
+
+Work Management authorizes work. Team communication coordinates it. The engineering
+system preserves implementation evidence. A chat message, agent suggestion, or green CI
+check cannot substitute for an authenticated human gate.
+
+## First reference project
+
+The Federal BD pilot tests whether STEER can deliver a demanding product while being
+compared with a credible agent-assisted Kanban control. It discovers official federal
+contract opportunities, preserves evidence, evaluates fit, recommends `BID`, `NO_BID`,
+or `REVIEW`, and requires a human decision before advancing. Its original repository
+framing is preserved in [the initial pilot README](docs/history/INITIAL-PILOT-README.md).
+
+## License
+
+The proposed distribution license is [Apache License 2.0](LICENSE). It permits commercial
+and non-commercial use, modification, and redistribution under its terms and includes an
+explicit patent license. The draft license becomes the repository's governing license
+only when this change is reviewed and merged.
+
+Copyright 2026 STEER contributors.

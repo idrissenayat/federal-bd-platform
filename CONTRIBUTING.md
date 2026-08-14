@@ -1,8 +1,11 @@
-# Contributing through STEER
+# Contributing to STEER
 
-This repository is an experiment in the STEER Agentic SDLC. The written contract and
-the process evidence are part of the deliverable; a working feature without them is not
-complete.
+STEER welcomes framework, platform, adapter, documentation, research, design, security,
+and reference-project contributions. The written contract and process evidence are part
+of the deliverable; a working feature without them is not complete.
+
+By participating, follow the [Code of Conduct](CODE_OF_CONDUCT.md) and
+[project governance](GOVERNANCE.md). Ask in an issue before investing in a large change.
 
 ## Before opening a build branch
 
@@ -33,6 +36,20 @@ green. A red check blocks merge; correct a bad check in its own reviewed change.
 Gate 3 is a release decision, not merely a code-review approval. No PR approval, merge,
 or green check may be represented as permission to expose the change to users unless the
 item's Gate 3 requirements are also satisfied.
+
+## Contributor certification
+
+Contributions use the [Developer Certificate of Origin 1.1](https://developercertificate.org/).
+Add a sign-off to each commit:
+
+```bash
+git commit -s -m "Describe the change"
+```
+
+The sign-off certifies that you have the right to submit the contribution under this
+project's license. Do not submit employer-owned or third-party material without authority
+and compatible terms. AI assistance does not remove your responsibility for provenance,
+correctness, security, attribution, or license compatibility.
 
 ## Scope and data safety
 

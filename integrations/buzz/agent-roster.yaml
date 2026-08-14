@@ -5,7 +5,7 @@ platform:
   deployment_stage: railway-shared-b1
   relay_url: wss://blockbuzzmain-production-5bcb.up.railway.app
   railway_project: steer-block-buzz
-  hosted_agent_workers: blocked-pending-provider-service-credentials
+  hosted_agent_workers: builder-online-1-of-7
   reference_agent_identities: enrolled-7-of-7
   authority: github-and-versioned-steer
 
@@ -140,5 +140,5 @@ credential_policy:
   committed: false
   displayed_in_logs_or_evidence: false
   rotation_and_revocation_test_required: true
-  hosted_provider_credentials_configured: false
+  hosted_provider_credentials_configured: builder-only
   hosted_secret_destination: railway-service-variables

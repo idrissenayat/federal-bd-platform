@@ -22,7 +22,7 @@ incurring provider cost before a role is needed.
 |---|---|---|---|
 | `scout` | Scout | Enrolled; lane selected at activation | Evidence-backed signals and candidate briefs only |
 | `architect` | Architect | Enrolled; lane selected at activation | Options and trade-offs; no production code |
-| `builder` | Builder | Enrolled; Codex worker not hosted | Signed brief and assigned branch only |
+| `builder` | Builder | Online in Railway; owner-only OpenAI-compatible worker | Signed brief and explicitly authorized assigned work only |
 | `test-agent` | Test Agent | Enrolled; Codex worker not hosted | Exam and verification evidence only |
 | `critic` | Critic | Enrolled; Claude worker not hosted | Fresh context; findings only |
 | `docs-agent` | Docs Agent | Enrolled; lane selected at activation | Evidence-bounded docs and release notes |
