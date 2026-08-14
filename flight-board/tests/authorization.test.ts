@@ -36,6 +36,12 @@ test("blocks execution while a human gate is pending", () => {
   assert.ok(result.missing.includes("Human holds are clear"));
 });
 
+test("allows evidence preparation while the next gate is waiting", () => {
+  const result = evaluateAgentDispatch({ ...readyItem, gate: "Gate 2 pending", decision_status: "Waiting" });
+  assert.equal(result.authorized, true);
+  assert.ok(!result.missing.includes("Human holds are clear"));
+});
+
 test("blocks queued work even when every other field is complete", () => {
   const result = evaluateAgentDispatch({ ...readyItem, state: "queued" });
   assert.equal(result.authorized, false);
