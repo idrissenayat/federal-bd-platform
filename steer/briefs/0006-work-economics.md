@@ -2,7 +2,7 @@
 
 **Status:** draft
 
-**Tags:** #privacy #reliability #design-system #money
+**Tags:** #security #privacy #reliability #legal #design-system #money
 
 **Date opened:** 2026-08-14
 
@@ -123,6 +123,15 @@ The backlog uses short native-unit summaries rather than one synthetic score. Se
 - **Causal attribution:** a positive metric movement may have other causes. Outcome verification records confidence and competing explanations.
 
 This brief touches privacy-sensitive work telemetry and financial reporting semantics. The implementation is therefore default-closed if it adds personal-data storage or changes schema. Gate 2 must include a data inventory, purpose and retention rules, access controls, correction/audit behavior, a threat-model paragraph, migration and rollback tests, and evidence that no individual scoring is exposed.
+
+The control plan is explicit:
+
+- the Interim Tech Lead owns Gate 2 and must verify that the exam covers the data inventory, access controls, retention, audit trail, migration, rollback, and every UI state named above;
+- the Security Owner reviews authentication, authorization, least privilege, telemetry integrity, and the threat model;
+- the Product Lead owns privacy-purpose and financial-claim semantics and must reject unsupported ROI or productivity claims;
+- the Product Designer reviews the responsive decision hierarchy, accessibility, and disclosure of AI versus human authority;
+- the Platform / Ops Lead reviews provider-cost provenance, missing-telemetry behavior, reliability, and operational rollback; and
+- Gate 3 requires the Product Lead, Tech Lead, and every tagged domain owner. Solo mode waits at least 24 hours before the Gate 3 ruling; team mode requires the named specialist signatures. The exact artifact revisions and the fresh-context Critic evidence remain attached to the ruling.
 
 ## Chosen approach
 
