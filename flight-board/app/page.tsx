@@ -159,6 +159,14 @@ type BuzzStatus = {
 
 type CodeReviewFinding = AgentFinding;
 
+type CodeDecisionOption = { status: string; tone: string; reason: string };
+type CodeDecisionGuidance = {
+  recommended_action: "ACCEPT" | "REQUEST_CHANGES" | "MERGE" | "WAIT";
+  headline: string;
+  summary: string;
+  actions: { accept: CodeDecisionOption; request_changes: CodeDecisionOption; merge: CodeDecisionOption };
+};
+
 type CodeReviewData = {
   connection: { read: boolean; write: boolean; repository: string; message: string };
   pull_request: {
@@ -167,7 +175,8 @@ type CodeReviewData = {
   };
   checks: { total: number; failed: number; pending: number; successful: number; all_green: boolean; items: Array<{ name: string; status: string; conclusion: string | null; url: string | null }> };
   files: Array<{ filename: string; status: string; additions: number; deletions: number; changes: number; patch: string | null; blob_url?: string }>;
-  ai_review: { recommendation: string; summary: string; findings: CodeReviewFinding[]; dependencies: string[]; impacts: string[]; actions: string[]; proposed_change_instructions: string; proposed_acceptance_reasoning: string };
+  ai_review: { recommendation: string; summary: string; findings: CodeReviewFinding[]; dependencies: string[]; impacts: string[]; actions: string[]; proposed_change_instructions: string; proposed_acceptance_reasoning?: string };
+  decision_guidance?: CodeDecisionGuidance;
   history: Array<{ id: number; head_sha: string; action: string; reasoning: string; actor_email: string | null; github_delivery: string; github_url: string | null; created_at: string }>;
   controls: { accepted_head: boolean; can_merge: boolean; merge_confirmation: string; exact_head_required: boolean };
 };
@@ -206,6 +215,45 @@ function formatDate(value: string) {
 
 function linkedPullRequest(item: WorkItem) {
   return [item.evidence_url, item.github_url].some((value) => value && /^https:\/\/github\.com\/idrissenayat\/federal-bd-platform\/pull\/\d+\/?(?:[?#].*)?$/i.test(value));
+}
+
+function acceptanceReasoningDraft(data: CodeReviewData) {
+  const supplied = data.ai_review.proposed_acceptance_reasoning?.trim();
+  if (supplied) return supplied;
+  const blockers = data.ai_review.findings.filter((finding) => finding.severity === "blocker");
+  if (blockers.length) return `AI does not recommend acceptance while ${blockers.length} blocking condition${blockers.length === 1 ? " remains" : "s remain"}. If you override this recommendation, replace this text with the evidence and authority for that exception.`;
+  const concerns = data.ai_review.findings.filter((finding) => finding.severity === "should-fix").map((finding) => finding.title);
+  return [
+    "All reported checks are complete and green, and the available review shows no blocking condition for this revision.",
+    concerns.length ? `I reviewed the highlighted concern${concerns.length === 1 ? "" : "s"} (${concerns.join("; ")}) against the work-item outcome and find the documented controls and follow-up boundaries acceptable.` : "I reviewed the changed files against the work-item outcome and found no material concern that requires rework.",
+    "This acceptance applies only to the exact displayed commit. It does not authorize merge, and any new push requires a fresh review.",
+  ].join(" ");
+}
+
+function fallbackDecisionGuidance(data: CodeReviewData): CodeDecisionGuidance {
+  const blockers = data.ai_review.findings.filter((finding) => finding.severity === "blocker").length;
+  const accept: CodeDecisionOption = blockers
+    ? { status: "Not recommended", tone: "blocked", reason: `Resolve ${blockers} blocking condition${blockers === 1 ? "" : "s"} before accepting this revision.` }
+    : { status: "Recommended now", tone: "recommended", reason: "No blocking condition remains. Confirm the highlighted concerns, then record acceptance for this exact commit." };
+  const requestChanges: CodeDecisionOption = blockers
+    ? { status: "Recommended now", tone: "recommended", reason: "Send the AI-proposed instructions and require a fresh revision." }
+    : { status: "Not recommended", tone: "neutral", reason: "No blocking defect was found. Use this only if your file review identifies a specific required change." };
+  const merge: CodeDecisionOption = data.controls.can_merge
+    ? { status: "Recommended next", tone: "recommended", reason: "Acceptance is recorded and every reported check is green." }
+    : { status: "Not ready", tone: "neutral", reason: data.controls.accepted_head ? "Resolve the remaining merge condition first." : "Record human acceptance for this exact commit first." };
+  const recommendedAction = data.controls.can_merge ? "MERGE" : blockers ? "REQUEST_CHANGES" : data.checks.all_green ? "ACCEPT" : "WAIT";
+  const headline = recommendedAction === "MERGE" ? "Merge the accepted revision" : recommendedAction === "REQUEST_CHANGES" ? "Request changes before acceptance" : recommendedAction === "ACCEPT" ? "Accept this exact revision" : "Wait for the required signals";
+  return { recommended_action: recommendedAction, headline, summary: recommendedAction === "MERGE" ? merge.reason : recommendedAction === "REQUEST_CHANGES" ? requestChanges.reason : recommendedAction === "ACCEPT" ? accept.reason : merge.reason, actions: { accept, request_changes: requestChanges, merge } };
+}
+
+function decisionGuidance(data: CodeReviewData) {
+  return data.decision_guidance ?? fallbackDecisionGuidance(data);
+}
+
+function reasoningDraftForAction(data: CodeReviewData, action: "ACCEPT" | "REQUEST_CHANGES" | "MERGE") {
+  if (action === "ACCEPT") return acceptanceReasoningDraft(data);
+  if (action === "REQUEST_CHANGES") return data.ai_review.proposed_change_instructions || "Describe the specific change required, why it blocks this revision, and what evidence must accompany the next review.";
+  return "Human acceptance is recorded for this exact commit, every reported check is green, and the accepted revision is ready for the separate confirmed merge action.";
 }
 
 function initials(name: string | null) {
@@ -332,6 +380,8 @@ function CodeReviewWorkspace({ item, data, loading, saving, error, action, reaso
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const pull = data?.pull_request;
+  const guidance = data ? decisionGuidance(data) : null;
+  const acceptanceDraft = data ? acceptanceReasoningDraft(data) : "";
   return <div className="code-review-scrim">
     <section className="code-review-workspace" role="dialog" aria-modal="true" aria-labelledby="code-review-title">
       <header className="code-review-topbar">
@@ -368,11 +418,13 @@ function CodeReviewWorkspace({ item, data, loading, saving, error, action, reaso
 
         <form className="code-decision-panel" onSubmit={onSubmit}>
           <header><div><span>Authenticated human action</span><h3>Record what should happen next</h3></div><code>{pull.head_sha.slice(0, 12)}</code></header>
+          {guidance && <div className={`code-action-recommendation recommendation-${guidance.recommended_action.toLowerCase().replace("_", "-")}`}><span>◇ AI recommendation · advisory</span><strong>{guidance.headline}</strong><p>{guidance.summary} The authenticated human remains responsible for the decision.</p></div>}
           <div className="code-action-options">
-            <label htmlFor="code-action-accept" className={action === "ACCEPT" ? "selected" : ""}><input id="code-action-accept" aria-label="Accept this exact revision" type="radio" name="codeAction" value="ACCEPT" checked={action === "ACCEPT"} onChange={() => { onAction("ACCEPT"); onReasoning(data.ai_review.proposed_acceptance_reasoning); }} /><span><strong>Accept revision</strong><small>Record human acceptance for this exact commit. Merge remains separate.</small></span></label>
-            <label htmlFor="code-action-changes" className={action === "REQUEST_CHANGES" ? "selected" : ""}><input id="code-action-changes" aria-label="Request changes to this revision" type="radio" name="codeAction" value="REQUEST_CHANGES" checked={action === "REQUEST_CHANGES"} onChange={() => { onAction("REQUEST_CHANGES"); onReasoning(data.ai_review.proposed_change_instructions); }} /><span><strong>Request changes</strong><small>Send actionable instructions and require a fresh review after the next push.</small></span></label>
-            <label htmlFor="code-action-merge" className={action === "MERGE" ? "selected" : ""}><input id="code-action-merge" aria-label="Merge this accepted revision" type="radio" name="codeAction" value="MERGE" checked={action === "MERGE"} disabled={!data.controls.can_merge} onChange={() => onAction("MERGE")} /><span><strong>Merge accepted revision</strong><small>{data.controls.can_merge ? "Available after acceptance and green checks." : "Locked until this exact commit is accepted and green."}</small></span></label>
+            <label htmlFor="code-action-accept" className={action === "ACCEPT" ? "selected" : ""}><input id="code-action-accept" aria-label="Accept this exact revision" type="radio" name="codeAction" value="ACCEPT" checked={action === "ACCEPT"} onChange={() => { onAction("ACCEPT"); onReasoning(reasoningDraftForAction(data, "ACCEPT")); }} /><span><em className={`ai-action-status tone-${guidance?.actions.accept.tone ?? "neutral"}`}>◇ AI · {guidance?.actions.accept.status ?? "Review"}</em><strong>Accept revision</strong><small>{guidance?.actions.accept.reason ?? "Record human acceptance for this exact commit. Merge remains separate."}</small></span></label>
+            <label htmlFor="code-action-changes" className={action === "REQUEST_CHANGES" ? "selected" : ""}><input id="code-action-changes" aria-label="Request changes to this revision" type="radio" name="codeAction" value="REQUEST_CHANGES" checked={action === "REQUEST_CHANGES"} onChange={() => { onAction("REQUEST_CHANGES"); onReasoning(reasoningDraftForAction(data, "REQUEST_CHANGES")); }} /><span><em className={`ai-action-status tone-${guidance?.actions.request_changes.tone ?? "neutral"}`}>◇ AI · {guidance?.actions.request_changes.status ?? "Review"}</em><strong>Request changes</strong><small>{guidance?.actions.request_changes.reason ?? "Send actionable instructions and require a fresh review after the next push."}</small></span></label>
+            <label htmlFor="code-action-merge" className={action === "MERGE" ? "selected" : ""}><input id="code-action-merge" aria-label="Merge this accepted revision" type="radio" name="codeAction" value="MERGE" checked={action === "MERGE"} disabled={!data.controls.can_merge} onChange={() => { onAction("MERGE"); onReasoning(reasoningDraftForAction(data, "MERGE")); }} /><span><em className={`ai-action-status tone-${guidance?.actions.merge.tone ?? "neutral"}`}>◇ AI · {guidance?.actions.merge.status ?? "Review"}</em><strong>Merge accepted revision</strong><small>{guidance?.actions.merge.reason ?? (data.controls.can_merge ? "Available after acceptance and green checks." : "Locked until this exact commit is accepted and green.")}</small></span></label>
           </div>
+          {action === "ACCEPT" && acceptanceDraft && <div className="code-ai-draft acceptance-draft"><span>◇ AI-proposed acceptance reasoning · editable</span><pre>{acceptanceDraft}</pre><button type="button" onClick={() => onReasoning(acceptanceDraft)}>Restore AI draft</button></div>}
           {action === "REQUEST_CHANGES" && data.ai_review.proposed_change_instructions && <div className="code-ai-draft"><span>◇ AI-proposed instructions · editable</span><pre>{data.ai_review.proposed_change_instructions}</pre><button type="button" onClick={() => onReasoning(data.ai_review.proposed_change_instructions)}>Use this draft</button></div>}
           <label className="code-reasoning">Reasoning<textarea required minLength={12} value={reasoning} onChange={(event) => onReasoning(event.target.value)} placeholder={action === "ACCEPT" ? "Explain why this exact revision is acceptable." : action === "MERGE" ? "Explain why the accepted revision is ready to merge." : "Give specific, executable change instructions."} /></label>
           {action === "MERGE" && <label className="merge-confirmation">Final confirmation<span>Type <code>{data.controls.merge_confirmation}</code></span><input required value={confirmation} onChange={(event) => onConfirmation(event.target.value)} placeholder={data.controls.merge_confirmation} /></label>}
@@ -546,14 +598,22 @@ export default function Home() {
     }
   }
 
-  async function loadCodeReview(item: WorkItem) {
+  async function loadCodeReview(item: WorkItem, initializeDecision = false) {
     setCodeReviewLoading(true);
     try {
       const payload = await api(`/api/items/${item.id}/code-review`) as CodeReviewData;
       setCodeReviewData(payload);
-      setCodeReasoning((current) => current.trim() ? current : payload.ai_review.proposed_acceptance_reasoning);
+      if (initializeDecision) {
+        const recommended = decisionGuidance(payload).recommended_action;
+        const initialAction = recommended === "REQUEST_CHANGES" ? "REQUEST_CHANGES" : recommended === "MERGE" ? "MERGE" : "ACCEPT";
+        setCodeAction(initialAction);
+        setCodeReasoning(reasoningDraftForAction(payload, initialAction));
+      } else {
+        setCodeReasoning((current) => current.trim() ? current : reasoningDraftForAction(payload, codeAction));
+      }
       setCodeReviewError(null);
       setError(null);
+      return payload;
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "The pull-request review could not be loaded.";
       setCodeReviewError(message);
@@ -571,7 +631,7 @@ export default function Home() {
     setCodeAction("ACCEPT");
     setCodeReasoning("");
     setMergeConfirmation("");
-    void loadCodeReview(item);
+    void loadCodeReview(item, true);
   }
 
   function closeCodeReview() {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { codeReviewBrief, parseGitHubPatch, pullRequestFromItem } from "../worker/api";
+import { codeReviewBrief, codeReviewDecisionGuidance, parseGitHubPatch, pullRequestFromItem } from "../worker/api";
 
 test("only accepts pull requests from the configured repository", () => {
   assert.deepEqual(
@@ -54,6 +54,36 @@ test("prepares acceptance reasoning that acknowledges highlighted concerns", () 
   assert.equal(review.recommendation, "Review highlighted concerns");
   assert.match(review.proposed_acceptance_reasoning, /High-impact controls changed/);
   assert.match(review.proposed_acceptance_reasoning, /does not authorize merge/);
+});
+
+test("recommends each human code-review action at the right point", () => {
+  const clearReview = codeReviewBrief(
+    { draft: false, mergeable: true, additions: 8, deletions: 2, changed_files: 2 },
+    [
+      { filename: "app/card.tsx", status: "modified", additions: 6, deletions: 2, changes: 8 },
+      { filename: "tests/card.test.ts", status: "modified", additions: 2, deletions: 0, changes: 2 },
+    ],
+    { all_green: true, failed: 0, pending: 0, total: 2 },
+  );
+  const acceptGuidance = codeReviewDecisionGuidance(clearReview, { all_green: true, failed: 0, pending: 0, total: 2 }, false, false);
+  assert.equal(acceptGuidance.recommended_action, "ACCEPT");
+  assert.equal(acceptGuidance.actions.accept.status, "Recommended now");
+  assert.equal(acceptGuidance.actions.request_changes.status, "Not recommended");
+  assert.equal(acceptGuidance.actions.merge.status, "Not ready");
+
+  const mergeGuidance = codeReviewDecisionGuidance(clearReview, { all_green: true, failed: 0, pending: 0, total: 2 }, true, true);
+  assert.equal(mergeGuidance.recommended_action, "MERGE");
+  assert.equal(mergeGuidance.actions.merge.status, "Recommended next");
+
+  const blockedReview = codeReviewBrief(
+    { draft: false, mergeable: true, additions: 8, deletions: 2, changed_files: 2 },
+    [{ filename: "app/card.tsx", status: "modified", additions: 8, deletions: 2, changes: 10 }],
+    { all_green: false, failed: 1, pending: 0, total: 2 },
+  );
+  const changeGuidance = codeReviewDecisionGuidance(blockedReview, { all_green: false, failed: 1, pending: 0, total: 2 }, false, false);
+  assert.equal(changeGuidance.recommended_action, "REQUEST_CHANGES");
+  assert.equal(changeGuidance.actions.request_changes.status, "Recommended now");
+  assert.equal(changeGuidance.actions.accept.status, "Not recommended");
 });
 
 test("turns a public GitHub patch into reviewable changed files", () => {
