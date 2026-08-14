@@ -72,6 +72,36 @@ function json(data: unknown, status = 200) {
   });
 }
 
+export function normalizeEngineeringRecordUrl(input: unknown) {
+  const raw = String(input ?? "").trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (
+      url.protocol !== "https:" ||
+      url.hostname.toLowerCase() !== "github.com" ||
+      `${parts[0]}/${parts[1]}`.toLowerCase() !== allowedGitHubRepository.toLowerCase() ||
+      !["issues", "pull"].includes(parts[2]) ||
+      !/^\d+$/.test(parts[3] ?? "") ||
+      parts.length !== 4
+    ) return null;
+    return `https://github.com/${allowedGitHubRepository}/${parts[2]}/${parts[3]}`;
+  } catch {
+    return null;
+  }
+}
+
+export function engineeringRecordFromDescription(description: unknown) {
+  const text = String(description ?? "");
+  const linked = text.match(/https:\/\/github\.com\/idrissenayat\/federal-bd-platform\/(?:issues|pull)\/\d+\/?/i)?.[0];
+  if (linked) return normalizeEngineeringRecordUrl(linked);
+  const named = text.match(/\bGitHub\s+(issue|PR|pull request)\s*#\s*(\d+)\b/i);
+  if (!named) return null;
+  const kind = named[1].toLowerCase() === "issue" ? "issues" : "pull";
+  return `https://github.com/${allowedGitHubRepository}/${kind}/${named[2]}`;
+}
+
 function userFrom(request: Request): User | null {
   const id = request.headers.get("oai-authenticated-user-id");
   if (!id) return null;
@@ -336,6 +366,25 @@ async function backfillApprovedGateOneHandoffs(db: Database) {
   ]);
 }
 
+async function backfillExplicitEngineeringRecords(db: Database) {
+  const candidates = await db.prepare(
+    "SELECT id, description FROM work_items WHERE github_url IS NULL OR TRIM(github_url) = ''",
+  ).all<{ id: number; description: string }>();
+  const now = new Date().toISOString();
+  const statements: Statement[] = [];
+  for (const item of candidates.results ?? []) {
+    const recordUrl = engineeringRecordFromDescription(item.description);
+    if (!recordUrl) continue;
+    statements.push(
+      db.prepare("UPDATE work_items SET github_url = ?, updated_at = ? WHERE id = ? AND (github_url IS NULL OR TRIM(github_url) = '')")
+        .bind(recordUrl, now, item.id),
+      db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, 'system', 'workflow', ?, ?)")
+        .bind(item.id, `Restored the durable engineering record from the explicit work-item description: ${recordUrl}`, now),
+    );
+  }
+  if (statements.length) await db.batch(statements);
+}
+
 async function ensureSeedData(db: Database, user: User) {
   const count = await db.prepare("SELECT COUNT(*) AS count FROM work_items").first<{ count: number }>();
   if ((count?.count ?? 0) > 0) return;
@@ -388,6 +437,7 @@ async function bootstrap(db: Database, user: User) {
   await ensureSeedData(db, user);
   await backfillReworkState(db);
   await backfillApprovedGateOneHandoffs(db);
+  await backfillExplicitEngineeringRecords(db);
   const [items, members, activity, decisions, reviews, notifications, currentMember] = await Promise.all([
     db.prepare(
       `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind
@@ -480,8 +530,11 @@ async function createItem(request: Request, db: Database, user: User) {
   const priority = String(body.priority ?? "Next");
   const workflow = String(body.workflow ?? "Unassigned");
   const assigneeId = body.assigneeId ? String(body.assigneeId) : null;
+  const requestedGitHubUrl = String(body.githubUrl ?? "").trim();
+  const githubUrl = requestedGitHubUrl ? normalizeEngineeringRecordUrl(requestedGitHubUrl) : null;
   if (title.length < 3 || description.length < 10) return json({ error: "Add a clear title and description." }, 400);
   if (!phases.includes(phase) || !priorities.includes(priority) || !workflows.includes(workflow)) return json({ error: "Invalid workflow fields." }, 400);
+  if (requestedGitHubUrl && !githubUrl) return json({ error: `Engineering record must be an issue or pull request from ${allowedGitHubRepository}.` }, 400);
   const now = new Date().toISOString();
   let key = "";
   let result: { meta?: { last_row_id?: number } } | null = null;
@@ -492,9 +545,9 @@ async function createItem(request: Request, db: Database, user: User) {
       result = await db.prepare(
         `INSERT INTO work_items
          (key, title, description, phase, priority, workflow, state, gate, decision_status,
-          decision_authority, assignee_id, next_action, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'queued', 'Gate 1 pending', 'Waiting', 'Product Lead', ?, ?, ?, ?, ?)`,
-      ).bind(key, title, description, phase, priority, workflow, assigneeId, String(body.nextAction ?? "Frame the intended outcome and prepare Gate 1 evidence."), user.id, now, now).run();
+          decision_authority, assignee_id, next_action, github_url, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'queued', 'Gate 1 pending', 'Waiting', 'Product Lead', ?, ?, ?, ?, ?, ?)`,
+      ).bind(key, title, description, phase, priority, workflow, assigneeId, String(body.nextAction ?? "Frame the intended outcome and prepare Gate 1 evidence."), githubUrl, user.id, now, now).run();
       break;
     } catch (error) {
       if (!/UNIQUE constraint failed: work_items\.key/i.test(String(error)) || attempt === 2) throw error;
@@ -537,12 +590,18 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
   };
   const entries = Object.entries(body).filter(([key]) => key in allowed);
   if (!entries.length) return json({ error: "No supported changes supplied." }, 400);
+  if ("githubUrl" in body && body.githubUrl !== null && String(body.githubUrl).trim()) {
+    const normalized = normalizeEngineeringRecordUrl(body.githubUrl);
+    if (!normalized) return json({ error: `Engineering record must be an issue or pull request from ${allowedGitHubRepository}.` }, 400);
+  }
   const sets: string[] = [];
   const values: unknown[] = [];
   const changes: string[] = [];
   for (const [key, rawValue] of entries) {
     const rule = allowed[key];
-    const value = rawValue === null ? null : String(rawValue).trim();
+    const value = key === "githubUrl" && rawValue !== null && String(rawValue).trim()
+      ? normalizeEngineeringRecordUrl(rawValue)
+      : rawValue === null ? null : String(rawValue).trim();
     if (rule.values && (!value || !rule.values.includes(value))) return json({ error: `Invalid ${key}.` }, 400);
     sets.push(`${rule.column} = ?`);
     values.push(value);
