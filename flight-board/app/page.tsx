@@ -883,6 +883,7 @@ export default function Home() {
                   <label>Decision readiness<select value={selected.decision_status} disabled={saving} onChange={(event) => void updateItem(selected.id, { decisionStatus: event.target.value })}>{["Waiting", "Needed now", "Changes requested", "Rework", "Resubmitted", "Decided", "Not required"].map((status) => <option key={status}>{status}</option>)}</select></label>
                   <label className="span-two">Assignee<select value={selected.assignee_id ?? ""} disabled={saving} onChange={(event) => void updateItem(selected.id, { assigneeId: event.target.value || null })}><option value="">Unassigned</option>{data.members.map((member) => <option key={member.id} value={member.id}>{member.display_name} · {member.role}</option>)}</select></label>
                   <label className="span-two">Evidence URL<input key={`evidence-${selected.id}`} defaultValue={selected.evidence_url ?? ""} disabled={saving} placeholder="https://github.com/organization/repository/blob/revision/path.md" onBlur={(event) => { const value = event.target.value.trim(); if (value !== (selected.evidence_url ?? "")) void updateItem(selected.id, { evidenceUrl: value || null }); }} /></label>
+                  <label className="span-two">Engineering record<input key={`github-${selected.id}`} defaultValue={selected.github_url ?? ""} disabled={saving} placeholder="https://github.com/idrissenayat/federal-bd-platform/issues/31" onBlur={(event) => { const value = event.target.value.trim(); if (value !== (selected.github_url ?? "")) void updateItem(selected.id, { githubUrl: value || null }); }} /></label>
                 </div>
               </section>
 
@@ -943,6 +944,7 @@ export default function Home() {
               <label>Assignee<select name="assigneeId" defaultValue=""><option value="">Unassigned</option>{data.members.map((member) => <option value={member.id} key={member.id}>{member.display_name}</option>)}</select></label>
             </div>
             <label>Next action<input name="nextAction" placeholder="Frame the intended outcome and prepare Gate 1 evidence." /></label>
+            <label>Engineering record<input name="githubUrl" type="url" placeholder="https://github.com/idrissenayat/federal-bd-platform/issues/31" /></label>
             <footer><button type="button" className="secondary-button" onClick={() => setCreateOpen(false)}>Cancel</button><button className="primary-button" disabled={saving}>{saving ? "Creating…" : "Create in backlog"}</button></footer>
           </form>
         </div>
