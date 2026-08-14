@@ -43,6 +43,13 @@
       "when": 1786737116891,
       "tag": "0005_normal_iron_fist",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1786739548935,
+      "tag": "0006_sticky_sleeper",
+      "breakpoints": true
     }
   ]
 }

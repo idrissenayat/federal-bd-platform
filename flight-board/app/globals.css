@@ -285,8 +285,8 @@ body { background: radial-gradient(circle at 8% 8%, rgba(246, 197, 210, .34), tr
 .economics-summary span { background: #fff7ed; border: 1px solid #eadfd4; border-radius: 8px; color: #725d65; display: flex; flex-direction: column; font-size: 11px; line-height: 1.4; min-width: 0; padding: 9px; }
 .economics-summary b { color: #9d496a; font-size: 9px; letter-spacing: .06em; margin-bottom: 3px; text-transform: uppercase; }
 .economics-summary-compact { display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 0 0; }
-.economics-summary-compact span { background: #fff7e6; border-radius: 5px; display: inline-flex; flex-direction: row; font-size: 9px; gap: 4px; padding: 4px 6px; }
-.economics-summary-compact b { font-size: 9px; margin: 0; }
+.economics-summary-compact span { background: #fff7e6; border-radius: 5px; display: inline-flex; flex-direction: column; font-size: 12px; gap: 2px; min-width: min(100%, 165px); padding: 7px 8px; }
+.economics-summary-compact b { font-size: 11px; margin: 0; }
 .forecast-callout { border-block: 1px solid #e6d7ca; padding: 13px 17px; }
 .forecast-callout strong { display: block; font-size: 13px; text-transform: capitalize; }
 .forecast-callout p, .forecast-callout small { color: #705e65; display: block; font-size: 11px; line-height: 1.5; margin: 4px 0 0; }
@@ -308,13 +308,17 @@ body { background: radial-gradient(circle at 8% 8%, rgba(246, 197, 210, .34), tr
 .economics-form-grid .span-two { grid-column: 1 / -1; }
 .economics-form-grid input, .economics-form-grid select, .economics-form-grid textarea { background: #fffefd; border: 1px solid #dcd2ca; border-radius: 7px; color: var(--ink); font-size: 12px; min-width: 0; padding: 9px; }
 .economics-form-grid textarea { min-height: 70px; resize: vertical; }
-.economics-record form > button { background: linear-gradient(135deg, #cc6287, #e8ae3d); border: 0; border-radius: 8px; color: white; cursor: pointer; font-size: 11px; font-weight: 850; margin-top: 13px; padding: 10px 12px; }
+.economics-record form > button { background: linear-gradient(135deg, #f2b7c9, #f4d273); border: 1px solid #9a6a52; border-radius: 8px; color: #39232d; cursor: pointer; font-size: 12px; font-weight: 850; margin-top: 13px; padding: 10px 12px; }
 .economics-record form > button:disabled { cursor: wait; opacity: .55; }
 .economics-audit { background: #fff4f7; padding: 14px 17px; }
 .economics-audit > strong { color: #9a4566; font-size: 11px; text-transform: uppercase; }
 .economics-audit > div { border-top: 1px solid #ead7dc; display: grid; gap: 8px; grid-template-columns: 105px 1fr; margin-top: 8px; padding-top: 8px; }
 .economics-audit span, .economics-audit p { color: #735e67; font-size: 10px; line-height: 1.45; margin: 0; }
 .pull-forecast small { color: #775f68; display: block; font-size: 10px; line-height: 1.4; margin-top: 5px; }
+.pull-forecast details { margin-top: 8px; }.pull-forecast summary { color: #614c55; cursor: pointer; font-size: 11px; font-weight: 800; }
+.economics-authority, .system-guidance { background: #f1f7e8; border: 1px solid #bdcf9c; border-radius: 8px; color: #35431f; margin: 10px 17px; padding: 11px 12px; }
+.economics-authority strong, .system-guidance strong { font-size: 12px; }.economics-authority p, .economics-authority small, .system-guidance p { display: block; font-size: 11px; line-height: 1.5; margin: 4px 0 0; }
+.system-guidance { background: #fff2d8; border-color: #d7b86c; margin: 0 0 12px; }
 .pull-incomplete { border: 1px solid #e0a9b4; }
 .role-in-motion .economics-summary { padding-top: 5px; }
 .table-row .economics-summary { margin-top: 3px; }

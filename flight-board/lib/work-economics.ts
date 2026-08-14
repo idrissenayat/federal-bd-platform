@@ -1,6 +1,18 @@
 export type Confidence = "low" | "medium" | "high";
 export type ForecastState = "on track" | "at risk" | "late" | "unknown";
 
+export type AiAdvisory = {
+  source: "AI";
+  recommendation: string;
+  confidence: Confidence;
+  drivers: string[];
+  evidence: string[];
+  omissions: string[];
+  createdAt: string;
+};
+
+export type HumanAcceptanceState = "no proposal" | "proposed" | "human accepted" | "human edited";
+
 export type ValueHypothesis = {
   primaryType: string;
   beneficiary: string;
@@ -10,28 +22,36 @@ export type ValueHypothesis = {
   unit: string;
   observationDate: string;
   outcomeOwner: string;
+  outcomeOwnerId: string;
   impact: string;
   timeCriticality: string;
   strategicAlignment: string;
   confidence: Confidence;
   evidence: string;
-  advisory: boolean;
+  evidenceStatus: "verified" | "unverified";
+  assumptions: string;
+  currency?: string;
+  period?: string;
+  advisory: AiAdvisory | null;
+  acceptanceState: HumanAcceptanceState;
+  acceptedBy: string;
+  acceptedAt: string;
 };
+
+export type HumanEffortRange = { role: string; minMinutes: number; maxMinutes: number };
+export type AgentCostRange = { provider: string; minCost: number; maxCost: number; currency: string; expectedAttempts: number };
 
 export type DeliveryForecast = {
   sizeBand: "XS" | "S" | "M" | "L" | "XL";
-  humanRole: string;
-  humanMinutesMin: number;
-  humanMinutesMax: number;
-  agentCostMin: number;
-  agentCostMax: number;
-  currency: string;
-  expectedAttempts: number;
+  humanEffortRanges: HumanEffortRange[];
+  agentCostRanges: AgentCostRange[];
   complexity: number;
   uncertainty: number;
   coordination: number;
   basis: string;
+  basisKind: "expert judgment" | "comparable history";
   comparableItems: string;
+  serviceLevel: { podId: string; workType: string; sampleSize: number; percentile: number; lowHours: number; highHours: number } | null;
   timezone: string;
   earliestCompletion: string;
   likelyCompletion: string;
@@ -41,35 +61,56 @@ export type DeliveryForecast = {
   nextMilestoneAt: string;
   phaseExit: string;
   phaseExitAt: string;
+  agentWorkCompletedAt: string | null;
+  humanDecisionTargetAt: string | null;
+  blockedSince: string | null;
+  unblockOwner: string;
+  unblockAction: string;
+  cannotForecastUntil: string;
   freshnessHours: number;
   acceptedBy: string;
   acceptedAt: string;
   updatedAt: string;
   changeReason: string;
+  advisory: AiAdvisory | null;
+  acceptanceState: HumanAcceptanceState;
+  deliveryOwnerId: string;
   reforecastRequiredReason?: string;
   reforecastRequiredAt?: string;
 };
 
 export type ActualEconomics = {
-  humanRole: string;
-  humanActiveMinutes: number;
-  provider: string;
-  model: string;
-  attempts: number;
-  inputTokens: number | null;
-  outputTokens: number | null;
-  meteredCost: number | null;
-  currency: string;
-  agentExecutionMinutes: number;
-  queueMinutes: number;
-  blockedMinutes: number;
-  gateWaitMinutes: number;
-  cycleMinutes: number;
-  reworkMinutes: number;
-  defects: number;
-  rollbacks: number;
+  humanRoleTotals: Array<{ role: string; activeMinutes: number }>;
+  agentTelemetry: Array<{
+    eventId: string;
+    provider: string;
+    model: string;
+    attempts: number;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    meteredCost: number | null;
+    currency: string;
+    executionMinutes: number;
+    source: string;
+    completeness: "complete" | "partial" | "missing";
+    observedAt: string;
+    ingestionState: "accepted" | "late" | "conflict";
+    conflictReason: string;
+  }>;
+  durationFacts: {
+    agentExecutionMinutes: number;
+    queueMinutes: number;
+    blockedMinutes: number;
+    gateWaitMinutes: number;
+    cycleMinutes: number;
+  };
+  reworkEvents: Array<{ originatingPhase: string; minutes: number; reason: string }>;
+  defectEvents: Array<{ severity: string; count: number }>;
+  rollbackEvents: Array<{ reason: string; occurredAt: string }>;
   telemetrySource: string;
   completeness: "complete" | "partial" | "missing";
+  completionAt: string | null;
+  likelyVarianceMinutes: number | null;
   correctedBy: string;
   correctedAt: string;
   correctionReason: string;
@@ -86,6 +127,9 @@ export type RealizedOutcome = {
   confidence: Confidence;
   causalLimitations: string;
   verifiedAt: string;
+  outcomeOwnerId: string;
+  advisory: AiAdvisory | null;
+  acceptanceState: HumanAcceptanceState;
 };
 
 export type ForecastEvaluation = {
@@ -118,7 +162,10 @@ export type PullForecast = {
   confidence: Confidence | "unknown";
   missingOwners: string[];
   updatedAt: string | null;
+  contributors: Array<{ itemKey: string; owner: string; earliest: string | null; likely: string | null; latest: string | null; confidence: Confidence | "unknown"; state: ForecastState }>;
 };
+
+export type ServiceLevelDistribution = { podId: string; workType: string; sampleSize: number; percentile: number; lowHours: number; medianHours: number; highHours: number };
 
 type ForecastableItem = {
   key: string;
@@ -178,7 +225,9 @@ export function evaluateForecast(
     reason = "Work is blocked; the owner must revise the completion window or name the dependency.";
   } else if (["Needed now", "Resubmitted"].includes(decision)) {
     forecastState = "at risk";
-    reason = "Agent work is waiting for a human gate decision; the decision target remains separate.";
+    reason = forecast.agentWorkCompletedAt && forecast.humanDecisionTargetAt
+      ? `Agent work completed ${shortDateTime(forecast.agentWorkCompletedAt)}; human decision target ${shortDateTime(forecast.humanDecisionTargetAt)} remains separate from overall completion.`
+      : "Human gate wait is missing an agent-complete timestamp or human decision target; the named owner must update both before this can be on track.";
   } else if (now > latest) {
     forecastState = "late";
     reason = `Latest forecast passed ${shortDateTime(forecast.latestCompletion)}.`;
@@ -211,8 +260,17 @@ export function workEconomicsFromRow(row: Record<string, unknown>, nowIso = new 
 
 export function buildPullForecast(items: ForecastableItem[], wipLimit = 2, nowIso = new Date().toISOString()): PullForecast {
   const inFlight = items.filter((item) => ["active", "blocked"].includes(item.state));
+  const contributors = inFlight.map((item) => ({
+    itemKey: item.key,
+    owner: item.assignee_name?.trim() || `${item.key} owner`,
+    earliest: item.work_economics.deliveryForecast?.earliestCompletion ?? null,
+    likely: item.work_economics.deliveryForecast?.likelyCompletion ?? null,
+    latest: item.work_economics.deliveryForecast?.latestCompletion ?? null,
+    confidence: item.work_economics.forecast.confidence,
+    state: item.work_economics.forecast.state,
+  }));
   if (inFlight.length < wipLimit) {
-    return { status: "available", headline: `${wipLimit - inFlight.length} WIP slot${wipLimit - inFlight.length === 1 ? "" : "s"} available now`, detail: "Pull the highest-priority ready item only after confirming role capacity.", itemKey: null, earliest: nowIso, likely: nowIso, latest: nowIso, confidence: "high", missingOwners: [], updatedAt: nowIso };
+    return { status: "available", headline: `${wipLimit - inFlight.length} WIP slot${wipLimit - inFlight.length === 1 ? "" : "s"} available now`, detail: "Pull the highest-priority ready item only after confirming role capacity.", itemKey: null, earliest: nowIso, likely: nowIso, latest: nowIso, confidence: "high", missingOwners: [], updatedAt: nowIso, contributors };
   }
   const missing = inFlight.filter((item) => item.work_economics.forecast.state === "unknown" || !item.work_economics.deliveryForecast);
   const candidates = inFlight
@@ -221,7 +279,7 @@ export function buildPullForecast(items: ForecastableItem[], wipLimit = 2, nowIs
   const candidate = candidates[0];
   const missingOwners = [...new Set(missing.map((item) => item.assignee_name?.trim() || `${item.key} owner`))];
   if (!candidate) {
-    return { status: "incomplete", headline: "Next WIP slot cannot be forecast", detail: `Forecasts are missing for ${missing.map((item) => item.key).join(", ") || "active work"}.`, itemKey: null, earliest: null, likely: null, latest: null, confidence: "unknown", missingOwners, updatedAt: null };
+    return { status: "incomplete", headline: "Next WIP slot cannot be forecast", detail: `Forecasts are missing for ${missing.map((item) => item.key).join(", ") || "active work"}.`, itemKey: null, earliest: null, likely: null, latest: null, confidence: "unknown", missingOwners, updatedAt: null, contributors };
   }
   const forecast = candidate.work_economics.deliveryForecast!;
   return {
@@ -235,13 +293,38 @@ export function buildPullForecast(items: ForecastableItem[], wipLimit = 2, nowIs
     confidence: missing.length ? "low" : forecast.confidence,
     missingOwners,
     updatedAt: forecast.updatedAt,
+    contributors,
   };
 }
 
 export function materialForecastChange(keys: string[]) {
-  const labels: Record<string, string> = { phase: "phase changed", state: "state changed", assigneeId: "owner changed", nextAction: "next action changed", evidenceUrl: "evidence changed", priority: "priority changed", workflow: "workflow changed" };
+  const labels: Record<string, string> = { title: "scope title changed", description: "scope description changed", phase: "phase changed", state: "state or blocker changed", assigneeId: "owner changed", nextAction: "expected milestone changed", evidenceUrl: "dependency or test evidence changed", priority: "priority changed", workflow: "workflow changed", gate: "gate decision changed", testResult: "test result changed", dependency: "dependency changed", blocker: "blocker changed" };
   const changes = keys.filter((key) => key in labels).map((key) => labels[key]);
   return changes.length ? changes.join(", ") : null;
+}
+
+export function completionVarianceMinutes(forecast: DeliveryForecast | null, completedAt: string) {
+  const likely = time(forecast?.likelyCompletion);
+  const completed = time(completedAt);
+  return likely === null || completed === null ? null : Math.round((completed - likely) / 60_000);
+}
+
+export function buildServiceLevelDistributions(items: Array<{ pod_id?: unknown; workflow?: unknown; work_economics: WorkEconomicsRecord }>): ServiceLevelDistribution[] {
+  const cohorts = new Map<string, number[]>();
+  for (const item of items) {
+    const cycleMinutes = item.work_economics.actualEconomics?.durationFacts.cycleMinutes;
+    if (typeof cycleMinutes !== "number" || !Number.isFinite(cycleMinutes) || cycleMinutes < 0 || !item.work_economics.actualEconomics?.completionAt) continue;
+    const podId = String(item.pod_id ?? "steer-flight-team");
+    const workType = String(item.workflow ?? "unknown");
+    const key = `${podId}\u0000${workType}`;
+    cohorts.set(key, [...(cohorts.get(key) ?? []), cycleMinutes / 60]);
+  }
+  const quantile = (sorted: number[], fraction: number) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * fraction) - 1))];
+  return [...cohorts.entries()].filter(([, values]) => values.length >= 5).map(([key, values]) => {
+    const [podId, workType] = key.split("\u0000");
+    const sorted = [...values].sort((a, b) => a - b);
+    return { podId, workType, sampleSize: sorted.length, percentile: 85, lowHours: quantile(sorted, 0.15), medianHours: quantile(sorted, 0.5), highHours: quantile(sorted, 0.85) };
+  });
 }
 
 export function serializeSection(section: string, value: unknown) {

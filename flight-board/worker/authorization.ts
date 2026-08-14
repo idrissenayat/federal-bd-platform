@@ -19,6 +19,7 @@ export type DispatchCandidate = {
   evidence_url?: unknown;
   github_url?: unknown;
   delivery_forecast_json?: unknown;
+  delivery_owner_id?: unknown;
 };
 
 export type AgentDispatchAuthorization = {
@@ -31,18 +32,19 @@ export type AgentDispatchAuthorization = {
   handoff_message: string | null;
 };
 
-const decisionHoldStatuses = new Set(["Needed now", "Changes requested", "Rework", "Resubmitted"]);
+const decisionHoldStatuses = new Set(["Needed now", "Changes requested", "Resubmitted"]);
 
 function value(input: unknown) {
   return String(input ?? "").trim();
 }
 
-function acceptedForecast(input: unknown) {
+function acceptedForecast(input: unknown, deliveryOwnerId: string) {
   try {
     const forecast = JSON.parse(value(input)) as Record<string, unknown>;
     const dates = ["earliestCompletion", "likelyCompletion", "latestCompletion", "nextMilestoneAt", "phaseExitAt"].map((key) => new Date(String(forecast[key] ?? "")).getTime());
     return Boolean(
-      forecast.acceptedAt && forecast.acceptedBy && forecast.nextMilestone && forecast.phaseExit && forecast.basis
+      forecast.acceptedAt && forecast.acceptedBy && forecast.deliveryOwnerId && forecast.nextMilestone && forecast.phaseExit && forecast.basis
+      && forecast.acceptedBy === deliveryOwnerId && forecast.deliveryOwnerId === deliveryOwnerId
       && ["low", "medium", "high"].includes(String(forecast.confidence))
       && dates.every(Number.isFinite) && dates[0] <= dates[1] && dates[1] <= dates[2]
       && !forecast.reforecastRequiredReason,
@@ -67,7 +69,8 @@ export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAut
   const githubUrl = value(item.github_url);
   const gatePending = /pending/i.test(gate);
   const gateClear = !decisionHoldStatuses.has(decisionStatus);
-  const forecastAccepted = workflow !== "STEER" || acceptedForecast(item.delivery_forecast_json);
+  const deliveryOwnerId = value(item.delivery_owner_id);
+  const forecastAccepted = workflow !== "STEER" || (Boolean(deliveryOwnerId) && acceptedForecast(item.delivery_forecast_json, deliveryOwnerId));
 
   const checks: DispatchCheck[] = [
     {
@@ -112,7 +115,7 @@ export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAut
       met: forecastAccepted,
       detail: forecastAccepted
         ? workflow === "STEER" ? "The governed completion range, next milestone, confidence, and basis are accepted." : "This setup/control handoff is outside the STEER forecast gate."
-        : "The assigned delivery owner or named human authority must accept the range, confidence, basis, and next milestone before execution.",
+        : "The named delivery owner must accept the range, confidence, basis, and next milestone after the latest material change before execution.",
     },
     {
       id: "gate",

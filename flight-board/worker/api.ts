@@ -1,11 +1,14 @@
 import { evaluateAgentDispatch } from "./authorization";
 import {
   buildPullForecast,
+  buildServiceLevelDistributions,
+  completionVarianceMinutes,
   materialForecastChange,
   serializeSection,
   workEconomicsFromRow,
   type DeliveryForecast,
 } from "../lib/work-economics";
+import { humanAcceptanceState, validateAndNormalizeWorkEconomics, type WorkEconomicsSection } from "../lib/work-economics-validation";
 
 type D1Result<T = Record<string, unknown>> = {
   results?: T[];
@@ -77,6 +80,40 @@ function json(data: unknown, status = 200) {
     status,
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
   });
+}
+
+function safeEconomicsFromRow(row: Record<string, unknown>, now: string) {
+  const columns: Array<[WorkEconomicsSection, string]> = [
+    ["valueHypothesis", "value_hypothesis_json"], ["deliveryForecast", "delivery_forecast_json"],
+    ["actualEconomics", "actual_economics_json"], ["realizedOutcome", "realized_outcome_json"],
+  ];
+  const safeRow = { ...row };
+  for (const [section, column] of columns) {
+    if (!safeRow[column]) continue;
+    try {
+      const parsed = JSON.parse(String(safeRow[column]));
+      if (validateAndNormalizeWorkEconomics(section, parsed).error) safeRow[column] = null;
+    } catch {
+      safeRow[column] = null;
+    }
+  }
+  return workEconomicsFromRow(safeRow, now);
+}
+
+function safeEconomicsEvent(event: Record<string, unknown>) {
+  const section = String(event.section ?? "") as WorkEconomicsSection;
+  const sanitize = (raw: unknown) => {
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(String(raw));
+      return section in economicsColumns && !validateAndNormalizeWorkEconomics(section, parsed).error
+        ? JSON.stringify(parsed)
+        : JSON.stringify({ state: "unavailable", reason: "Legacy record failed the current privacy/schema boundary." });
+    } catch {
+      return JSON.stringify({ state: "unavailable", reason: "Record could not be parsed safely." });
+    }
+  };
+  return { ...event, previous_json: sanitize(event.previous_json), replacement_json: sanitize(event.replacement_json) };
 }
 
 export function normalizeEngineeringRecordUrl(input: unknown) {
@@ -179,6 +216,48 @@ async function ensureSchema(db: Database) {
       created_at text NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_work_economics_item_created ON work_economics_events (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS work_economics_human_facts (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+      item_id integer NOT NULL,
+      record_kind text NOT NULL,
+      role text NOT NULL,
+      min_minutes integer,
+      max_minutes integer,
+      active_minutes integer,
+      recorded_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_work_economics_human_item_kind ON work_economics_human_facts (item_id, record_kind)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS work_economics_agent_facts (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+      item_id integer NOT NULL,
+      record_kind text NOT NULL,
+      event_id text NOT NULL,
+      provider text NOT NULL,
+      model text,
+      attempts integer NOT NULL,
+      input_tokens integer,
+      output_tokens integer,
+      min_cost_micros integer,
+      max_cost_micros integer,
+      metered_cost_micros integer,
+      currency text NOT NULL,
+      execution_seconds integer,
+      source text NOT NULL,
+      completeness text NOT NULL,
+      ingestion_state text NOT NULL,
+      observed_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_work_economics_agent_item_kind ON work_economics_agent_facts (item_id, record_kind)"),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_work_economics_agent_item_kind_event ON work_economics_agent_facts (item_id, record_kind, event_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS work_economics_duration_facts (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+      item_id integer NOT NULL,
+      fact_kind text NOT NULL,
+      minutes integer NOT NULL,
+      source text NOT NULL,
+      recorded_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_work_economics_duration_item_kind ON work_economics_duration_facts (item_id, fact_kind)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS activity (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
       item_id integer NOT NULL,
@@ -264,6 +343,14 @@ async function ensureSchema(db: Database) {
   await ensureColumn(db, "work_items", "delivery_forecast_json", "delivery_forecast_json text");
   await ensureColumn(db, "work_items", "actual_economics_json", "actual_economics_json text");
   await ensureColumn(db, "work_items", "realized_outcome_json", "realized_outcome_json text");
+  await ensureColumn(db, "members", "pod_id", "pod_id text NOT NULL DEFAULT 'steer-flight-team'");
+  await ensureColumn(db, "work_items", "pod_id", "pod_id text NOT NULL DEFAULT 'steer-flight-team'");
+  await ensureColumn(db, "work_items", "delivery_owner_id", "delivery_owner_id text");
+  await ensureColumn(db, "work_items", "outcome_owner_id", "outcome_owner_id text");
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS work_economics_events_no_update
+    BEFORE UPDATE ON work_economics_events BEGIN SELECT RAISE(ABORT, 'work_economics_events are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS work_economics_events_no_delete
+    BEFORE DELETE ON work_economics_events BEGIN SELECT RAISE(ABORT, 'work_economics_events are immutable'); END`).run();
   await ensureColumn(db, "decisions", "review_id", "review_id integer");
   await ensureColumn(db, "decisions", "evidence_url", "evidence_url text");
   await ensureColumn(db, "decisions", "evidence_revision", "evidence_revision text");
@@ -467,33 +554,42 @@ async function bootstrap(db: Database, user: User) {
     db.prepare(
       `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind
        FROM work_items w LEFT JOIN members m ON m.id = w.assignee_id
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
        ORDER BY CASE w.priority WHEN 'Now' THEN 0 WHEN 'Next' THEN 1 ELSE 2 END, w.updated_at DESC`,
-    ).all(),
-    db.prepare("SELECT * FROM members ORDER BY kind DESC, display_name").all(),
+    ).bind(user.id).all(),
+    db.prepare("SELECT * FROM members WHERE pod_id = (SELECT pod_id FROM members WHERE id = ?) ORDER BY kind DESC, display_name").bind(user.id).all(),
     db.prepare(
       `SELECT a.*, w.key AS item_key, w.title AS item_title, m.display_name AS actor_name
        FROM activity a JOIN work_items w ON w.id = a.item_id
-       LEFT JOIN members m ON m.id = a.actor_id ORDER BY a.created_at DESC LIMIT 80`,
-    ).all(),
+       LEFT JOIN members m ON m.id = a.actor_id
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
+       ORDER BY a.created_at DESC LIMIT 80`,
+    ).bind(user.id).all(),
     db.prepare(
       `SELECT d.*, w.key AS item_key, w.title AS item_title
-       FROM decisions d JOIN work_items w ON w.id = d.item_id ORDER BY d.created_at DESC`,
-    ).all(),
+       FROM decisions d JOIN work_items w ON w.id = d.item_id
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?) ORDER BY d.created_at DESC`,
+    ).bind(user.id).all(),
     db.prepare(
       `SELECT r.*, w.key AS item_key, w.title AS item_title
-       FROM agent_reviews r JOIN work_items w ON w.id = r.item_id ORDER BY r.created_at DESC`,
-    ).all(),
+       FROM agent_reviews r JOIN work_items w ON w.id = r.item_id
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?) ORDER BY r.created_at DESC`,
+    ).bind(user.id).all(),
     db.prepare(
       `SELECT n.*, w.key AS item_key, w.title AS item_title, m.display_name AS member_name
        FROM notifications n JOIN work_items w ON w.id = n.item_id
-       LEFT JOIN members m ON m.id = n.member_id ORDER BY n.created_at DESC LIMIT 80`,
-    ).all(),
-    db.prepare("SELECT role, authority FROM members WHERE id = ?").bind(user.id).first<{ role: string; authority: string }>(),
+       LEFT JOIN members m ON m.id = n.member_id
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
+       ORDER BY n.created_at DESC LIMIT 80`,
+    ).bind(user.id).all(),
+    db.prepare("SELECT role, authority, pod_id FROM members WHERE id = ?").bind(user.id).first<{ role: string; authority: string; pod_id: string }>(),
     db.prepare(
       `SELECT e.*, w.key AS item_key, w.title AS item_title, m.display_name AS actor_name
        FROM work_economics_events e JOIN work_items w ON w.id = e.item_id
-       LEFT JOIN members m ON m.id = e.actor_id ORDER BY e.created_at DESC LIMIT 120`,
-    ).all(),
+       LEFT JOIN members m ON m.id = e.actor_id
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
+       ORDER BY e.created_at DESC LIMIT 120`,
+    ).bind(user.id).all(),
   ]);
   const parsedReviews = (reviews.results ?? []).map((review) => ({
     ...review,
@@ -505,9 +601,9 @@ async function bootstrap(db: Database, user: User) {
   }));
   const authorizedItems = (items.results ?? []).map((item) => ({
     ...item,
-    work_economics: workEconomicsFromRow(item as Record<string, unknown>, generatedAt),
+    work_economics: safeEconomicsFromRow(item as Record<string, unknown>, generatedAt),
     dispatch_authorization: evaluateAgentDispatch(item as Record<string, unknown>),
-  }));
+  })) as unknown as Array<Record<string, unknown> & { key: string; state: string; assignee_name?: string | null; work_economics: ReturnType<typeof safeEconomicsFromRow> }>;
   return {
     generated_at: generatedAt,
     user: { ...user, role: currentMember?.role ?? "Contributor", authority: currentMember?.authority ?? "May own work", role_contexts: roleContexts(currentMember?.role ?? "Contributor") },
@@ -517,8 +613,9 @@ async function bootstrap(db: Database, user: User) {
     decisions: decisions.results ?? [],
     reviews: parsedReviews,
     notifications: notifications.results ?? [],
-    work_economics_events: economicsEvents.results ?? [],
+    work_economics_events: (economicsEvents.results ?? []).map((event) => safeEconomicsEvent(event as Record<string, unknown>)),
     pull_forecast: buildPullForecast(authorizedItems, 2, generatedAt),
+    service_level_distributions: buildServiceLevelDistributions(authorizedItems),
   };
 }
 
@@ -656,7 +753,17 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
   if (forecastChange && ["active", "blocked"].includes(resultingState) && current.delivery_forecast_json) {
     try {
       const previous = JSON.parse(String(current.delivery_forecast_json)) as DeliveryForecast;
-      const replacement = { ...previous, reforecastRequiredReason: forecastChange, reforecastRequiredAt: now };
+      const replacement = {
+        ...previous,
+        reforecastRequiredReason: forecastChange,
+        reforecastRequiredAt: now,
+        ...(resultingState === "blocked" ? {
+          blockedSince: String(current.blocked_since ?? now),
+          unblockOwner: String(current.delivery_owner_id ?? "Named delivery owner"),
+          unblockAction: String(body.nextAction ?? current.next_action ?? "Resolve the recorded blocker"),
+          cannotForecastUntil: `Cannot forecast until: ${String(body.nextAction ?? current.next_action ?? "the recorded dependency is resolved")}`,
+        } : {}),
+      };
       const replacementJson = JSON.stringify(replacement);
       const actor = await db.prepare("SELECT role FROM members WHERE id = ?").bind(user.id).first<{ role: string }>();
       await db.batch([
@@ -671,10 +778,25 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
       // A malformed legacy forecast remains visible as unknown; a human can replace it through the governed editor.
     }
   }
+  if (resultingState === "complete" && current.actual_economics_json) {
+    try {
+      const previous = JSON.parse(String(current.actual_economics_json)) as Record<string, unknown>;
+      const replacement = { ...previous, completionAt: now, likelyVarianceMinutes: completionVarianceMinutes(current.delivery_forecast_json ? JSON.parse(String(current.delivery_forecast_json)) as DeliveryForecast : null, now) };
+      const replacementJson = JSON.stringify(replacement);
+      const actor = await db.prepare("SELECT role FROM members WHERE id = ?").bind(user.id).first<{ role: string }>();
+      await db.batch([
+        db.prepare("UPDATE work_items SET actual_economics_json = ? WHERE id = ?").bind(replacementJson, itemId),
+        db.prepare(`INSERT INTO work_economics_events
+          (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+          VALUES (?, 'actualEconomics', 'completion_variance', ?, ?, ?, ?, 'Completion variance calculated against the accepted likely window.', ?)`)
+          .bind(itemId, user.id, actor?.role ?? "Authenticated contributor", String(current.actual_economics_json), replacementJson, now),
+      ]);
+    } catch {
+      // Legacy actuals remain visible as unavailable until corrected through the governed editor.
+    }
+  }
   return json({ ok: true });
 }
-
-type WorkEconomicsSection = "valueHypothesis" | "deliveryForecast" | "actualEconomics" | "realizedOutcome";
 
 const economicsColumns: Record<WorkEconomicsSection, string> = {
   valueHypothesis: "value_hypothesis_json",
@@ -682,14 +804,6 @@ const economicsColumns: Record<WorkEconomicsSection, string> = {
   actualEconomics: "actual_economics_json",
   realizedOutcome: "realized_outcome_json",
 };
-
-function present(value: unknown) {
-  return typeof value === "string" ? value.trim().length > 0 : value !== null && value !== undefined;
-}
-
-function nonNegative(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
-}
 
 export function workEconomicsAuthorized(section: WorkEconomicsSection, kind: string, role: string) {
   if (kind !== "human") return false;
@@ -699,80 +813,103 @@ export function workEconomicsAuthorized(section: WorkEconomicsSection, kind: str
   return role.includes("Product Lead") || role.includes("Tech Lead") || role.includes("Observe") || role.includes("Learn");
 }
 
+export function workEconomicsNamedAuthority(
+  section: WorkEconomicsSection,
+  member: { id: string; kind: string; role: string; pod_id?: string | null },
+  item: { pod_id?: unknown; delivery_owner_id?: unknown; outcome_owner_id?: unknown },
+) {
+  if (!workEconomicsAuthorized(section, member.kind, member.role)) return false;
+  if (String(member.pod_id ?? "steer-flight-team") !== String(item.pod_id ?? "steer-flight-team")) return false;
+  if (section === "deliveryForecast" && item.delivery_owner_id && String(item.delivery_owner_id) !== member.id) return false;
+  if (section === "realizedOutcome" && item.outcome_owner_id && String(item.outcome_owner_id) !== member.id && !/Observe|Learn/.test(member.role)) return false;
+  return true;
+}
+
 export function validateWorkEconomics(section: WorkEconomicsSection, value: Record<string, unknown>) {
-  const forbidden = Object.keys(value).find((key) => /person|employee|email|individual|ranking|score/i.test(key));
-  if (forbidden) return `Person-level or ranking field '${forbidden}' is not permitted.`;
-  if (section === "valueHypothesis") {
-    const required = ["primaryType", "beneficiary", "outcomeMetric", "baseline", "target", "unit", "observationDate", "outcomeOwner", "impact", "timeCriticality", "strategicAlignment", "confidence", "evidence"];
-    const missing = required.filter((key) => !present(value[key]));
-    if (missing.length) return `Complete the value hypothesis: ${missing.join(", ")}.`;
-    const valueTypes = ["revenue or mission enablement", "user/customer outcome", "time or operating-cost reduction", "risk, security, compliance, or reliability improvement", "learning or option value", "platform capability or reuse"];
-    const bands = ["Low", "Medium", "High"];
-    if (!valueTypes.includes(String(value.primaryType))) return "Choose a supported primary value type.";
-    if (![value.impact, value.timeCriticality, value.strategicAlignment].every((band) => bands.includes(String(band)))) return "Impact, time criticality, and strategic alignment must use Low, Medium, or High.";
-    if (!["low", "medium", "high"].includes(String(value.confidence))) return "Value confidence must be low, medium, or high.";
-  }
+  return validateAndNormalizeWorkEconomics(section, value).error;
+}
+
+async function auditEconomicsDenial(db: Database, itemId: number, section: string, user: User, actorRole: string, reason: string) {
+  const now = new Date().toISOString();
+  await db.prepare(
+    `INSERT INTO work_economics_events
+     (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+     VALUES (?, ?, 'denied', ?, ?, NULL, NULL, ?, ?)`,
+  ).bind(itemId, section, user.id, actorRole || "Unauthorised member", reason, now).run();
+}
+
+function normalizedEconomicsStatements(db: Database, itemId: number, section: WorkEconomicsSection, value: Record<string, unknown>, now: string) {
+  const statements: Statement[] = [];
   if (section === "deliveryForecast") {
-    const required = ["sizeBand", "humanRole", "basis", "timezone", "earliestCompletion", "likelyCompletion", "latestCompletion", "confidence", "nextMilestone", "nextMilestoneAt", "phaseExit", "phaseExitAt", "changeReason"];
-    const missing = required.filter((key) => !present(value[key]));
-    if (missing.length) return `Complete the delivery forecast: ${missing.join(", ")}.`;
-    const numeric = ["humanMinutesMin", "humanMinutesMax", "agentCostMin", "agentCostMax", "expectedAttempts", "complexity", "uncertainty", "coordination", "freshnessHours"];
-    if (numeric.some((key) => !nonNegative(value[key]))) return "Forecast ranges and bands must be non-negative numbers.";
-    if (Number(value.humanMinutesMin) > Number(value.humanMinutesMax) || Number(value.agentCostMin) > Number(value.agentCostMax)) return "Forecast minimums cannot exceed maximums.";
-    const earliest = new Date(String(value.earliestCompletion)).getTime();
-    const likely = new Date(String(value.likelyCompletion)).getTime();
-    const latest = new Date(String(value.latestCompletion)).getTime();
-    if (![earliest, likely, latest].every(Number.isFinite) || earliest > likely || likely > latest) return "Completion timestamps must form a valid earliest–likely–latest range.";
-    if (!Number.isFinite(new Date(String(value.nextMilestoneAt)).getTime()) || !Number.isFinite(new Date(String(value.phaseExitAt)).getTime())) return "Milestone and phase-exit targets must be valid timestamps.";
-    if (!["XS", "S", "M", "L", "XL"].includes(String(value.sizeBand))) return "Size band must be XS, S, M, L, or XL.";
-    if (!["low", "medium", "high"].includes(String(value.confidence))) return "Forecast confidence must be low, medium, or high.";
-    if (![1, 2, 3, 4, 5].includes(Number(value.complexity)) || ![1, 2, 3, 4, 5].includes(Number(value.uncertainty)) || ![1, 2, 3, 4, 5].includes(Number(value.coordination))) return "Complexity, uncertainty, and coordination must each use the 1–5 rubric.";
+    statements.push(db.prepare("DELETE FROM work_economics_human_facts WHERE item_id = ? AND record_kind = 'forecast'").bind(itemId));
+    statements.push(db.prepare("DELETE FROM work_economics_agent_facts WHERE item_id = ? AND record_kind = 'forecast'").bind(itemId));
+    for (const range of value.humanEffortRanges as Array<Record<string, unknown>>) {
+      statements.push(db.prepare("INSERT INTO work_economics_human_facts (item_id, record_kind, role, min_minutes, max_minutes, active_minutes, recorded_at) VALUES (?, 'forecast', ?, ?, ?, NULL, ?)")
+        .bind(itemId, range.role, range.minMinutes, range.maxMinutes, now));
+    }
+    for (const [index, range] of (value.agentCostRanges as Array<Record<string, unknown>>).entries()) {
+      statements.push(db.prepare(`INSERT INTO work_economics_agent_facts
+        (item_id, record_kind, event_id, provider, model, attempts, input_tokens, output_tokens, min_cost_micros, max_cost_micros, metered_cost_micros, currency, execution_seconds, source, completeness, ingestion_state, observed_at)
+        VALUES (?, 'forecast', ?, ?, NULL, ?, NULL, NULL, ?, ?, NULL, ?, NULL, 'owner forecast', 'forecast', 'accepted', ?)`)
+        .bind(itemId, `forecast-${index}`, range.provider, range.expectedAttempts, Math.round(Number(range.minCost) * 1_000_000), Math.round(Number(range.maxCost) * 1_000_000), range.currency, now));
+    }
   }
   if (section === "actualEconomics") {
-    const numeric = ["humanActiveMinutes", "attempts", "agentExecutionMinutes", "queueMinutes", "blockedMinutes", "gateWaitMinutes", "cycleMinutes", "reworkMinutes", "defects", "rollbacks"];
-    if (numeric.some((key) => !nonNegative(value[key]))) return "Actual effort, duration, attempt, defect, and rollback values must be non-negative.";
-    if (!present(value.humanRole) || !present(value.telemetrySource) || !present(value.completeness) || !present(value.correctionReason)) return "Actuals require role aggregation, provenance, completeness, and an audit reason.";
-    if (!["complete", "partial", "missing"].includes(String(value.completeness))) return "Telemetry completeness must be complete, partial, or missing.";
-    if (value.completeness !== "missing" && (!present(value.provider) || !present(value.model))) return "Available provider telemetry must identify its provider and model.";
-    for (const key of ["inputTokens", "outputTokens", "meteredCost"]) {
-      if (value[key] !== null && value[key] !== undefined && !nonNegative(value[key])) return `${key} must be missing or a non-negative number.`;
+    statements.push(db.prepare("DELETE FROM work_economics_human_facts WHERE item_id = ? AND record_kind = 'actual'").bind(itemId));
+    statements.push(db.prepare("DELETE FROM work_economics_agent_facts WHERE item_id = ? AND record_kind = 'actual'").bind(itemId));
+    statements.push(db.prepare("DELETE FROM work_economics_duration_facts WHERE item_id = ?").bind(itemId));
+    for (const total of value.humanRoleTotals as Array<Record<string, unknown>>) {
+      statements.push(db.prepare("INSERT INTO work_economics_human_facts (item_id, record_kind, role, min_minutes, max_minutes, active_minutes, recorded_at) VALUES (?, 'actual', ?, NULL, NULL, ?, ?)")
+        .bind(itemId, total.role, total.activeMinutes, now));
+    }
+    for (const event of value.agentTelemetry as Array<Record<string, unknown>>) {
+      statements.push(db.prepare(`INSERT INTO work_economics_agent_facts
+        (item_id, record_kind, event_id, provider, model, attempts, input_tokens, output_tokens, min_cost_micros, max_cost_micros, metered_cost_micros, currency, execution_seconds, source, completeness, ingestion_state, observed_at)
+        VALUES (?, 'actual', ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(itemId, event.eventId, event.provider, event.model, event.attempts, event.inputTokens, event.outputTokens, event.meteredCost === null ? null : Math.round(Number(event.meteredCost) * 1_000_000), event.currency, Math.round(Number(event.executionMinutes) * 60), event.source, event.completeness, event.ingestionState, event.observedAt));
+    }
+    for (const [factKind, minutes] of Object.entries(value.durationFacts as Record<string, unknown>)) {
+      statements.push(db.prepare("INSERT INTO work_economics_duration_facts (item_id, fact_kind, minutes, source, recorded_at) VALUES (?, ?, ?, ?, ?)")
+        .bind(itemId, factKind, minutes, value.telemetrySource, now));
     }
   }
-  if (section === "realizedOutcome") {
-    const allowed = ["not due", "pending evidence", "verified positive", "verified neutral", "verified negative", "inconclusive"];
-    if (!allowed.includes(String(value.status))) return "Choose an exact outcome status.";
-    if (String(value.status).startsWith("verified") || value.status === "inconclusive") {
-      const required = ["observedMetric", "observedResult", "unit", "observationDate", "evidence", "confidence", "causalLimitations"];
-      const missing = required.filter((key) => !present(value[key]));
-      if (missing.length) return `Verified outcomes require: ${missing.join(", ")}.`;
-      if (!["low", "medium", "high"].includes(String(value.confidence))) return "Outcome confidence must be low, medium, or high.";
-    }
-  }
-  return null;
+  return statements;
 }
 
 async function updateWorkEconomics(request: Request, db: Database, user: User, itemId: number) {
   const current = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
   if (!current) return json({ error: "Work item not found." }, 404);
-  const member = await db.prepare("SELECT kind, role FROM members WHERE id = ?").bind(user.id).first<{ kind: string; role: string }>();
+  const member = await db.prepare("SELECT id, kind, role, pod_id FROM members WHERE id = ?").bind(user.id).first<{ id: string; kind: string; role: string; pod_id: string | null }>();
   const body = await request.json() as { section?: unknown; value?: unknown; reason?: unknown };
   const section = String(body.section ?? "") as WorkEconomicsSection;
   if (!(section in economicsColumns)) return json({ error: "Choose a valid Work Economics section." }, 400);
-  if (!member || !workEconomicsAuthorized(section, member.kind, member.role)) return json({ error: `Your recorded role is not authorized to accept or correct ${section}.` }, 403);
+  if (!member || !workEconomicsNamedAuthority(section, member, current)) {
+    await auditEconomicsDenial(db, itemId, section, user, member?.role ?? "Unknown", "Denied: role, named-owner, or POD scope did not authorize this mutation.");
+    return json({ error: "Permission denied. Ask the named record owner in this POD to review or edit this record." }, 403);
+  }
   if (!body.value || typeof body.value !== "object" || Array.isArray(body.value)) return json({ error: "Supply a structured Work Economics record." }, 400);
   const value = { ...(body.value as Record<string, unknown>) };
+  const now = new Date().toISOString();
+  if (section === "deliveryForecast") Object.assign(value, { deliveryOwnerId: user.id, acceptedBy: user.id, acceptedAt: now, updatedAt: now, acceptanceState: humanAcceptanceState(value.advisory, value.acceptanceState), reforecastRequiredReason: undefined, reforecastRequiredAt: undefined });
+  if (section === "actualEconomics") Object.assign(value, { correctedBy: user.id, correctedAt: now });
+  if (section === "realizedOutcome") Object.assign(value, { outcomeOwnerId: String(current.outcome_owner_id ?? value.outcomeOwnerId ?? user.id), acceptanceState: humanAcceptanceState(value.advisory, value.acceptanceState) });
+  if (section === "realizedOutcome" && !["not due", "pending evidence"].includes(String(value.status))) Object.assign(value, { verifier: user.id, verifiedAt: now });
+  if (section === "valueHypothesis") Object.assign(value, { acceptedBy: user.id, acceptedAt: now, acceptanceState: humanAcceptanceState(value.advisory, value.acceptanceState) });
+  if (section === "valueHypothesis") {
+    const outcomeOwner = await db.prepare("SELECT id FROM members WHERE id = ? AND pod_id = ? AND kind = 'human'")
+      .bind(value.outcomeOwnerId, current.pod_id ?? "steer-flight-team").first<{ id: string }>();
+    if (!outcomeOwner) return json({ error: "Outcome owner must be an enrolled human member of this POD." }, 400);
+  }
   const validationError = validateWorkEconomics(section, value);
   if (validationError) return json({ error: validationError }, 400);
-  const now = new Date().toISOString();
   const reason = String(body.reason ?? value.changeReason ?? value.correctionReason ?? "Accepted governed record").trim();
   if (reason.length < 8) return json({ error: "Add a meaningful audit reason." }, 400);
-  if (section === "deliveryForecast") Object.assign(value, { acceptedBy: user.email ?? user.name, acceptedAt: now, updatedAt: now, reforecastRequiredReason: undefined, reforecastRequiredAt: undefined });
-  if (section === "actualEconomics") Object.assign(value, { correctedBy: user.email ?? user.name, correctedAt: now });
-  if (section === "realizedOutcome" && !["not due", "pending evidence"].includes(String(value.status))) Object.assign(value, { verifier: user.email ?? user.name, verifiedAt: now });
-  if (section === "valueHypothesis") Object.assign(value, { advisory: false });
   const column = economicsColumns[section];
   const replacementJson = serializeSection(section, value);
   const previousJson = current[column] ? String(current[column]) : null;
+  const ownerStatements: Statement[] = [];
+  if (section === "deliveryForecast") ownerStatements.push(db.prepare("UPDATE work_items SET delivery_owner_id = ? WHERE id = ?").bind(user.id, itemId));
+  if (section === "valueHypothesis") ownerStatements.push(db.prepare("UPDATE work_items SET outcome_owner_id = ? WHERE id = ?").bind(value.outcomeOwnerId, itemId));
   await db.batch([
     db.prepare(`UPDATE work_items SET ${column} = ?, updated_at = ? WHERE id = ?`).bind(replacementJson, now, itemId),
     db.prepare(
@@ -782,6 +919,8 @@ async function updateWorkEconomics(request: Request, db: Database, user: User, i
     ).bind(itemId, section, previousJson ? "corrected" : "accepted", user.id, member.role, previousJson, replacementJson, reason, now),
     db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'work_economics', ?, ?)")
       .bind(itemId, user.id, `${section} ${previousJson ? "corrected" : "accepted"}: ${reason}`, now),
+    ...ownerStatements,
+    ...normalizedEconomicsStatements(db, itemId, section, value, now),
   ]);
   return json({ ok: true });
 }
@@ -973,6 +1112,34 @@ function firstRequiredChange(reasoning: string) {
   return line?.slice("required change:".length).trim() || "Complete the requested changes in the linked evidence and resubmit for a fresh Critic review.";
 }
 
+async function requireMaterialReforecast(db: Database, current: Record<string, unknown>, itemId: number, user: User, reason: string, now: string, blocked = false) {
+  if (!current.delivery_forecast_json) return;
+  try {
+    const previous = JSON.parse(String(current.delivery_forecast_json)) as DeliveryForecast;
+    const replacement = {
+      ...previous,
+      reforecastRequiredReason: reason,
+      reforecastRequiredAt: now,
+      ...(blocked ? {
+        blockedSince: String(current.blocked_since ?? now),
+        unblockOwner: String(current.delivery_owner_id ?? "Named delivery owner"),
+        unblockAction: String(current.next_action ?? "Resolve the recorded blocker"),
+        cannotForecastUntil: `Cannot forecast until: ${String(current.next_action ?? "the recorded dependency is resolved")}`,
+      } : {}),
+    };
+    const actor = await db.prepare("SELECT role FROM members WHERE id = ?").bind(user.id).first<{ role: string }>();
+    await db.batch([
+      db.prepare("UPDATE work_items SET delivery_forecast_json = ? WHERE id = ?").bind(JSON.stringify(replacement), itemId),
+      db.prepare(`INSERT INTO work_economics_events
+        (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+        VALUES (?, 'deliveryForecast', 'reforecast_required', ?, ?, ?, ?, ?, ?)`)
+        .bind(itemId, user.id, actor?.role ?? "Authenticated contributor", String(current.delivery_forecast_json), JSON.stringify(replacement), reason, now),
+    ]);
+  } catch {
+    // Legacy malformed forecasts fail closed as unknown and must be replaced by the named owner.
+  }
+}
+
 export function decisionTransition(current: Record<string, unknown>, decision: string, reasoning = "") {
   const gate = String(current.gate ?? "Gate pending");
   let nextGate = gate;
@@ -1019,6 +1186,16 @@ export function decisionTransition(current: Record<string, unknown>, decision: s
   };
 }
 
+export function gateOneValueReady(valueJson: unknown) {
+  try {
+    const value = JSON.parse(String(valueJson ?? "")) as Record<string, unknown>;
+    return !validateAndNormalizeWorkEconomics("valueHypothesis", value).error
+      && Boolean(value.acceptedBy && value.acceptedAt && value.evidenceStatus === "verified" && value.acceptanceState !== "proposed");
+  } catch {
+    return false;
+  }
+}
+
 async function decide(request: Request, db: Database, user: User, itemId: number) {
   const current = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
   if (!current) return json({ error: "Work item not found." }, 404);
@@ -1038,6 +1215,9 @@ async function decide(request: Request, db: Database, user: User, itemId: number
     (gate === "Gate 3 pending" && role.includes("Product Lead") && role.includes("Tech Lead"))
   );
   if (!authorized) return json({ error: `Your recorded role is not the named authority for ${gate}.` }, 403);
+  if (decision === "APPROVED" && gate === "Gate 1 pending" && !gateOneValueReady(current.value_hypothesis_json)) {
+    return json({ error: "Gate 1 is default-closed until the Product Lead accepts a complete, evidence-verified Value Hypothesis in native units." }, 409);
+  }
   const review = await db.prepare(
     "SELECT id, reviewed_item_updated_at, evidence_url, evidence_revision, evidence_sha256 FROM agent_reviews WHERE id = ? AND item_id = ?",
   ).bind(reviewId, itemId).first<{ id: number; reviewed_item_updated_at: string; evidence_url: string | null; evidence_revision: string | null; evidence_sha256: string | null }>();
@@ -1062,6 +1242,7 @@ async function decide(request: Request, db: Database, user: User, itemId: number
   ).bind(transition.gate, transition.phase, transition.decisionStatus, transition.state, transition.decisionAuthority, transition.assigneeId, transition.nextAction, transition.reworkInstructions, blockedSince, now, itemId).run();
   await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'decision', ?, ?)")
     .bind(itemId, user.id, `${gate}: ${decision} — ${reasoning}`, now).run();
+  await requireMaterialReforecast(db, current, itemId, user, `Gate decision ${decision.toLowerCase()} changed execution expectations.`, now, transition.state === "blocked");
   if (decision === "CHANGES_REQUESTED") {
     const recipient = transition.assigneeId
       ? await db.prepare("SELECT role FROM members WHERE id = ?").bind(transition.assigneeId).first<{ role: string }>()
@@ -1090,6 +1271,7 @@ async function transitionItem(request: Request, db: Database, user: User, itemId
     if (status !== "Changes requested") return json({ error: "This item is not waiting to begin rework." }, 409);
     await db.prepare("UPDATE work_items SET decision_status = 'Rework', state = 'active', blocked_since = NULL, updated_at = ? WHERE id = ?").bind(now, itemId).run();
     await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'workflow', 'Rework started from the recorded change request.', ?)").bind(itemId, user.id, now).run();
+    await requireMaterialReforecast(db, current, itemId, user, "Test result or change request started a new rework cycle.", now);
     return json({ ok: true, status: "Rework" });
   }
 
@@ -1105,6 +1287,7 @@ async function transitionItem(request: Request, db: Database, user: User, itemId
       return json({ error: "The evidence content has not changed since the change request. Update the artifact before resubmitting." }, 409);
     }
     await db.prepare("UPDATE work_items SET decision_status = 'Resubmitted', state = 'blocked', blocked_since = ?, updated_at = ? WHERE id = ?").bind(now, now, itemId).run();
+    await requireMaterialReforecast(db, current, itemId, user, "Updated test or dependency evidence was resubmitted for a new gate ruling.", now, true);
     await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'workflow', 'Updated evidence resubmitted for a fresh Critic review and human ruling.', ?)").bind(itemId, user.id, now).run();
     await db.prepare(
       `INSERT OR IGNORE INTO notifications
@@ -1509,6 +1692,15 @@ async function actOnCodeReview(request: Request, db: Database, env: Env, user: U
   } else if (action === "MERGE") {
     await db.prepare("UPDATE work_items SET next_action = 'Pull request merged. Verify the deployment or operational outcome, then close this work item.', updated_at = ? WHERE id = ?").bind(now, itemId).run();
   }
+  await requireMaterialReforecast(
+    db,
+    item,
+    itemId,
+    user,
+    `Code-review test result ${action.toLowerCase().replace("_", " ")} changed execution expectations for commit ${pull.head.sha.slice(0, 12)}.`,
+    now,
+    action === "REQUEST_CHANGES",
+  );
   return json({ ok: true, action, delivery: delivery.delivery, url: delivery.url }, 201);
 }
 

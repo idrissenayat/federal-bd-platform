@@ -15,6 +15,7 @@ const readyItem = {
   next_action: "Implement the authorized work-control contract and verify the build.",
   evidence_url: "https://github.com/example/repository/pull/15",
   github_url: "https://github.com/example/repository/issues/14",
+  delivery_owner_id: "human-tech-lead",
 };
 
 const acceptedForecast = JSON.stringify({
@@ -28,6 +29,7 @@ const acceptedForecast = JSON.stringify({
   basis: "Approved Exam and Builder plan",
   confidence: "medium",
   acceptedBy: "human-tech-lead",
+  deliveryOwnerId: "human-tech-lead",
   acceptedAt: "2026-08-14T14:00:00.000Z",
 });
 
@@ -82,4 +84,19 @@ test("blocks a STEER handoff when a material change requires reforecasting", () 
   });
   assert.equal(result.authorized, false);
   assert.ok(result.missing.includes("Owner forecast accepted"));
+});
+
+test("blocks dispatch when the forecast accepter is not the named delivery owner", () => {
+  const result = evaluateAgentDispatch({
+    ...readyItem,
+    workflow: "STEER",
+    delivery_forecast_json: JSON.stringify({ ...JSON.parse(acceptedForecast), acceptedBy: "human-other", deliveryOwnerId: "human-other" }),
+  });
+  assert.equal(result.authorized, false);
+  assert.ok(result.missing.includes("Owner forecast accepted"));
+});
+
+test("rework is an authorized execution state after the human starts it", () => {
+  const result = evaluateAgentDispatch({ ...readyItem, decision_status: "Rework" });
+  assert.equal(result.authorized, true);
 });

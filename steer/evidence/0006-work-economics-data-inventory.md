@@ -1,40 +1,43 @@
-# Data inventory — 0006 Work Economics
+# Data inventory — 0006 Work Economics rework
 
-**Scope:** STR-017 implementation revision under Gate 3 review  
-**Storage:** existing Cloudflare D1 database; no new vendor or subprocessors  
-**Default posture:** role/POD aggregates only; no individual productivity fields, rankings, or automated prioritization
+**Scope:** STR-017 rework after independent Test Agent revision `b8f0ca379ee729c6b513d24a7ed16e4f1e50ccb2`
+**Storage:** existing Cloudflare D1 database; no new vendor or production subprocessor
+**Boundary:** one authenticated POD; routine reads expose role/POD aggregates only. Exact recursive allowlists reject unknown keys, email-address values, unapproved role labels, and all person/ranking keys before storage or replay.
 
 ## Inventory and controls
 
-| Record | Data | Purpose | Source and authority | Access | Retention / deletion |
-|---|---|---|---|---|---|
-| Value hypothesis | value type, beneficiary, metric, baseline, target, native unit, observation date, owner, driver bands, confidence, evidence URL | Explain why the item may matter before prioritization | AI may advise; Product Lead is the accepting authority | Authenticated POD members can read; Product Lead can write | Retain with the work item and its decision evidence; delete only through the governed work-item retention/deletion process |
-| Delivery forecast | size, role-level human effort ranges, provider cost range, attempts, complexity/uncertainty/coordination, basis, comparable evidence, earliest/likely/latest, timezone, confidence, milestones, freshness, acceptance | Authorize execution and answer what is next/when | Agent or contributor may propose; named delivery authority accepts or edits | Authenticated POD members can read; Product Lead, Tech Lead, or Delivery authority can accept/update | Current value stays on item; every replacement remains in the immutable event history for the work-item evidence lifetime |
-| Actual economics | role-aggregated human minutes, provider/model, attempts, available tokens, metered cost, execution/cycle/queue/blocked/gate-wait duration, rework/defects/rollbacks, source/completeness | Learn delivery cost and flow without treating activity as value | System/provider telemetry or an authorized audited correction | Authenticated POD members can read aggregate data; Tech Lead or Platform/Ops can correct with a reason | Retain with delivery evidence; corrections never overwrite audit history; no person-level raw timing is accepted by this API |
-| Realized outcome | exact outcome state, native-unit result, observation date, verifier, evidence, confidence, causal limitations | Verify whether the expected outcome occurred | Evidence gathered by agents is advisory; Product Lead, Tech Lead, or Observe/Learn authority verifies | Authenticated POD members can read; named outcome authority can write | Retain with product/outcome evidence through the declared observation period and work-item evidence lifetime |
-| Work Economics event | item, section, action, actor ID/role, prior JSON, replacement JSON, reason, timestamp | Reconstruct acceptance and every material correction or reforecast | Server-attributed authenticated mutation | Authenticated POD read; no update/delete endpoint; database operators remain governed by platform controls | Immutable for the work-item evidence lifetime; deletion only as part of an authorized whole-record retention action |
+| Record / table | Fields and purpose | Source / human authority | Access and audit | Retention / deletion |
+|---|---|---|---|---|
+| `value_hypothesis_json` | Native-unit value contract, beneficiary, metric/baseline/target/unit/date, named outcome-owner member ID, driver bands, evidence status, assumptions, optional monetary currency/period, AI advisory and human acceptance state | AI may propose; Product Lead accepts. Gate 1 fails closed unless the exact record is complete and evidence is a verified URL. | Same-POD members read; Product Lead writes; all replacements retain prior/replacement JSON and reason. | Work-item evidence lifetime. Deleting/anonymizing a member profile removes the display/email mapping; the opaque authority ID remains as required decision evidence. |
+| `delivery_forecast_json` plus `work_economics_human_facts` / `work_economics_agent_facts` | Per-role active-minute ranges; per-provider cost/attempt ranges; separate complexity/uncertainty/coordination; basis/service-level cohort; completion range/timezone; milestone, phase exit, agent-complete and human-decision targets; blocked/unblock contract; advisory/acceptance | AI may propose; first eligible Delivery/Product/Tech human becomes the named delivery owner. Later acceptance must match that owner and POD. | Same-POD aggregate read. Server stamps opaque member ID/time; dispatch compares accepted owner with `delivery_owner_id`. Projection tables make role/provider facts queryable. | Current projection follows the accepted record. Immutable events preserve corrections for the evidence lifetime. |
+| `actual_economics_json` plus human/agent/duration fact tables | Per-role totals; provider/model event ID, attempts, nullable tokens/cost, duration, source, completeness, observed time, accepted/late/conflict state; separate queue/blocked/gate/cycle/agent durations; rework origin, defects, rollbacks, completion variance | Provider/system telemetry or Tech/Platform/Ops audited correction | Same-POD aggregate read. Unknown fields, duplicate event IDs, person identifiers, and invalid conflict records fail closed. Replacement rebuilds query projections while immutable events retain history. | Evidence lifetime. No person-level raw activity is accepted, so no person-timing deletion case exists. Provider telemetry remains aggregate and source-attributed. |
+| `realized_outcome_json` | Exact outcome status, native-unit result, observation date, evidence, verifier, confidence, causal limits, AI advisory and acceptance | AI gathers evidence; named outcome owner or Observe/Learn human verifies | Same-POD read; server enforces named owner/POD and stamps verifier/time | Through observation and evidence lifetime; never synthesized from item completion. |
+| `work_economics_events` | Section/action, opaque actor member ID and role, safe prior/replacement JSON, reason/time, including denied attempts | Server only | Same-POD read. Database `BEFORE UPDATE` and `BEFORE DELETE` triggers abort modification; no mutation API. Denials store no rejected payload, timing, or cost. | Evidence lifetime. Platform backup/retention deletion is a controlled whole-work-item operation; individual facts are not silently erased. |
+| `pod_id`, `delivery_owner_id`, `outcome_owner_id` | Tenant/POD boundary and named human authority | Server/member roster | Every economics mutation compares item/member POD and named owner. Bootstrap scopes work, members, and economics events to the current POD. | Member profile can be anonymized under the platform member-lifecycle process; opaque IDs remain for audit integrity. |
 
-## Data minimization and prohibited data
+## Data minimization, safe reads, and anti-gaming
 
-- Human time is accepted only as broad role totals. The schema and validation reject person, employee, ranking, performance-score, utilization, compensation, and individual-output fields.
-- No synthetic productivity/value score exists. Tokens, hours, cost, attempts, speed, accuracy, or closed-item counts are not business value and are not used to rank people or PODs.
-- Missing telemetry stays missing; nullable migration fields do not invent zeroes.
-- Provider cost remains paired with provider/model/source/completeness. The feature does not claim ROI or combine incompatible monetary and non-monetary units.
-- Ordinary application errors must not include Work Economics payloads. Audit activity contains an evidence-safe action summary, while full prior/replacement records stay in the governed audit table.
+- Exact schemas recursively reject every unknown key at every level. Role fields accept only the documented aggregate-role allowlist, and email-like values are rejected anywhere in an economics payload.
+- Server stamps use opaque member IDs, never email addresses. API errors and denial events never include the submitted payload or sensitive timing/cost.
+- Existing malformed/permissive JSON is not replayed: bootstrap replaces it with `unavailable`/`unknown`, and audit JSON is redacted to a safe state message until an authorized correction is recorded.
+- There is no score, person export, employee dashboard, ROI calculator, or automatic prioritization. Missing values stay nullable/unavailable and are never coerced to zero.
+- Monetary value requires compatible currency, period, evidence, and visible assumptions. Non-monetary value remains in its native unit.
 
-## Security and threat model
+## Threat model and control result
 
-Primary threats are unauthorized acceptance or correction, IDOR against another work item, client-side bypass, fabricated provider telemetry, audit rewriting, unsupported ROI claims, and using work telemetry for employee surveillance. Controls are server-side session and role authorization, item lookup before mutation, strict per-section validation, immutable append-only audit events, explicit telemetry provenance/completeness, role aggregation, prohibited person/ranking fields, and no export endpoint. A malicious authenticated client can only perform the mutations permitted to its human role; agents cannot accept human-authority records. Gate 3 remains default-closed pending independent Security and Privacy/Legal review.
+Threats include API IDOR, cross-POD reads, role-wide acceptance that bypasses the named owner, nested JSON smuggling, audit rewriting, duplicate/late/conflicting provider telemetry, unsupported value/ROI claims, and repurposing timing data for employee ranking. Controls are server authentication, member/POD equality, named-owner checks, exact recursive schemas, approved role labels, verified evidence, low-confidence expert judgment, unique provider event IDs, explicit late/conflict states, queryable aggregates, evidence-safe denial events, immutable database triggers, no person export, and safe legacy reads. Agents cannot accept authoritative records. Security and Privacy/Legal must still independently review the final revision; Builder evidence cannot sign Gate 3.
 
-## Migration, rollback, and operational handling
+## Migration and rollback
 
-Migration `0005_normal_iron_fist.sql` adds four nullable JSON columns and the audit-event table. Existing work rows remain unchanged and therefore render `unknown`, never fabricated defaults. The automated migration test applies the migration to an existing row, verifies preservation, then rolls back the event table and columns and verifies the original row again. Before production migration, Platform/Ops must take the normal D1 backup, confirm migration compatibility, and retain the prior deployment for application rollback.
+- `0005_normal_iron_fist.sql` adds nullable four-record JSON and the audit table.
+- `0006_sticky_sleeper.sql` adds POD/named-owner fields, normalized human/provider/duration facts, unique provider event IDs, and immutable audit triggers.
+- The automated migration test starts from an existing item, applies both migrations, proves nullable/unknown behavior and trigger enforcement, rolls back both migrations/tables/triggers/columns, and confirms original key/title/next action remain intact.
+- Production requires a D1 backup and Platform/Ops migration/rollback approval. No migration or deployment is authorized by this Builder rework.
 
-## Remaining Gate 3 decisions
+## Required independent decisions still open
 
-- Product Lead: confirm purpose limitation, native-unit value language, and no unsupported financial claim.
-- Security Owner: verify authorization/IDOR behavior, logs, database privileges, audit integrity, and restricted exports.
-- Privacy/Legal: approve role-level retention/deletion and confirm that no person-level collection is introduced.
-- Platform/Ops: approve D1 backup/rollback and provider telemetry provenance.
-- Product Designer: verify narrow screen, keyboard, screen reader, 200% zoom, and complete error/permission states.
-
+- Security: confirm D1 operational privileges, member anonymization procedure, dependency disposition, logs, and denial/IDOR behavior.
+- Privacy/Legal: confirm evidence-lifetime retention and the member-profile anonymization/deletion process for opaque authority IDs.
+- Product: confirm evidence-verified value semantics and financial-claim wording.
+- Platform/Ops: confirm provider ingestion/deduplication operations, backup, and rollback.
+- Product Designer: complete keyboard, screen-reader, narrow-screen, timezone, and 200% zoom human checks in addition to automated axe/contrast checks.
