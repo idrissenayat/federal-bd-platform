@@ -29,6 +29,10 @@ export type ValueHypothesis = {
   confidence: Confidence;
   evidence: string;
   evidenceStatus: "verified" | "unverified";
+  evidenceRevision: string;
+  evidenceSha256: string;
+  evidenceVerifiedAt: string;
+  valueMode: "monetary" | "non-monetary";
   assumptions: string;
   currency?: string;
   period?: string;
@@ -114,6 +118,8 @@ export type ActualEconomics = {
   correctedBy: string;
   correctedAt: string;
   correctionReason: string;
+  advisory: AiAdvisory | null;
+  acceptanceState: HumanAcceptanceState;
 };
 
 export type RealizedOutcome = {
@@ -124,6 +130,9 @@ export type RealizedOutcome = {
   observationDate: string;
   verifier: string;
   evidence: string;
+  evidenceRevision: string;
+  evidenceSha256: string;
+  evidenceVerifiedAt: string;
   confidence: Confidence;
   causalLimitations: string;
   verifiedAt: string;

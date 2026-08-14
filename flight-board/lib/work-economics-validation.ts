@@ -85,19 +85,24 @@ function requireFields(value: Record<string, unknown>, fields: string[], label: 
 }
 
 function validateValue(value: Record<string, unknown>): string | null {
-  const keys = ["primaryType", "beneficiary", "outcomeMetric", "baseline", "target", "unit", "observationDate", "outcomeOwner", "outcomeOwnerId", "impact", "timeCriticality", "strategicAlignment", "confidence", "evidence", "evidenceStatus", "assumptions", "currency", "period", "advisory", "acceptanceState", "acceptedBy", "acceptedAt"];
+  const keys = ["primaryType", "beneficiary", "outcomeMetric", "baseline", "target", "unit", "observationDate", "outcomeOwner", "outcomeOwnerId", "impact", "timeCriticality", "strategicAlignment", "confidence", "evidence", "evidenceStatus", "evidenceRevision", "evidenceSha256", "evidenceVerifiedAt", "valueMode", "assumptions", "currency", "period", "advisory", "acceptanceState", "acceptedBy", "acceptedAt"];
   const keyError = ownKeys(value, keys, "valueHypothesis");
   if (keyError) return keyError;
-  const missing = requireFields(value, ["primaryType", "beneficiary", "outcomeMetric", "baseline", "target", "unit", "observationDate", "outcomeOwner", "outcomeOwnerId", "impact", "timeCriticality", "strategicAlignment", "confidence", "evidence", "evidenceStatus", "assumptions"], "value hypothesis");
+  const missing = requireFields(value, ["primaryType", "beneficiary", "outcomeMetric", "baseline", "target", "unit", "observationDate", "outcomeOwner", "outcomeOwnerId", "impact", "timeCriticality", "strategicAlignment", "confidence", "evidence", "evidenceStatus", "evidenceRevision", "evidenceSha256", "evidenceVerifiedAt", "valueMode", "assumptions"], "value hypothesis");
   if (missing) return missing;
   const valueTypes = ["revenue or mission enablement", "user/customer outcome", "time or operating-cost reduction", "risk, security, compliance, or reliability improvement", "learning or option value", "platform capability or reuse"];
   if (!valueTypes.includes(String(value.primaryType))) return "Choose a supported primary value type.";
   if (![value.impact, value.timeCriticality, value.strategicAlignment].every((band) => ["Low", "Medium", "High"].includes(String(band)))) return "Impact, time criticality, and strategic alignment must use Low, Medium, or High.";
   if (!confidence.has(String(value.confidence))) return "Value confidence must be low, medium, or high.";
-  if (!validEvidenceUrl(value.evidence) || value.evidenceStatus !== "verified") return "Value evidence must be a resolvable URL and explicitly verified before acceptance.";
+  if (!validEvidenceUrl(value.evidence) || value.evidenceStatus !== "verified" || !/^[a-f0-9]{40}$/i.test(String(value.evidenceRevision)) || !/^[a-f0-9]{64}$/i.test(String(value.evidenceSha256)) || !validIso(value.evidenceVerifiedAt)) return "Value evidence must carry a server-verified URL, immutable revision, fingerprint, and verification time.";
   if (!validIso(value.observationDate)) return "Observation date must be a valid date.";
   if (!acceptanceStates.has(String(value.acceptanceState))) return "Choose a valid human acceptance state.";
-  const monetary = /^(usd|eur|gbp|cad|aud|\$)$/i.test(String(value.unit));
+  if (!["monetary", "non-monetary"].includes(String(value.valueMode))) return "Value mode must explicitly be monetary or non-monetary.";
+  const monetaryLanguage = /\b(?:usd|u\.?s\.?\s*dollars?|dollars?|currency|revenue|cost(?:s| savings?)?|savings?|money)\b/i;
+  if (value.valueMode !== "monetary" && monetaryLanguage.test(`${String(value.unit)} ${String(value.outcomeMetric)} ${String(value.primaryType)}`)) {
+    return "Monetary value language requires valueMode monetary plus currency, period, and visible assumptions.";
+  }
+  const monetary = value.valueMode === "monetary";
   if (monetary && (!present(value.currency) || !present(value.period) || !present(value.assumptions))) return "Monetary value requires currency, period, and visible assumptions.";
   return validateAdvisory(value.advisory ?? null, "valueHypothesis.advisory");
 }
@@ -121,7 +126,7 @@ function validateDelivery(value: Record<string, unknown>): string | null {
     if (!isRecord(entry)) return `agentCostRanges[${index}] must be an object.`;
     const error = ownKeys(entry, ["provider", "minCost", "maxCost", "currency", "expectedAttempts"], `agentCostRanges[${index}]`);
     if (error) return error;
-    if (![entry.provider, entry.currency].every(present) || !nonNegative(entry.minCost) || !nonNegative(entry.maxCost) || !nonNegative(entry.expectedAttempts) || Number(entry.minCost) > Number(entry.maxCost)) return `agentCostRanges[${index}] must contain provider, currency, attempts, and a valid min/max range.`;
+    if (![entry.provider, entry.currency].every(present) || !nonNegative(entry.minCost) || !nonNegative(entry.maxCost) || !nonNegative(entry.expectedAttempts) || !Number.isInteger(entry.expectedAttempts) || Number(entry.minCost) > Number(entry.maxCost)) return `agentCostRanges[${index}] must contain provider, currency, integer attempts, and a valid min/max range.`;
   }
   if (!["XS", "S", "M", "L", "XL"].includes(String(value.sizeBand))) return "Size band must be XS, S, M, L, or XL.";
   if (![value.complexity, value.uncertainty, value.coordination].every((band) => [1, 2, 3, 4, 5].includes(Number(band)))) return "Complexity, uncertainty, and coordination must each use the 1–5 rubric.";
@@ -142,7 +147,7 @@ function validateDelivery(value: Record<string, unknown>): string | null {
 }
 
 function validateActual(value: Record<string, unknown>): string | null {
-  const keys = ["humanRoleTotals", "agentTelemetry", "durationFacts", "reworkEvents", "defectEvents", "rollbackEvents", "telemetrySource", "completeness", "completionAt", "likelyVarianceMinutes", "correctedBy", "correctedAt", "correctionReason"];
+  const keys = ["humanRoleTotals", "agentTelemetry", "durationFacts", "reworkEvents", "defectEvents", "rollbackEvents", "telemetrySource", "completeness", "completionAt", "likelyVarianceMinutes", "correctedBy", "correctedAt", "correctionReason", "advisory", "acceptanceState"];
   const keyError = ownKeys(value, keys, "actualEconomics");
   if (keyError) return keyError;
   if (!Array.isArray(value.humanRoleTotals) || !Array.isArray(value.agentTelemetry) || !isRecord(value.durationFacts) || !Array.isArray(value.reworkEvents) || !Array.isArray(value.defectEvents) || !Array.isArray(value.rollbackEvents)) return "Actuals require queryable role totals, provider telemetry, durations, rework, defects, and rollbacks.";
@@ -159,9 +164,10 @@ function validateActual(value: Record<string, unknown>): string | null {
     if (error) return error;
     if (!present(entry.eventId) || telemetryIds.has(String(entry.eventId))) return `agentTelemetry[${index}] requires a unique eventId.`;
     telemetryIds.add(String(entry.eventId));
-    if (![entry.provider, entry.model, entry.source].every(present) || !validIso(entry.observedAt)) return `agentTelemetry[${index}] requires provider, model, source, and observation time.`;
-    if (!nonNegative(entry.attempts) || !nonNegative(entry.executionMinutes)) return `agentTelemetry[${index}] attempts and duration must be non-negative.`;
-    for (const key of ["inputTokens", "outputTokens", "meteredCost"] as const) if (entry[key] !== null && !nonNegative(entry[key])) return `agentTelemetry[${index}].${key} must be missing or non-negative.`;
+    if (![entry.provider, entry.model, entry.source, entry.currency].every(present) || !validIso(entry.observedAt)) return `agentTelemetry[${index}] requires provider, model, currency, source, and observation time.`;
+    if (!nonNegative(entry.attempts) || !Number.isInteger(entry.attempts) || !nonNegative(entry.executionMinutes)) return `agentTelemetry[${index}] attempts must be a non-negative integer and duration must be non-negative.`;
+    for (const key of ["inputTokens", "outputTokens"] as const) if (entry[key] !== null && (!nonNegative(entry[key]) || !Number.isInteger(entry[key]))) return `agentTelemetry[${index}].${key} must be missing or a non-negative integer.`;
+    if (entry.meteredCost !== null && !nonNegative(entry.meteredCost)) return `agentTelemetry[${index}].meteredCost must be missing or non-negative.`;
     if (!["complete", "partial", "missing"].includes(String(entry.completeness)) || !["accepted", "late", "conflict"].includes(String(entry.ingestionState))) return `agentTelemetry[${index}] has an invalid completeness or ingestion state.`;
     if (entry.ingestionState === "conflict" && !present(entry.conflictReason)) return `agentTelemetry[${index}] conflicts require a reason and must not overwrite accepted facts.`;
   }
@@ -173,23 +179,33 @@ function validateActual(value: Record<string, unknown>): string | null {
       if (!isRecord(entry)) return `${name}[${index}] must be an object.`;
       const error = ownKeys(entry, allowed, `${name}[${index}]`);
       if (error) return error;
+      if (name === "reworkEvents" && (![entry.originatingPhase, entry.reason].every(present) || !nonNegative(entry.minutes))) return `${name}[${index}] requires phase, non-negative minutes, and reason.`;
+      if (name === "defectEvents" && (!present(entry.severity) || !nonNegative(entry.count) || !Number.isInteger(entry.count))) return `${name}[${index}] requires severity and a non-negative integer count.`;
+      if (name === "rollbackEvents" && (!present(entry.reason) || !validIso(entry.occurredAt))) return `${name}[${index}] requires reason and a valid timestamp.`;
     }
   }
   if (!present(value.telemetrySource) || !["complete", "partial", "missing"].includes(String(value.completeness)) || !present(value.correctionReason)) return "Actuals require provenance, completeness, and an audit reason.";
+  if (value.completionAt !== null && !validIso(value.completionAt)) return "Completion time must be null or an authoritative timestamp.";
+  if (value.likelyVarianceMinutes !== null && (typeof value.likelyVarianceMinutes !== "number" || !Number.isFinite(value.likelyVarianceMinutes))) return "Completion variance must be null or a server-derived number.";
+  if (!acceptanceStates.has(String(value.acceptanceState))) return "Actual correction requires a valid human acceptance state.";
+  const advisoryError = validateAdvisory(value.advisory ?? null, "actualEconomics.advisory");
+  if (advisoryError) return advisoryError;
   return null;
 }
 
 function validateOutcome(value: Record<string, unknown>): string | null {
-  const keys = ["status", "observedMetric", "observedResult", "unit", "observationDate", "verifier", "evidence", "confidence", "causalLimitations", "verifiedAt", "outcomeOwnerId", "advisory", "acceptanceState"];
+  const keys = ["status", "observedMetric", "observedResult", "unit", "observationDate", "verifier", "evidence", "evidenceRevision", "evidenceSha256", "evidenceVerifiedAt", "confidence", "causalLimitations", "verifiedAt", "outcomeOwnerId", "advisory", "acceptanceState"];
   const keyError = ownKeys(value, keys, "realizedOutcome");
   if (keyError) return keyError;
   const allowed = ["not due", "pending evidence", "verified positive", "verified neutral", "verified negative", "inconclusive"];
   if (!allowed.includes(String(value.status))) return "Choose an exact outcome status.";
   if (!present(value.outcomeOwnerId) || !acceptanceStates.has(String(value.acceptanceState))) return "Outcome owner and human acceptance state are required.";
+  if (present(value.observationDate) && !validIso(value.observationDate)) return "Outcome requires a valid observation date.";
+  if (present(value.evidence) && !validEvidenceUrl(value.evidence)) return "Outcome evidence must be a valid HTTP(S) URL.";
   if (String(value.status).startsWith("verified") || value.status === "inconclusive") {
-    const missing = requireFields(value, ["observedMetric", "observedResult", "unit", "observationDate", "evidence", "confidence", "causalLimitations"], "verified outcome");
+    const missing = requireFields(value, ["observedMetric", "observedResult", "unit", "observationDate", "evidence", "evidenceRevision", "evidenceSha256", "evidenceVerifiedAt", "confidence", "causalLimitations"], "verified outcome");
     if (missing) return missing;
-    if (!validEvidenceUrl(value.evidence) || !confidence.has(String(value.confidence))) return "Verified outcomes require resolvable evidence and a valid confidence band.";
+    if (!validIso(value.observationDate) || !validEvidenceUrl(value.evidence) || !/^[a-f0-9]{40}$/i.test(String(value.evidenceRevision)) || !/^[a-f0-9]{64}$/i.test(String(value.evidenceSha256)) || !validIso(value.evidenceVerifiedAt) || !confidence.has(String(value.confidence))) return "Verified outcomes require a valid observation date, immutable server-verified evidence fingerprint, and confidence band.";
   }
   return validateAdvisory(value.advisory ?? null, "realizedOutcome.advisory");
 }

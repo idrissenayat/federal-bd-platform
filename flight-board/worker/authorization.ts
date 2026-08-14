@@ -38,23 +38,18 @@ function value(input: unknown) {
   return String(input ?? "").trim();
 }
 
-function acceptedForecast(input: unknown, deliveryOwnerId: string) {
+function acceptedForecast(input: unknown, deliveryOwnerId: string, item: DispatchCandidate, nowIso: string) {
   try {
     const forecast = JSON.parse(value(input)) as Record<string, unknown>;
-    const dates = ["earliestCompletion", "likelyCompletion", "latestCompletion", "nextMilestoneAt", "phaseExitAt"].map((key) => new Date(String(forecast[key] ?? "")).getTime());
-    return Boolean(
-      forecast.acceptedAt && forecast.acceptedBy && forecast.deliveryOwnerId && forecast.nextMilestone && forecast.phaseExit && forecast.basis
-      && forecast.acceptedBy === deliveryOwnerId && forecast.deliveryOwnerId === deliveryOwnerId
-      && ["low", "medium", "high"].includes(String(forecast.confidence))
-      && dates.every(Number.isFinite) && dates[0] <= dates[1] && dates[1] <= dates[2]
-      && !forecast.reforecastRequiredReason,
-    );
+    if (validateAndNormalizeWorkEconomics("deliveryForecast", forecast).error) return false;
+    if (forecast.acceptedBy !== deliveryOwnerId || forecast.deliveryOwnerId !== deliveryOwnerId || forecast.reforecastRequiredReason) return false;
+    return evaluateForecast(forecast as DeliveryForecast, item, nowIso).state === "on track";
   } catch {
     return false;
   }
 }
 
-export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAuthorization {
+export function evaluateAgentDispatch(item: DispatchCandidate, nowIso = new Date().toISOString()): AgentDispatchAuthorization {
   const key = value(item.key);
   const title = value(item.title);
   const workflow = value(item.workflow);
@@ -70,7 +65,7 @@ export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAut
   const gatePending = /pending/i.test(gate);
   const gateClear = !decisionHoldStatuses.has(decisionStatus);
   const deliveryOwnerId = value(item.delivery_owner_id);
-  const forecastAccepted = workflow !== "STEER" || (Boolean(deliveryOwnerId) && acceptedForecast(item.delivery_forecast_json, deliveryOwnerId));
+  const forecastAccepted = workflow !== "STEER" || (Boolean(deliveryOwnerId) && acceptedForecast(item.delivery_forecast_json, deliveryOwnerId, item, nowIso));
 
   const checks: DispatchCheck[] = [
     {
@@ -148,3 +143,5 @@ export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAut
     handoff_message: handoffMessage,
   };
 }
+import { evaluateForecast, type DeliveryForecast } from "../lib/work-economics";
+import { validateAndNormalizeWorkEconomics } from "../lib/work-economics-validation";

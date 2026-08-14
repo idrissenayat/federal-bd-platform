@@ -82,6 +82,33 @@ function json(data: unknown, status = 200) {
   });
 }
 
+type MemberContext = { id: string; kind: string; role: string; pod_id: string | null };
+
+async function memberContext(db: Database, user: User) {
+  return db.prepare("SELECT id, kind, role, pod_id FROM members WHERE id = ?").bind(user.id).first<MemberContext>();
+}
+
+async function scopedItem(db: Database, user: User, itemId: number) {
+  return db.prepare(`SELECT w.* FROM work_items w JOIN members actor ON actor.id = ? AND actor.pod_id = w.pod_id WHERE w.id = ?`)
+    .bind(user.id, itemId).first<Record<string, unknown>>();
+}
+
+async function auditItemControlDenial(db: Database, user: User, itemId: number, route: string) {
+  const existing = await db.prepare("SELECT id FROM work_items WHERE id = ?").bind(itemId).first<{ id: number }>();
+  if (!existing) return;
+  const member = await memberContext(db, user);
+  await db.prepare(`INSERT INTO work_economics_events
+    (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+    VALUES (?, 'itemControl', 'denied', ?, ?, NULL, NULL, ?, ?)`)
+    .bind(itemId, user.id, member?.role ?? "Unknown", `Denied cross-POD or unauthorized ${route} request.`, new Date().toISOString()).run();
+}
+
+async function scopedItemOrDenied(db: Database, user: User, itemId: number, route: string) {
+  const item = await scopedItem(db, user, itemId);
+  if (!item) await auditItemControlDenial(db, user, itemId, route);
+  return item;
+}
+
 function safeEconomicsFromRow(row: Record<string, unknown>, now: string) {
   const columns: Array<[WorkEconomicsSection, string]> = [
     ["valueHypothesis", "value_hypothesis_json"], ["deliveryForecast", "delivery_forecast_json"],
@@ -249,6 +276,12 @@ async function ensureSchema(db: Database) {
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_work_economics_agent_item_kind ON work_economics_agent_facts (item_id, record_kind)"),
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_work_economics_agent_item_kind_event ON work_economics_agent_facts (item_id, record_kind, event_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS work_economics_delivery_events (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, item_id integer NOT NULL, event_kind text NOT NULL,
+      originating_phase text, severity text, minutes integer, count integer, reason text NOT NULL,
+      occurred_at text NOT NULL, recorded_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_work_economics_delivery_event_item_kind ON work_economics_delivery_events (item_id, event_kind)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS work_economics_duration_facts (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
       item_id integer NOT NULL,
@@ -347,6 +380,7 @@ async function ensureSchema(db: Database) {
   await ensureColumn(db, "work_items", "pod_id", "pod_id text NOT NULL DEFAULT 'steer-flight-team'");
   await ensureColumn(db, "work_items", "delivery_owner_id", "delivery_owner_id text");
   await ensureColumn(db, "work_items", "outcome_owner_id", "outcome_owner_id text");
+  await ensureColumn(db, "work_economics_agent_facts", "conflict_reason", "conflict_reason text NOT NULL DEFAULT ''");
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS work_economics_events_no_update
     BEFORE UPDATE ON work_economics_events BEGIN SELECT RAISE(ABORT, 'work_economics_events are immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS work_economics_events_no_delete
@@ -620,11 +654,17 @@ async function bootstrap(db: Database, user: User) {
 }
 
 async function authorizeAgentDispatch(db: Database, user: User, itemId: number) {
+  const actor = await memberContext(db, user);
+  if (actor?.kind !== "human") return json({ error: "Only an authenticated human POD member may authorize agent dispatch." }, 403);
   const item = await db.prepare(
     `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind, m.role AS assignee_role
-     FROM work_items w LEFT JOIN members m ON m.id = w.assignee_id WHERE w.id = ?`,
-  ).bind(itemId).first<Record<string, unknown>>();
-  if (!item) return json({ error: "Work item not found." }, 404);
+     FROM work_items w JOIN members actor ON actor.id = ? AND actor.pod_id = w.pod_id
+     LEFT JOIN members m ON m.id = w.assignee_id WHERE w.id = ?`,
+  ).bind(user.id, itemId).first<Record<string, unknown>>();
+  if (!item) {
+    await auditItemControlDenial(db, user, itemId, "dispatch");
+    return json({ error: "Work item not found in your POD." }, 404);
+  }
 
   const authorization = evaluateAgentDispatch(item);
   if (!authorization.authorized || !authorization.handoff_message) {
@@ -653,6 +693,8 @@ async function authorizeAgentDispatch(db: Database, user: User, itemId: number) 
 }
 
 async function createItem(request: Request, db: Database, user: User) {
+  const actor = await memberContext(db, user);
+  if (!actor) return json({ error: "POD membership required." }, 403);
   const body = await request.json() as Record<string, unknown>;
   const title = String(body.title ?? "").trim();
   const description = String(body.description ?? "").trim();
@@ -665,6 +707,10 @@ async function createItem(request: Request, db: Database, user: User) {
   if (title.length < 3 || description.length < 10) return json({ error: "Add a clear title and description." }, 400);
   if (!phases.includes(phase) || !priorities.includes(priority) || !workflows.includes(workflow)) return json({ error: "Invalid workflow fields." }, 400);
   if (requestedGitHubUrl && !githubUrl) return json({ error: `Engineering record must be an issue or pull request from ${allowedGitHubRepository}.` }, 400);
+  if (assigneeId) {
+    const assignee = await db.prepare("SELECT id FROM members WHERE id = ? AND pod_id = ?").bind(assigneeId, actor.pod_id ?? "steer-flight-team").first<{ id: string }>();
+    if (!assignee) return json({ error: "Assignee must be an enrolled member of this POD." }, 400);
+  }
   const now = new Date().toISOString();
   let key = "";
   let result: { meta?: { last_row_id?: number } } | null = null;
@@ -675,9 +721,9 @@ async function createItem(request: Request, db: Database, user: User) {
       result = await db.prepare(
         `INSERT INTO work_items
          (key, title, description, phase, priority, workflow, state, gate, decision_status,
-          decision_authority, assignee_id, next_action, github_url, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'queued', 'Gate 1 pending', 'Waiting', 'Product Lead', ?, ?, ?, ?, ?, ?)`,
-      ).bind(key, title, description, phase, priority, workflow, assigneeId, String(body.nextAction ?? "Frame the intended outcome and prepare Gate 1 evidence."), githubUrl, user.id, now, now).run();
+          decision_authority, assignee_id, next_action, github_url, pod_id, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'queued', 'Gate 1 pending', 'Waiting', 'Product Lead', ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(key, title, description, phase, priority, workflow, assigneeId, String(body.nextAction ?? "Frame the intended outcome and prepare Gate 1 evidence."), githubUrl, actor.pod_id ?? "steer-flight-team", user.id, now, now).run();
       break;
     } catch (error) {
       if (!/UNIQUE constraint failed: work_items\.key/i.test(String(error)) || attempt === 2) throw error;
@@ -701,8 +747,10 @@ export function nextWorkItemKey(existingKeys: string[]) {
 }
 
 async function updateItem(request: Request, db: Database, user: User, itemId: number) {
-  const current = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
-  if (!current) return json({ error: "Work item not found." }, 404);
+  const actor = await memberContext(db, user);
+  if (actor?.kind !== "human") return json({ error: "Only an authenticated human POD member may update authoritative work state." }, 403);
+  const current = await scopedItemOrDenied(db, user, itemId, "item update");
+  if (!current) return json({ error: "Work item not found in your POD." }, 404);
   const body = await request.json() as Record<string, unknown>;
   const allowed: Record<string, { column: string; values?: string[] }> = {
     phase: { column: "phase", values: phases },
@@ -723,6 +771,11 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
   if ("githubUrl" in body && body.githubUrl !== null && String(body.githubUrl).trim()) {
     const normalized = normalizeEngineeringRecordUrl(body.githubUrl);
     if (!normalized) return json({ error: `Engineering record must be an issue or pull request from ${allowedGitHubRepository}.` }, 400);
+  }
+  if (body.assigneeId !== undefined && body.assigneeId !== null && String(body.assigneeId).trim()) {
+    const assignee = await db.prepare("SELECT id FROM members WHERE id = ? AND pod_id = ?")
+      .bind(String(body.assigneeId).trim(), current.pod_id ?? "steer-flight-team").first<{ id: string }>();
+    if (!assignee) return json({ error: "Assignee must be an enrolled member of this POD." }, 400);
   }
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -858,27 +911,56 @@ function normalizedEconomicsStatements(db: Database, itemId: number, section: Wo
     statements.push(db.prepare("DELETE FROM work_economics_human_facts WHERE item_id = ? AND record_kind = 'actual'").bind(itemId));
     statements.push(db.prepare("DELETE FROM work_economics_agent_facts WHERE item_id = ? AND record_kind = 'actual'").bind(itemId));
     statements.push(db.prepare("DELETE FROM work_economics_duration_facts WHERE item_id = ?").bind(itemId));
+    statements.push(db.prepare("DELETE FROM work_economics_delivery_events WHERE item_id = ?").bind(itemId));
     for (const total of value.humanRoleTotals as Array<Record<string, unknown>>) {
       statements.push(db.prepare("INSERT INTO work_economics_human_facts (item_id, record_kind, role, min_minutes, max_minutes, active_minutes, recorded_at) VALUES (?, 'actual', ?, NULL, NULL, ?, ?)")
         .bind(itemId, total.role, total.activeMinutes, now));
     }
     for (const event of value.agentTelemetry as Array<Record<string, unknown>>) {
       statements.push(db.prepare(`INSERT INTO work_economics_agent_facts
-        (item_id, record_kind, event_id, provider, model, attempts, input_tokens, output_tokens, min_cost_micros, max_cost_micros, metered_cost_micros, currency, execution_seconds, source, completeness, ingestion_state, observed_at)
-        VALUES (?, 'actual', ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(itemId, event.eventId, event.provider, event.model, event.attempts, event.inputTokens, event.outputTokens, event.meteredCost === null ? null : Math.round(Number(event.meteredCost) * 1_000_000), event.currency, Math.round(Number(event.executionMinutes) * 60), event.source, event.completeness, event.ingestionState, event.observedAt));
+        (item_id, record_kind, event_id, provider, model, attempts, input_tokens, output_tokens, min_cost_micros, max_cost_micros, metered_cost_micros, currency, execution_seconds, source, completeness, ingestion_state, observed_at, conflict_reason)
+        VALUES (?, 'actual', ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(itemId, event.eventId, event.provider, event.model, event.attempts, event.inputTokens, event.outputTokens, event.meteredCost === null ? null : Math.round(Number(event.meteredCost) * 1_000_000), event.currency, Math.round(Number(event.executionMinutes) * 60), event.source, event.completeness, event.ingestionState, event.observedAt, event.conflictReason));
     }
     for (const [factKind, minutes] of Object.entries(value.durationFacts as Record<string, unknown>)) {
       statements.push(db.prepare("INSERT INTO work_economics_duration_facts (item_id, fact_kind, minutes, source, recorded_at) VALUES (?, ?, ?, ?, ?)")
         .bind(itemId, factKind, minutes, value.telemetrySource, now));
     }
+    for (const event of value.reworkEvents as Array<Record<string, unknown>>) statements.push(db.prepare(`INSERT INTO work_economics_delivery_events (item_id, event_kind, originating_phase, severity, minutes, count, reason, occurred_at, recorded_at) VALUES (?, 'rework', ?, NULL, ?, NULL, ?, ?, ?)`)
+      .bind(itemId, event.originatingPhase, event.minutes, event.reason, now, now));
+    for (const event of value.defectEvents as Array<Record<string, unknown>>) statements.push(db.prepare(`INSERT INTO work_economics_delivery_events (item_id, event_kind, originating_phase, severity, minutes, count, reason, occurred_at, recorded_at) VALUES (?, 'defect', NULL, ?, NULL, ?, 'Defect count recorded from governed actuals.', ?, ?)`)
+      .bind(itemId, event.severity, event.count, now, now));
+    for (const event of value.rollbackEvents as Array<Record<string, unknown>>) statements.push(db.prepare(`INSERT INTO work_economics_delivery_events (item_id, event_kind, originating_phase, severity, minutes, count, reason, occurred_at, recorded_at) VALUES (?, 'rollback', NULL, NULL, NULL, 1, ?, ?, ?)`)
+      .bind(itemId, event.reason, event.occurredAt, now));
   }
   return statements;
 }
 
+async function serverVerifiedEvidence(url: unknown) {
+  const evidence = await readEvidence(url);
+  return evidence.text && evidence.sha256 && evidence.revision && /^[0-9a-f]{40}$/i.test(evidence.revision)
+    ? { evidenceStatus: "verified", evidenceRevision: evidence.revision, evidenceSha256: evidence.sha256, evidenceVerifiedAt: new Date().toISOString() }
+    : null;
+}
+
+async function authoritativeServiceLevel(db: Database, current: Record<string, unknown>) {
+  const rows = await db.prepare("SELECT * FROM work_items WHERE pod_id = ? AND workflow = ? AND state = 'complete'")
+    .bind(current.pod_id ?? "steer-flight-team", current.workflow).all<Record<string, unknown>>();
+  const now = new Date().toISOString();
+  const records = (rows.results ?? []).map((row) => ({ ...row, work_economics: safeEconomicsFromRow(row, now) })) as unknown as Array<Record<string, unknown> & { work_economics: ReturnType<typeof safeEconomicsFromRow> }>;
+  return buildServiceLevelDistributions(records).find((entry) => entry.podId === String(current.pod_id ?? "steer-flight-team") && entry.workType === String(current.workflow)) ?? null;
+}
+
+async function authoritativeCompletionAt(db: Database, current: Record<string, unknown>, itemId: number) {
+  if (String(current.state) !== "complete") return null;
+  const event = await db.prepare("SELECT created_at FROM activity WHERE item_id = ? AND detail LIKE '%state → complete%' ORDER BY id DESC LIMIT 1")
+    .bind(itemId).first<{ created_at: string }>();
+  return event?.created_at ?? String(current.updated_at);
+}
+
 async function updateWorkEconomics(request: Request, db: Database, user: User, itemId: number) {
-  const current = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
-  if (!current) return json({ error: "Work item not found." }, 404);
+  const current = await scopedItemOrDenied(db, user, itemId, "Work Economics update");
+  if (!current) return json({ error: "Permission denied. Ask the named record owner in this POD to review or edit this record." }, 403);
   const member = await db.prepare("SELECT id, kind, role, pod_id FROM members WHERE id = ?").bind(user.id).first<{ id: string; kind: string; role: string; pod_id: string | null }>();
   const body = await request.json() as { section?: unknown; value?: unknown; reason?: unknown };
   const section = String(body.section ?? "") as WorkEconomicsSection;
@@ -890,11 +972,34 @@ async function updateWorkEconomics(request: Request, db: Database, user: User, i
   if (!body.value || typeof body.value !== "object" || Array.isArray(body.value)) return json({ error: "Supply a structured Work Economics record." }, 400);
   const value = { ...(body.value as Record<string, unknown>) };
   const now = new Date().toISOString();
-  if (section === "deliveryForecast") Object.assign(value, { deliveryOwnerId: user.id, acceptedBy: user.id, acceptedAt: now, updatedAt: now, acceptanceState: humanAcceptanceState(value.advisory, value.acceptanceState), reforecastRequiredReason: undefined, reforecastRequiredAt: undefined });
-  if (section === "actualEconomics") Object.assign(value, { correctedBy: user.id, correctedAt: now });
+  if (section === "deliveryForecast") {
+    const distribution = String(value.basisKind) === "comparable history" ? await authoritativeServiceLevel(db, current) : null;
+    if (String(value.basisKind) === "comparable history" && !distribution) return json({ error: "Comparable history is unavailable until five completed same-POD/work-type observations exist." }, 409);
+    Object.assign(value, {
+      serviceLevel: distribution ? { podId: distribution.podId, workType: distribution.workType, sampleSize: distribution.sampleSize, percentile: distribution.percentile, lowHours: distribution.lowHours, highHours: distribution.highHours } : null,
+      deliveryOwnerId: user.id, acceptedBy: user.id, acceptedAt: now, updatedAt: now,
+      acceptanceState: humanAcceptanceState(value.advisory, value.acceptanceState), reforecastRequiredReason: undefined, reforecastRequiredAt: undefined,
+    });
+  }
+  if (section === "actualEconomics") {
+    const completionAt = await authoritativeCompletionAt(db, current, itemId);
+    let acceptedForecast: DeliveryForecast | null = null;
+    try { acceptedForecast = current.delivery_forecast_json ? JSON.parse(String(current.delivery_forecast_json)) as DeliveryForecast : null; } catch { acceptedForecast = null; }
+    Object.assign(value, { completionAt, likelyVarianceMinutes: completionAt ? completionVarianceMinutes(acceptedForecast, completionAt) : null, correctedBy: user.id, correctedAt: now, acceptanceState: humanAcceptanceState(value.advisory, value.acceptanceState) });
+  }
   if (section === "realizedOutcome") Object.assign(value, { outcomeOwnerId: String(current.outcome_owner_id ?? value.outcomeOwnerId ?? user.id), acceptanceState: humanAcceptanceState(value.advisory, value.acceptanceState) });
+  if (section === "realizedOutcome" && ["not due", "pending evidence"].includes(String(value.status))) Object.assign(value, { verifier: "", verifiedAt: "", evidenceRevision: "", evidenceSha256: "", evidenceVerifiedAt: "" });
   if (section === "realizedOutcome" && !["not due", "pending evidence"].includes(String(value.status))) Object.assign(value, { verifier: user.id, verifiedAt: now });
-  if (section === "valueHypothesis") Object.assign(value, { acceptedBy: user.id, acceptedAt: now, acceptanceState: humanAcceptanceState(value.advisory, value.acceptanceState) });
+  if (section === "valueHypothesis") {
+    const verified = await serverVerifiedEvidence(value.evidence);
+    if (!verified) return json({ error: "Value evidence must resolve to an approved GitHub text artifact before acceptance." }, 409);
+    Object.assign(value, verified, { acceptedBy: user.id, acceptedAt: now, acceptanceState: humanAcceptanceState(value.advisory, value.acceptanceState) });
+  }
+  if (section === "realizedOutcome" && !["not due", "pending evidence"].includes(String(value.status))) {
+    const verified = await serverVerifiedEvidence(value.evidence);
+    if (!verified) return json({ error: "Verified outcome evidence must resolve to an approved GitHub text artifact." }, 409);
+    Object.assign(value, verified);
+  }
   if (section === "valueHypothesis") {
     const outcomeOwner = await db.prepare("SELECT id FROM members WHERE id = ? AND pod_id = ? AND kind = 'human'")
       .bind(value.outcomeOwnerId, current.pod_id ?? "steer-flight-team").first<{ id: string }>();
@@ -982,8 +1087,8 @@ async function readEvidence(urlValue: unknown): Promise<EvidenceRead> {
 }
 
 async function runCriticReview(db: Database, user: User, itemId: number) {
-  const item = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
-  if (!item) return json({ error: "Work item not found." }, 404);
+  const item = await scopedItemOrDenied(db, user, itemId, "Critic review");
+  if (!item) return json({ error: "Work item not found in your POD." }, 404);
 
   const evidence = await readEvidence(item.evidence_url);
   const joinedText = [item.title, item.description, item.next_action, evidence.text].filter(Boolean).join("\n");
@@ -1197,8 +1302,8 @@ export function gateOneValueReady(valueJson: unknown) {
 }
 
 async function decide(request: Request, db: Database, user: User, itemId: number) {
-  const current = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
-  if (!current) return json({ error: "Work item not found." }, 404);
+  const current = await scopedItemOrDenied(db, user, itemId, "gate decision");
+  if (!current) return json({ error: "Work item not found in your POD." }, 404);
   const body = await request.json() as Record<string, unknown>;
   const decision = String(body.decision ?? "");
   const reasoning = String(body.reasoning ?? "").trim();
@@ -1260,8 +1365,10 @@ async function decide(request: Request, db: Database, user: User, itemId: number
 }
 
 async function transitionItem(request: Request, db: Database, user: User, itemId: number) {
-  const current = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
-  if (!current) return json({ error: "Work item not found." }, 404);
+  const actor = await memberContext(db, user);
+  if (actor?.kind !== "human") return json({ error: "Only an authenticated human POD member may transition authoritative workflow state." }, 403);
+  const current = await scopedItemOrDenied(db, user, itemId, "workflow transition");
+  if (!current) return json({ error: "Work item not found in your POD." }, 404);
   const body = await request.json() as Record<string, unknown>;
   const action = String(body.action ?? "");
   const status = String(current.decision_status);
@@ -1306,7 +1413,17 @@ async function transitionItem(request: Request, db: Database, user: User, itemId
 
 async function markNotificationRead(db: Database, user: User, notificationId: number) {
   const now = new Date().toISOString();
-  await db.prepare("UPDATE notifications SET status = 'read', read_at = ? WHERE id = ?").bind(now, notificationId).run();
+  const notification = await db.prepare(`SELECT n.id FROM notifications n
+    JOIN work_items w ON w.id = n.item_id
+    JOIN members actor ON actor.id = ? AND actor.pod_id = w.pod_id
+    WHERE n.id = ? AND (n.member_id = actor.id OR (n.member_id IS NULL AND instr(actor.role, n.recipient_role) > 0))`)
+    .bind(user.id, notificationId).first<{ id: number }>();
+  if (!notification) {
+    const target = await db.prepare("SELECT item_id FROM notifications WHERE id = ?").bind(notificationId).first<{ item_id: number }>();
+    if (target) await auditItemControlDenial(db, user, target.item_id, "notification mutation");
+    return json({ error: "Notification not found in your POD or assigned role." }, 404);
+  }
+  await db.prepare("UPDATE notifications SET status = 'read', read_at = ? WHERE id = ?").bind(now, notification.id).run();
   return json({ ok: true, actor: user.id });
 }
 
@@ -1572,9 +1689,9 @@ export function codeReviewDecisionGuidance(
   return { recommended_action: recommendedAction, headline, summary, actions: { accept, request_changes: requestChanges, merge } };
 }
 
-async function loadCodeReview(db: Database, env: Env, itemId: number) {
-  const item = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
-  if (!item) return json({ error: "Work item not found." }, 404);
+async function loadCodeReview(db: Database, env: Env, user: User, itemId: number) {
+  const item = await scopedItemOrDenied(db, user, itemId, "code review read");
+  if (!item) return json({ error: "Work item not found in your POD." }, 404);
   const reference = pullRequestFromItem(item);
   if (!reference) return json({ error: `Attach a pull request from ${allowedGitHubRepository} to this work item's evidence or engineering record.` }, 409);
   const basePath = `/repos/${reference.owner}/${reference.repo}`;
@@ -1636,9 +1753,9 @@ async function deliverGitHubReview(env: Env, reference: PullRequestReference, ac
 }
 
 async function actOnCodeReview(request: Request, db: Database, env: Env, user: User, itemId: number) {
+  const item = await scopedItemOrDenied(db, user, itemId, "code review mutation");
+  if (!item) return json({ error: "Work item not found in your POD." }, 404);
   if (!env.GITHUB_TOKEN) return json({ error: "GitHub write actions are not connected yet. Add the repository credential to the hosted STEER environment first." }, 503);
-  const item = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
-  if (!item) return json({ error: "Work item not found." }, 404);
   const reference = pullRequestFromItem(item);
   if (!reference) return json({ error: "This work item is not linked to an approved pull request." }, 409);
   const member = await db.prepare("SELECT kind, role FROM members WHERE id = ?").bind(user.id).first<{ kind: string; role: string }>();
@@ -1726,7 +1843,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     const dispatchMatch = url.pathname.match(/^\/api\/items\/(\d+)\/dispatch$/);
     if (request.method === "POST" && dispatchMatch) return authorizeAgentDispatch(env.DB, user, Number(dispatchMatch[1]));
     const codeReviewMatch = url.pathname.match(/^\/api\/items\/(\d+)\/code-review$/);
-    if (request.method === "GET" && codeReviewMatch) return loadCodeReview(env.DB, env, Number(codeReviewMatch[1]));
+    if (request.method === "GET" && codeReviewMatch) return loadCodeReview(env.DB, env, user, Number(codeReviewMatch[1]));
     if (request.method === "POST" && codeReviewMatch) return actOnCodeReview(request, env.DB, env, user, Number(codeReviewMatch[1]));
     const workflowMatch = url.pathname.match(/^\/api\/items\/(\d+)\/workflow$/);
     if (request.method === "POST" && workflowMatch) return transitionItem(request, env.DB, user, Number(workflowMatch[1]));

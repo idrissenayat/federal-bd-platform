@@ -12,8 +12,8 @@
 
 ## Reachability and compensating boundary
 
-- `rg` finds no application or vinext runtime import/use of `image-size` outside vinext's package manifest.
-- The STEER Work Management app has no image upload, image metadata, ICNS, JXL, or HEIF ingestion route. Work Economics accepts exact JSON fields and URL evidence strings; it never fetches or parses image bytes.
+- `image-size` is imported by vinext's build-time `metadata-route-build-data.js`. The production `dist` output contains no `image-size`, `imageSize(`, or metadata-build-data reference after a successful build. The Worker image endpoint delegates byte transformation to the bound Cloudflare Images service and does not import the vulnerable parser.
+- The only repository metadata image is trusted `public/og.png`. The STEER Work Management app has no image upload, dynamic metadata-image, ICNS, JXL, HEIF, or user-supplied image parsing route. Work Economics accepts exact JSON fields and GitHub text evidence URLs; its server resolver reads text and never passes evidence bytes to `image-size`.
 - Drizzle Kit and its legacy nested esbuild run only during local schema generation. They are not imported by the Worker application or shipped Work Economics route.
 - No dependency was forced to a known incompatible version. `axe-core` and `jsdom` were added only as development dependencies for route-level automated accessibility evidence.
 

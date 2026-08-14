@@ -29,6 +29,10 @@ test("work-economics UI is responsive and does not rely on color alone", () => {
   assert.match(page, /forecast\.state/);
   assert.match(page, /forecast\.reason/);
   assert.match(page, /AI is advisory; a named human accepts/);
+  assert.ok((page.match(/<RecordAdvisory advisory=/g) ?? []).length === 4);
+  assert.match(page, /Each governed record below shows its own AI proposal and human acceptance state/);
+  assert.match(page, /Human ruling:/);
+  assert.match(page, /Value treatment/);
   assert.match(page, /AI proposal ruling/);
   assert.match(page, /Accept unchanged/);
   assert.match(page, /Accept with human edits/);

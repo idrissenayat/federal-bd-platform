@@ -92,10 +92,10 @@ test("validation rejects person-level scoring and invalid completion ranges", ()
   assert.match(invalid ?? "", /earliest–likely–latest/);
 });
 
-test("verified outcomes are stamped by the server rather than trusting a client verifier", () => {
+test("verified outcomes require server evidence provenance rather than trusting a client verifier", () => {
   const error = validateWorkEconomics("realizedOutcome", {
     status: "verified positive", observedMetric: "Cycle time", observedResult: "20", unit: "minutes", observationDate: "2026-08-20",
-    evidence: "https://example.com/evidence", confidence: "medium", causalLimitations: "Small initial sample", outcomeOwnerId: "member-product", acceptanceState: "no proposal", advisory: null, verifier: "", verifiedAt: "",
+    evidence: "https://github.com/example/repository/blob/48a870379418c9bafee0ab5eb726f414c48726eb/evidence.md", evidenceRevision: "48a870379418c9bafee0ab5eb726f414c48726eb", evidenceSha256: "a".repeat(64), evidenceVerifiedAt: now, confidence: "medium", causalLimitations: "Small initial sample", outcomeOwnerId: "member-product", acceptanceState: "no proposal", advisory: null, verifier: "member-product", verifiedAt: now,
   });
   assert.equal(error, null);
 });
@@ -103,7 +103,7 @@ test("verified outcomes are stamped by the server rather than trusting a client 
 test("available agent telemetry requires provider provenance", () => {
   const error = validateWorkEconomics("actualEconomics", {
     humanRoleTotals: [{ role: "Delivery roles", activeMinutes: 10 }], agentTelemetry: [{ eventId: "event-1", provider: "", model: "", attempts: 1, inputTokens: null, outputTokens: null, meteredCost: null, currency: "USD", executionMinutes: 4, source: "provider export", completeness: "complete", observedAt: now, ingestionState: "accepted", conflictReason: "" }],
-    durationFacts: { agentExecutionMinutes: 4, queueMinutes: 0, blockedMinutes: 0, gateWaitMinutes: 0, cycleMinutes: 14 }, reworkEvents: [], defectEvents: [], rollbackEvents: [], telemetrySource: "provider export", completeness: "complete", completionAt: null, likelyVarianceMinutes: null, correctedBy: "member-ops", correctedAt: now, correctionReason: "Initial actuals",
+    durationFacts: { agentExecutionMinutes: 4, queueMinutes: 0, blockedMinutes: 0, gateWaitMinutes: 0, cycleMinutes: 14 }, reworkEvents: [], defectEvents: [], rollbackEvents: [], telemetrySource: "provider export", completeness: "complete", completionAt: null, likelyVarianceMinutes: null, correctedBy: "member-ops", correctedAt: now, correctionReason: "Initial actuals", advisory: null, acceptanceState: "no proposal",
   });
   assert.match(error ?? "", /provider, model/);
 });
@@ -117,9 +117,44 @@ test("named-owner and POD authority fail closed", () => {
 
 test("expert judgment is low confidence and Gate 1 requires verified evidence", () => {
   assert.match(validateWorkEconomics("deliveryForecast", { ...forecast, confidence: "high" }) ?? "", /Expert-judgment.*low confidence/);
-  const value = { primaryType: "platform capability or reuse", beneficiary: "POD contributors", outcomeMetric: "forecast coverage", baseline: "0", target: "90", unit: "percent", observationDate: "2026-09-14", outcomeOwner: "Product Lead", outcomeOwnerId: "member-product", impact: "High", timeCriticality: "Medium", strategicAlignment: "High", confidence: "medium", evidence: "https://github.com/example/evidence", evidenceStatus: "verified", assumptions: "First 10 completed items", advisory: null, acceptanceState: "no proposal", acceptedBy: "member-product", acceptedAt: now };
+  const value = { primaryType: "platform capability or reuse", beneficiary: "POD contributors", outcomeMetric: "forecast coverage", baseline: "0", target: "90", unit: "percent", observationDate: "2026-09-14", outcomeOwner: "Product Lead", outcomeOwnerId: "member-product", impact: "High", timeCriticality: "Medium", strategicAlignment: "High", confidence: "medium", evidence: "https://github.com/example/repository/blob/48a870379418c9bafee0ab5eb726f414c48726eb/evidence.md", evidenceStatus: "verified", evidenceRevision: "48a870379418c9bafee0ab5eb726f414c48726eb", evidenceSha256: "b".repeat(64), evidenceVerifiedAt: now, valueMode: "non-monetary", assumptions: "First 10 completed items", advisory: null, acceptanceState: "no proposal", acceptedBy: "member-product", acceptedAt: now };
   assert.equal(gateOneValueReady(JSON.stringify(value)), true);
   assert.equal(gateOneValueReady(JSON.stringify({ ...value, evidenceStatus: "unverified" })), false);
+  assert.match(validateWorkEconomics("valueHypothesis", { ...value, unit: "US dollars", valueMode: "non-monetary" }) ?? "", /Monetary value language/);
+  assert.match(validateWorkEconomics("valueHypothesis", { ...value, unit: "US dollars", valueMode: "monetary", currency: "", period: "" }) ?? "", /currency, period/);
+});
+
+test("actual delivery facts fail closed on invalid durations, events, conflicts, and client completion facts", () => {
+  const valid = {
+    humanRoleTotals: [{ role: "Delivery roles", activeMinutes: 20 }],
+    agentTelemetry: [{ eventId: "evt-1", provider: "OpenAI", model: "gpt-5", attempts: 1, inputTokens: 100, outputTokens: 20, meteredCost: 0.25, currency: "USD", executionMinutes: 3, source: "provider event", completeness: "complete", observedAt: now, ingestionState: "accepted", conflictReason: "" }],
+    durationFacts: { agentExecutionMinutes: 3, queueMinutes: 2, blockedMinutes: 0, gateWaitMinutes: 4, cycleMinutes: 29 },
+    reworkEvents: [{ originatingPhase: "Engineer", minutes: 5, reason: "Independent test correction" }],
+    defectEvents: [{ severity: "blocker", count: 1 }],
+    rollbackEvents: [{ reason: "Restore safe revision", occurredAt: now }],
+    telemetrySource: "provider event plus audited workflow events", completeness: "complete", completionAt: now, likelyVarianceMinutes: 12,
+    correctedBy: "member-ops", correctedAt: now, correctionReason: "Reconciled provider and workflow facts", advisory: null, acceptanceState: "no proposal",
+  };
+  assert.equal(validateWorkEconomics("actualEconomics", valid), null);
+  assert.match(validateWorkEconomics("actualEconomics", { ...valid, durationFacts: { ...valid.durationFacts, gateWaitMinutes: -1 } }) ?? "", /non-negative/);
+  assert.match(validateWorkEconomics("actualEconomics", { ...valid, reworkEvents: [{ originatingPhase: "Engineer", minutes: -1, reason: "" }] }) ?? "", /phase, non-negative minutes, and reason/);
+  assert.match(validateWorkEconomics("actualEconomics", { ...valid, defectEvents: [{ severity: "blocker", count: 1.5 }] }) ?? "", /integer count/);
+  assert.match(validateWorkEconomics("actualEconomics", { ...valid, rollbackEvents: [{ reason: "Rollback", occurredAt: "not-a-date" }] }) ?? "", /valid timestamp/);
+  assert.match(validateWorkEconomics("actualEconomics", { ...valid, completionAt: "not-a-date" }) ?? "", /authoritative timestamp/);
+  assert.match(validateWorkEconomics("actualEconomics", { ...valid, likelyVarianceMinutes: Number.POSITIVE_INFINITY }) ?? "", /server-derived number/);
+  assert.match(validateWorkEconomics("actualEconomics", { ...valid, agentTelemetry: [{ ...valid.agentTelemetry[0], ingestionState: "conflict", conflictReason: "" }] }) ?? "", /conflicts require a reason/);
+});
+
+test("verified outcome dates and evidence provenance fail closed", () => {
+  const valid = {
+    status: "verified positive", observedMetric: "Cycle time", observedResult: "20", unit: "minutes", observationDate: "2026-08-20",
+    verifier: "member-product", evidence: "https://github.com/example/repository/blob/48a870379418c9bafee0ab5eb726f414c48726eb/evidence.md", evidenceRevision: "48a870379418c9bafee0ab5eb726f414c48726eb", evidenceSha256: "c".repeat(64), evidenceVerifiedAt: now,
+    confidence: "medium", causalLimitations: "Small initial sample", verifiedAt: now, outcomeOwnerId: "member-product", advisory: null, acceptanceState: "no proposal",
+  };
+  assert.equal(validateWorkEconomics("realizedOutcome", valid), null);
+  assert.match(validateWorkEconomics("realizedOutcome", { ...valid, observationDate: "invalid" }) ?? "", /valid observation date/);
+  assert.match(validateWorkEconomics("realizedOutcome", { ...valid, evidenceSha256: "client-says-verified" }) ?? "", /server-verified evidence fingerprint/);
+  assert.match(validateWorkEconomics("realizedOutcome", { ...valid, evidenceVerifiedAt: "invalid" }) ?? "", /server-verified evidence fingerprint/);
 });
 
 test("completion variance is calculated against the accepted likely window without a person score", () => {
@@ -136,7 +171,7 @@ test("pull forecast exposes every contributing WIP item and range", () => {
 });
 
 test("service levels use only same-POD/work-type completed history and show sample size", () => {
-  const actual = (cycleMinutes: number): ActualEconomics => ({ humanRoleTotals: [], agentTelemetry: [], durationFacts: { agentExecutionMinutes: 1, queueMinutes: 1, blockedMinutes: 0, gateWaitMinutes: 0, cycleMinutes }, reworkEvents: [], defectEvents: [], rollbackEvents: [], telemetrySource: "events", completeness: "complete", completionAt: now, likelyVarianceMinutes: null, correctedBy: "member-ops", correctedAt: now, correctionReason: "System facts" });
+  const actual = (cycleMinutes: number): ActualEconomics => ({ humanRoleTotals: [], agentTelemetry: [], durationFacts: { agentExecutionMinutes: 1, queueMinutes: 1, blockedMinutes: 0, gateWaitMinutes: 0, cycleMinutes }, reworkEvents: [], defectEvents: [], rollbackEvents: [], telemetrySource: "events", completeness: "complete", completionAt: now, likelyVarianceMinutes: null, correctedBy: "member-ops", correctedAt: now, correctionReason: "System facts", advisory: null, acceptanceState: "no proposal" });
   const records = [60, 90, 120, 150, 180].map((minutes) => ({ pod_id: "pod-a", workflow: "STEER", work_economics: { ...economics(forecast), actualEconomics: actual(minutes) } }));
   records.push({ pod_id: "pod-b", workflow: "STEER", work_economics: { ...economics(forecast), actualEconomics: actual(999) } });
   const result = buildServiceLevelDistributions(records);

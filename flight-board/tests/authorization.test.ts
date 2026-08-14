@@ -19,6 +19,12 @@ const readyItem = {
 };
 
 const acceptedForecast = JSON.stringify({
+  sizeBand: "M",
+  humanEffortRanges: [{ role: "Delivery roles", minMinutes: 30, maxMinutes: 90 }],
+  agentCostRanges: [{ provider: "OpenAI", minCost: 1, maxCost: 5, currency: "USD", expectedAttempts: 2 }],
+  complexity: 3,
+  uncertainty: 3,
+  coordination: 2,
   earliestCompletion: "2026-08-15T14:00:00.000Z",
   likelyCompletion: "2026-08-15T18:00:00.000Z",
   latestCompletion: "2026-08-16T18:00:00.000Z",
@@ -27,11 +33,28 @@ const acceptedForecast = JSON.stringify({
   phaseExit: "Move to Evaluate",
   phaseExitAt: "2026-08-15T18:00:00.000Z",
   basis: "Approved Exam and Builder plan",
-  confidence: "medium",
+  basisKind: "expert judgment",
+  comparableItems: "None yet",
+  serviceLevel: null,
+  timezone: "America/New_York",
+  confidence: "low",
+  agentWorkCompletedAt: null,
+  humanDecisionTargetAt: null,
+  blockedSince: null,
+  unblockOwner: "",
+  unblockAction: "",
+  cannotForecastUntil: "",
+  freshnessHours: 24,
   acceptedBy: "human-tech-lead",
   deliveryOwnerId: "human-tech-lead",
   acceptedAt: "2026-08-14T14:00:00.000Z",
+  updatedAt: "2026-08-14T14:00:00.000Z",
+  changeReason: "Initial owner forecast accepted",
+  advisory: null,
+  acceptanceState: "no proposal",
 });
+
+const dispatchNow = "2026-08-14T16:00:00.000Z";
 
 test("authorizes an active, evidence-backed agent handoff", () => {
   const result = evaluateAgentDispatch(readyItem);
@@ -71,7 +94,7 @@ test("blocks a STEER handoff until the delivery owner accepts a forecast", () =>
 });
 
 test("authorizes a STEER handoff with an accepted, current forecast", () => {
-  const result = evaluateAgentDispatch({ ...readyItem, workflow: "STEER", delivery_forecast_json: acceptedForecast });
+  const result = evaluateAgentDispatch({ ...readyItem, workflow: "STEER", delivery_forecast_json: acceptedForecast }, dispatchNow);
   assert.equal(result.authorized, true);
   assert.match(result.handoff_message ?? "", /Owner forecast: accepted in STEER Work Economics/);
 });
@@ -82,6 +105,31 @@ test("blocks a STEER handoff when a material change requires reforecasting", () 
     workflow: "STEER",
     delivery_forecast_json: JSON.stringify({ ...JSON.parse(acceptedForecast), reforecastRequiredReason: "Scope changed" }),
   });
+  assert.equal(result.authorized, false);
+  assert.ok(result.missing.includes("Owner forecast accepted"));
+});
+
+test("blocks a STEER handoff when the accepted forecast is stale", () => {
+  const result = evaluateAgentDispatch({
+    ...readyItem,
+    workflow: "STEER",
+    delivery_forecast_json: JSON.stringify({ ...JSON.parse(acceptedForecast), updatedAt: "2026-08-12T14:00:00.000Z" }),
+  }, dispatchNow);
+  assert.equal(result.authorized, false);
+  assert.ok(result.missing.includes("Owner forecast accepted"));
+});
+
+test("blocks a STEER handoff when the latest completion window is already late", () => {
+  const result = evaluateAgentDispatch({
+    ...readyItem,
+    workflow: "STEER",
+    delivery_forecast_json: JSON.stringify({
+      ...JSON.parse(acceptedForecast),
+      earliestCompletion: "2026-08-13T14:00:00.000Z",
+      likelyCompletion: "2026-08-13T18:00:00.000Z",
+      latestCompletion: "2026-08-14T15:00:00.000Z",
+    }),
+  }, dispatchNow);
   assert.equal(result.authorized, false);
   assert.ok(result.missing.includes("Owner forecast accepted"));
 });

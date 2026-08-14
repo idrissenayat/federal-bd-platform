@@ -106,12 +106,21 @@ export const workEconomicsAgentFacts = sqliteTable(
     source: text("source").notNull(),
     completeness: text("completeness").notNull(),
     ingestionState: text("ingestion_state").notNull(),
+    conflictReason: text("conflict_reason").notNull().default(""),
     observedAt: text("observed_at").notNull(),
   },
   (table) => [
     index("idx_work_economics_agent_item_kind").on(table.itemId, table.recordKind),
     uniqueIndex("uq_work_economics_agent_item_kind_event").on(table.itemId, table.recordKind, table.eventId),
   ],
+);
+
+export const workEconomicsDeliveryEvents = sqliteTable(
+  "work_economics_delivery_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }), itemId: integer("item_id").notNull(), eventKind: text("event_kind").notNull(), originatingPhase: text("originating_phase"), severity: text("severity"), minutes: integer("minutes"), count: integer("count"), reason: text("reason").notNull(), occurredAt: text("occurred_at").notNull(), recordedAt: text("recorded_at").notNull(),
+  },
+  (table) => [index("idx_work_economics_delivery_event_item_kind").on(table.itemId, table.eventKind)],
 );
 
 export const workEconomicsDurationFacts = sqliteTable(

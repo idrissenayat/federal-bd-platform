@@ -38,6 +38,8 @@ test("Work Economics migration and rollback preserve existing work", () => {
   db.exec(migration);
   const normalizedMigration = readFileSync(new URL("../drizzle/0006_sticky_sleeper.sql", import.meta.url), "utf8").replaceAll("--> statement-breakpoint", "");
   db.exec(normalizedMigration);
+  const deliveryEventMigration = readFileSync(new URL("../drizzle/0007_melodic_the_initiative.sql", import.meta.url), "utf8").replaceAll("--> statement-breakpoint", "");
+  db.exec(deliveryEventMigration);
   const migrated = db.prepare("SELECT key, title, value_hypothesis_json, delivery_forecast_json, actual_economics_json, realized_outcome_json FROM work_items WHERE key = 'STR-001'").get() as Record<string, unknown>;
   assert.equal(migrated.title, "Existing work");
   assert.equal(migrated.value_hypothesis_json, null);
@@ -52,8 +54,14 @@ test("Work Economics migration and rollback preserve existing work", () => {
   insertAgentFact.run("forecast");
   insertAgentFact.run("actual");
   assert.throws(() => insertAgentFact.run("actual"), /UNIQUE/);
+  db.prepare("UPDATE work_economics_agent_facts SET conflict_reason = 'Provider export conflicts with accepted event' WHERE record_kind = 'actual'").run();
+  assert.equal(db.prepare("SELECT conflict_reason FROM work_economics_agent_facts WHERE record_kind = 'actual'").get()!.conflict_reason, "Provider export conflicts with accepted event");
+  db.prepare(`INSERT INTO work_economics_delivery_events
+    (item_id, event_kind, originating_phase, minutes, reason, occurred_at, recorded_at)
+    VALUES (1, 'rework', 'Engineer', 30, 'Correct independent-test blocker', '2026-08-14', '2026-08-14')`).run();
+  assert.equal(db.prepare("SELECT event_kind FROM work_economics_delivery_events WHERE item_id = 1").get()!.event_kind, "rework");
 
-  db.exec("DROP TRIGGER work_economics_events_no_update; DROP TRIGGER work_economics_events_no_delete; DROP TABLE work_economics_agent_facts; DROP TABLE work_economics_duration_facts; DROP TABLE work_economics_human_facts; ALTER TABLE members DROP COLUMN pod_id; ALTER TABLE work_items DROP COLUMN outcome_owner_id; ALTER TABLE work_items DROP COLUMN delivery_owner_id; ALTER TABLE work_items DROP COLUMN pod_id; DROP TABLE work_economics_events; ALTER TABLE work_items DROP COLUMN realized_outcome_json; ALTER TABLE work_items DROP COLUMN actual_economics_json; ALTER TABLE work_items DROP COLUMN delivery_forecast_json; ALTER TABLE work_items DROP COLUMN value_hypothesis_json;");
+  db.exec("DROP TABLE work_economics_delivery_events; ALTER TABLE work_economics_agent_facts DROP COLUMN conflict_reason; DROP TRIGGER work_economics_events_no_update; DROP TRIGGER work_economics_events_no_delete; DROP TABLE work_economics_agent_facts; DROP TABLE work_economics_duration_facts; DROP TABLE work_economics_human_facts; ALTER TABLE members DROP COLUMN pod_id; ALTER TABLE work_items DROP COLUMN outcome_owner_id; ALTER TABLE work_items DROP COLUMN delivery_owner_id; ALTER TABLE work_items DROP COLUMN pod_id; DROP TABLE work_economics_events; ALTER TABLE work_items DROP COLUMN realized_outcome_json; ALTER TABLE work_items DROP COLUMN actual_economics_json; ALTER TABLE work_items DROP COLUMN delivery_forecast_json; ALTER TABLE work_items DROP COLUMN value_hypothesis_json;");
   const rolledBack = db.prepare("SELECT key, title, next_action FROM work_items WHERE key = 'STR-001'").get() as Record<string, unknown>;
   assert.equal(rolledBack.key, "STR-001");
   assert.equal(rolledBack.title, "Existing work");
