@@ -1016,6 +1016,14 @@ export function itemVisibleInMyWork(item: WorkItem, userId: string, role: RoleCo
   return item.assignee_id === userId || itemMatchesRole(item, role, reviews);
 }
 
+export type BacklogScope = "all" | "open" | "closed";
+
+export function backlogItemsForScope<T extends { state: string }>(items: T[], scope: BacklogScope) {
+  if (scope === "open") return items.filter((item) => item.state !== "complete");
+  if (scope === "closed") return items.filter((item) => item.state === "complete");
+  return items;
+}
+
 function RoleWorkCard({ item, canAct, saving, onOpen, onDecision, onTransition }: { item: WorkItem; canAct: boolean; saving: boolean; onOpen: (item: WorkItem) => void; onDecision: (item: WorkItem) => void; onTransition: (item: WorkItem, action: "START_REWORK" | "RESUBMIT") => Promise<void> }) {
   const needsDecision = ["Needed now", "Resubmitted"].includes(item.decision_status);
   const returned = item.decision_status === "Changes requested";
@@ -1162,12 +1170,28 @@ function FlightBoard({ items, onOpen, onMove, saving }: { items: WorkItem[]; onO
 }
 
 function Backlog({ items, onOpen, onCreate }: { items: WorkItem[]; onOpen: (item: WorkItem) => void; onCreate: () => void }) {
+  const [scope, setScope] = useState<BacklogScope>("all");
   const open = items.filter((item) => item.state !== "complete");
+  const closed = items.filter((item) => item.state === "complete");
+  const visibleItems = backlogItemsForScope(items, scope);
   return <>
-    <PageHeading eyebrow="Demand and ownership" title="Backlog" copy="Every item needs a value signal, explicit treatment, named owner, and smallest executable next action." actions={<button className="primary-button compact" onClick={onCreate}>＋ Create work item</button>} />
+    <PageHeading eyebrow="Complete work register" title="Product backlog" copy="See every work item from capture through closure. New demand enters here, stays traceable, and can be filtered without losing delivery history." actions={<button className="primary-button compact" onClick={onCreate}>＋ Add to backlog</button>} />
     <section className="panel backlog-panel">
-      <header className="table-toolbar"><div><strong>{open.length} open items</strong><span>{open.filter((item) => item.workflow === "Unassigned").length} require workflow allocation</span></div><div><StatusPill value={`${open.filter((item) => item.priority === "Now").length} Now`} kind="now" /><StatusPill value={`${open.filter((item) => item.state === "blocked").length} Blocked`} kind="blocked" /></div></header>
-      <div className="backlog-table"><div className="table-head"><span>Work item</span><span>Phase</span><span>Priority</span><span>Workflow</span><span>Owner</span><span>Gate</span></div>{items.map((item) => <button className={`table-row state-${item.state}`} key={item.id} onClick={() => onOpen(item)}><span className="title-cell"><b>{item.key}</b><div><strong>{item.title}</strong><small>{item.next_action}</small></div></span><span><StatusPill value={item.phase} /></span><span><StatusPill value={item.priority} /></span><span><StatusPill value={item.workflow} /></span><span className="owner-cell"><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><span><StatusPill value={item.gate} kind="gate" /></span></button>)}</div>
+      <header className="table-toolbar">
+        <div className="backlog-summary"><strong>{items.length} total items</strong><span>{open.length} open · {closed.length} closed · {open.filter((item) => item.workflow === "Unassigned").length} require workflow allocation</span></div>
+        <div className="backlog-toolbar-actions">
+          <div className="backlog-filters" role="group" aria-label="Filter backlog by state">
+            {(["all", "open", "closed"] as BacklogScope[]).map((filter) => <button className={scope === filter ? "active" : ""} aria-pressed={scope === filter} key={filter} onClick={() => setScope(filter)}>{filter === "all" ? `All ${items.length}` : filter === "open" ? `Open ${open.length}` : `Closed ${closed.length}`}</button>)}
+          </div>
+          <StatusPill value={`${open.filter((item) => item.priority === "Now").length} Now`} kind="now" />
+          <StatusPill value={`${open.filter((item) => item.state === "blocked").length} Blocked`} kind="blocked" />
+        </div>
+      </header>
+      <div className="backlog-table">
+        <div className="table-head"><span>Work item</span><span>State</span><span>Phase</span><span>Priority</span><span>Workflow</span><span>Owner</span><span>Gate</span></div>
+        {visibleItems.map((item) => <button className={`table-row state-${item.state}`} key={item.id} onClick={() => onOpen(item)}><span className="title-cell"><b>{item.key}</b><div><strong>{item.title}</strong><small>{item.next_action}</small></div></span><span><StatusPill value={item.state === "complete" ? "Closed" : item.state} /></span><span><StatusPill value={item.phase} /></span><span><StatusPill value={item.priority} /></span><span><StatusPill value={item.workflow} /></span><span className="owner-cell"><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><span><StatusPill value={item.gate} kind="gate" /></span></button>)}
+        {visibleItems.length === 0 && <div className="backlog-empty"><strong>No {scope} items</strong><span>Choose another filter or add the next work item to the backlog.</span></div>}
+      </div>
     </section>
   </>;
 }
