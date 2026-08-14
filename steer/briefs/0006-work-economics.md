@@ -1,8 +1,8 @@
 # Intent Brief — 0006 STEER Work Economics and value realization
 
-**Status:** draft
+**Status:** Gate 1 approved; Gate 2 approved; Gate 3 blocked
 
-**Tags:** #security #privacy #reliability #legal #design-system #money
+**Tags:** #security #privacy #reliability #legal #design-system #money #a11y
 
 **Date opened:** 2026-08-14
 
@@ -141,6 +141,8 @@ Rejected: story points as delivered value; token or hour totals as productivity;
 
 ---
 
-GATE 1: PENDING — Product Lead must review this exact revision after a fresh Critic review
+GATE 1: APPROVED — authenticated Product Lead ruling recorded in STEER on 2026-08-14 at 2:30 PM America/New_York, bound to exact approved Brief revision `21d5e0bbd0e420413b7dce0d0c8b57b3d4e5d0e0`
 
-GATE 1 EVIDENCE: PENDING — authenticated approval must be tied to this exact revision
+GATE 1 EVIDENCE: Critic review #19; authenticated ruling by Idriss Enayat — “I approve Gate 1 for STR-017 — Define STEER Work Economics and value-realization model based on the exact linked evidence at revision 21d5e0bbd0e4. The current Critic Agent review found no automatic hard stop. No automatic hard stop was found, but 1 material concern should shape the human review. I considered the highlighted concern (Default-closed controls apply) and accept it as mandatory downstream controls that remain required at the named later gates. This approval authorizes Exam design only; it does not authorize credentials, implementation, release, or a later gate.”
+
+DOCUMENTATION RECONCILIATION: The post-implementation Critic derived `#a11y` from the final diff under CORE-08. Adding that tag and reflecting the authenticated ruling above do not alter the approved Brief’s substantive intent or rebind the Gate 1 approval; the approval remains bound to exact revision `21d5e0bbd0e420413b7dce0d0c8b57b3d4e5d0e0`. See `steer/evidence/0006-work-economics-documentation-reconciliation.md`.

@@ -8,7 +8,7 @@
 
 **Guardrails in force:** CORE-01..11, SEC-01..05, PRIV-01..03, A11Y-01..03, REL-01..04, LEGAL-01..02, DES-01..02
 
-**Gate boundary:** implementation remains blocked until an authenticated Interim Tech Lead approves this exact Exam revision. Gate 2 approval authorizes implementation and testing only; release, financial claims, person-level reporting, and Gate 3 remain blocked.
+**Gate boundary:** the authenticated Interim Tech Lead approved Gate 2 against exact Exam revision `65c9dcb209a6ef2e6045025be5ad760d5ecc8d48`. That ruling authorized implementation and testing only; release, financial claims, person-level reporting, and Gate 3 remain blocked.
 
 ## Acceptance tests
 
@@ -125,9 +125,11 @@
 
 ---
 
-GATE 2: PENDING — Interim Tech Lead must review this exact Exam revision in a session separate from Gate 1
+GATE 2: APPROVED — authenticated Interim Tech Lead ruling recorded in STEER on 2026-08-14 at 3:24 PM America/New_York, bound to exact approved Exam revision `65c9dcb209a6ef2e6045025be5ad760d5ecc8d48`
 
-GATE 2 EVIDENCE: PENDING — authenticated approval must be tied to this exact revision and a fresh Critic review
+GATE 2 EVIDENCE: Critic review #26; authenticated ruling by Idriss Enayat — “I approve Gate 2 for STR-017 — Define STEER Work Economics and value-realization model based on the exact linked evidence at revision 65c9dcb209a6. The current Critic Agent review found no automatic hard stop. No automatic hard stop was found, but 1 material concern should shape the human review. I considered the highlighted concern (Default-closed controls apply) and accept it as mandatory downstream controls that remain required at the named later gates. This approval authorizes implementation only against the signed brief and exam; it does not authorize release or Gate 3.”
+
+DOCUMENTATION RECONCILIATION: The approval remains bound to exact Exam revision `65c9dcb209a6ef2e6045025be5ad760d5ecc8d48`. This later status correction does not change or reapprove the frozen acceptance criteria. See `steer/evidence/0006-work-economics-documentation-reconciliation.md`.
 
 GATE 3: BLOCKED — implementation, verification, specialist review, independent review, outcome controls, and cooling-off are incomplete
 
