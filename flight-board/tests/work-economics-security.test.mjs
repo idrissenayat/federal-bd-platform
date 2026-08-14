@@ -14,6 +14,12 @@ test("Work Economics API wires POD scope, named-owner authorization, and evidenc
   assert.match(api, /Permission denied\. Ask the named record owner in this POD/);
 });
 
+test("authoritative actual fields use explicit server assignments", () => {
+  assert.match(api, /value\.completionAt = completionAt/);
+  assert.match(api, /value\.likelyVarianceMinutes = completionAt/);
+  assert.doesNotMatch(api, /Object\.assign\(value/);
+});
+
 test("exact recursive schemas and safe reads reject legacy or injected fields", () => {
   assert.match(validation, /ownKeys\(entry/);
   assert.match(validation, /privacyBoundary\(nested/);

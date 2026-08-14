@@ -72,10 +72,11 @@ Should-fix corrections: pull forecast returns every contributing WIP item/window
 
 ## Builder verification result
 
-- `npm test`: 71 passed, 0 failed (production build, 10 static/UI/security tests and 61 TypeScript/API/domain/migration/accessibility/calibration tests).
+- `npm test`: 72 passed, 0 failed (production build, 11 static/UI/security tests and 61 TypeScript/API/domain/migration/accessibility/calibration tests).
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - `git diff --check`: passed.
+- `./scripts/run-semgrep.sh`: passed with 0 blocking findings after replacing Work Economics server stamping with explicit allowlisted assignments.
 - `uv run pytest tests/test_repository_contract.py -q`: 3 passed.
 - `npm audit --audit-level=critical`: command passed at the configured threshold; report remains 0 critical, 2 high, 4 moderate. Exact non-reachability evidence and unsafe proposed downgrade paths are recorded separately and remain Security-owned.
 

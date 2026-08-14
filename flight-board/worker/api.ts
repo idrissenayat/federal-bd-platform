@@ -975,30 +975,58 @@ async function updateWorkEconomics(request: Request, db: Database, user: User, i
   if (section === "deliveryForecast") {
     const distribution = String(value.basisKind) === "comparable history" ? await authoritativeServiceLevel(db, current) : null;
     if (String(value.basisKind) === "comparable history" && !distribution) return json({ error: "Comparable history is unavailable until five completed same-POD/work-type observations exist." }, 409);
-    Object.assign(value, {
-      serviceLevel: distribution ? { podId: distribution.podId, workType: distribution.workType, sampleSize: distribution.sampleSize, percentile: distribution.percentile, lowHours: distribution.lowHours, highHours: distribution.highHours } : null,
-      deliveryOwnerId: user.id, acceptedBy: user.id, acceptedAt: now, updatedAt: now,
-      acceptanceState: humanAcceptanceState(value.advisory, value.acceptanceState), reforecastRequiredReason: undefined, reforecastRequiredAt: undefined,
-    });
+    value.serviceLevel = distribution ? { podId: distribution.podId, workType: distribution.workType, sampleSize: distribution.sampleSize, percentile: distribution.percentile, lowHours: distribution.lowHours, highHours: distribution.highHours } : null;
+    value.deliveryOwnerId = user.id;
+    value.acceptedBy = user.id;
+    value.acceptedAt = now;
+    value.updatedAt = now;
+    value.acceptanceState = humanAcceptanceState(value.advisory, value.acceptanceState);
+    value.reforecastRequiredReason = undefined;
+    value.reforecastRequiredAt = undefined;
   }
   if (section === "actualEconomics") {
     const completionAt = await authoritativeCompletionAt(db, current, itemId);
     let acceptedForecast: DeliveryForecast | null = null;
     try { acceptedForecast = current.delivery_forecast_json ? JSON.parse(String(current.delivery_forecast_json)) as DeliveryForecast : null; } catch { acceptedForecast = null; }
-    Object.assign(value, { completionAt, likelyVarianceMinutes: completionAt ? completionVarianceMinutes(acceptedForecast, completionAt) : null, correctedBy: user.id, correctedAt: now, acceptanceState: humanAcceptanceState(value.advisory, value.acceptanceState) });
+    value.completionAt = completionAt;
+    value.likelyVarianceMinutes = completionAt ? completionVarianceMinutes(acceptedForecast, completionAt) : null;
+    value.correctedBy = user.id;
+    value.correctedAt = now;
+    value.acceptanceState = humanAcceptanceState(value.advisory, value.acceptanceState);
   }
-  if (section === "realizedOutcome") Object.assign(value, { outcomeOwnerId: String(current.outcome_owner_id ?? value.outcomeOwnerId ?? user.id), acceptanceState: humanAcceptanceState(value.advisory, value.acceptanceState) });
-  if (section === "realizedOutcome" && ["not due", "pending evidence"].includes(String(value.status))) Object.assign(value, { verifier: "", verifiedAt: "", evidenceRevision: "", evidenceSha256: "", evidenceVerifiedAt: "" });
-  if (section === "realizedOutcome" && !["not due", "pending evidence"].includes(String(value.status))) Object.assign(value, { verifier: user.id, verifiedAt: now });
+  if (section === "realizedOutcome") {
+    value.outcomeOwnerId = String(current.outcome_owner_id ?? value.outcomeOwnerId ?? user.id);
+    value.acceptanceState = humanAcceptanceState(value.advisory, value.acceptanceState);
+  }
+  if (section === "realizedOutcome" && ["not due", "pending evidence"].includes(String(value.status))) {
+    value.verifier = "";
+    value.verifiedAt = "";
+    value.evidenceRevision = "";
+    value.evidenceSha256 = "";
+    value.evidenceVerifiedAt = "";
+  }
+  if (section === "realizedOutcome" && !["not due", "pending evidence"].includes(String(value.status))) {
+    value.verifier = user.id;
+    value.verifiedAt = now;
+  }
   if (section === "valueHypothesis") {
     const verified = await serverVerifiedEvidence(value.evidence);
     if (!verified) return json({ error: "Value evidence must resolve to an approved GitHub text artifact before acceptance." }, 409);
-    Object.assign(value, verified, { acceptedBy: user.id, acceptedAt: now, acceptanceState: humanAcceptanceState(value.advisory, value.acceptanceState) });
+    value.evidenceStatus = verified.evidenceStatus;
+    value.evidenceRevision = verified.evidenceRevision;
+    value.evidenceSha256 = verified.evidenceSha256;
+    value.evidenceVerifiedAt = verified.evidenceVerifiedAt;
+    value.acceptedBy = user.id;
+    value.acceptedAt = now;
+    value.acceptanceState = humanAcceptanceState(value.advisory, value.acceptanceState);
   }
   if (section === "realizedOutcome" && !["not due", "pending evidence"].includes(String(value.status))) {
     const verified = await serverVerifiedEvidence(value.evidence);
     if (!verified) return json({ error: "Verified outcome evidence must resolve to an approved GitHub text artifact." }, 409);
-    Object.assign(value, verified);
+    value.evidenceStatus = verified.evidenceStatus;
+    value.evidenceRevision = verified.evidenceRevision;
+    value.evidenceSha256 = verified.evidenceSha256;
+    value.evidenceVerifiedAt = verified.evidenceVerifiedAt;
   }
   if (section === "valueHypothesis") {
     const outcomeOwner = await db.prepare("SELECT id FROM members WHERE id = ? AND pod_id = ? AND kind = 'human'")
