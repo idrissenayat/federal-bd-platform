@@ -218,7 +218,15 @@ async function api(path: string, init?: RequestInit) {
     ...init,
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
   });
-  const data = await response.json() as { error?: string };
+  const body = await response.text();
+  let data: { error?: string };
+  try {
+    data = JSON.parse(body) as { error?: string };
+  } catch {
+    throw new Error(response.ok
+      ? "The service returned an unreadable response. Refresh and try again."
+      : `The service is temporarily unavailable (HTTP ${response.status}). Refresh and try again.`);
+  }
   if (!response.ok) throw new Error(data.error ?? "The request could not be completed.");
   return data;
 }
