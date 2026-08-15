@@ -47,6 +47,8 @@ type WorkItem = {
   rework_instructions: string | null;
   blocked_since: string | null;
   pod_id: string;
+  created_at: string;
+  closed_at: string | null;
   updated_at: string;
   work_economics: WorkEconomicsRecord;
   dispatch_authorization: AgentDispatchAuthorization;
@@ -241,6 +243,11 @@ const phaseCues: Record<string, string> = {
 function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Recently" : new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
+}
+
+export function formatCreatedDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Date unavailable" : new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
 }
 
 function linkedPullRequest(item: WorkItem) {
@@ -1405,7 +1412,7 @@ function Backlog({ items, onOpen, onCreate }: { items: WorkItem[]; onOpen: (item
       <div className="backlog-table-scroll" role="region" aria-label="Scrollable Product Backlog table">
         <div className="backlog-table">
           <div className="table-head"><span>Work item</span><span>State</span><span>Phase</span><span>Priority</span><span>Workflow</span><span>Owner</span><span>Gate</span></div>
-          {visibleItems.map((item) => <button className={`table-row state-${item.state}`} key={item.id} onClick={() => onOpen(item)}><span className="title-cell"><b>{item.key}</b><div><strong>{item.title}</strong><small>{item.next_action}</small><ForecastSummary item={item} compact /></div></span><span><StatusPill value={item.state === "complete" ? "Closed" : item.state} /></span><span><StatusPill value={item.phase} /></span><span><StatusPill value={item.priority} /></span><span><StatusPill value={item.workflow} /></span><span className="owner-cell"><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><span><StatusPill value={item.gate} kind="gate" /></span></button>)}
+          {visibleItems.map((item) => <button className={`table-row state-${item.state}`} key={item.id} onClick={() => onOpen(item)}><span className="title-cell"><span className="work-key"><b>{item.key}</b><time className="created-date" dateTime={item.created_at}>Added {formatCreatedDate(item.created_at)}</time>{item.state === "complete" && (item.closed_at ? <time className="closed-date" dateTime={item.closed_at}>Closed {formatCreatedDate(item.closed_at)}</time> : <span className="closed-date">Closed date unavailable</span>)}</span><div><strong>{item.title}</strong><small>{item.next_action}</small><ForecastSummary item={item} compact /></div></span><span><StatusPill value={item.state === "complete" ? "Closed" : item.state} /></span><span><StatusPill value={item.phase} /></span><span><StatusPill value={item.priority} /></span><span><StatusPill value={item.workflow} /></span><span className="owner-cell"><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><span><StatusPill value={item.gate} kind="gate" /></span></button>)}
           {visibleItems.length === 0 && <div className="backlog-empty"><strong>No {scope} items</strong><span>Choose another filter or add the next work item to the backlog.</span></div>}
         </div>
       </div>

@@ -590,7 +590,10 @@ async function bootstrap(db: Database, user: User) {
   const generatedAt = new Date().toISOString();
   const [items, members, activity, decisions, reviews, notifications, currentMember, economicsEvents] = await Promise.all([
     db.prepare(
-      `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind
+      `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind,
+         (SELECT a.created_at FROM activity a
+          WHERE a.item_id = w.id AND a.action = 'updated' AND a.detail = 'state → complete'
+          ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS closed_at
        FROM work_items w LEFT JOIN members m ON m.id = w.assignee_id
        WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
        ORDER BY CASE w.priority WHEN 'Now' THEN 0 WHEN 'Next' THEN 1 ELSE 2 END, w.updated_at DESC`,

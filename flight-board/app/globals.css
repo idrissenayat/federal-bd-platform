@@ -89,9 +89,12 @@ button { color: inherit; }
 .table-row:hover { background: #faf9f4; }
 .table-row.state-complete { background: #fbfaf6; }
 .table-row.state-complete .title-cell strong { color: #687478; }
-.table-row.state-complete .title-cell > b { color: #8c9799; }
-.title-cell { align-items: center; display: grid; gap: 11px; grid-template-columns: 51px 1fr; }
-.title-cell > b { color: var(--aqua-dark); font-family: var(--font-geist-mono); font-size: 8px; }
+.table-row.state-complete .work-key > b { color: #8c9799; }
+.title-cell { align-items: center; display: grid; gap: 11px; grid-template-columns: 94px 1fr; }
+.work-key { align-items: flex-start; display: flex; flex-direction: column; gap: 4px; }
+.work-key > b { color: var(--aqua-dark); font-family: var(--font-geist-mono); font-size: 8px; }
+.created-date { color: #8b6a73; font-size: 7px; font-weight: 700; line-height: 1.3; white-space: nowrap; }
+.closed-date { color: #6f6351; font-size: 7px; font-weight: 700; line-height: 1.3; white-space: nowrap; }
 .title-cell div { display: flex; flex-direction: column; min-width: 0; }
 .title-cell strong { font-size: 10px; }
 .title-cell small { color: var(--muted); font-size: 7px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
