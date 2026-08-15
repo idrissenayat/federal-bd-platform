@@ -30,8 +30,9 @@ test("shows an audited closed date only for completed work", () => {
 
 test("provides created or closed date-range filters", () => {
   assert.match(page, /aria-label="Date field"/);
-  assert.match(page, /aria-label="From date" type="date"/);
-  assert.match(page, /aria-label="To date" type="date"/);
+  assert.match(page, /aria-label="From date"[^>]*type="date"/);
+  assert.match(page, /aria-label="To date"[^>]*type="date"/);
+  assert.match(page, />Apply dates<\/button>/);
 });
 
 test("moves navigation above the workspace before it crowds the table", () => {

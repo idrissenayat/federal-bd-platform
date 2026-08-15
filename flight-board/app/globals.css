@@ -81,6 +81,7 @@ button { color: inherit; }
 .backlog-date-filters label { color: var(--muted); display: flex; flex-direction: column; font-size: 7px; font-weight: 750; gap: 3px; }
 .backlog-date-filters select, .backlog-date-filters input { background: #fffdf8; border: 1px solid #eadbd7; border-radius: 7px; color: var(--ink); font-size: 8px; height: 31px; padding: 5px 7px; }
 .backlog-date-filters button { background: transparent; border: 0; color: #8b5368; cursor: pointer; font-size: 8px; font-weight: 750; height: 31px; padding: 0 5px; }
+.backlog-date-filters .apply-date-filter { background: linear-gradient(120deg, #f7cfdf, #ffe9a8); border: 1px solid #e7c7b1; border-radius: 7px; color: #71364d; padding: 0 10px; }
 .backlog-scroll-hint { display: none; }
 .backlog-table-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-gutter: stable; -webkit-overflow-scrolling: touch; }
 .backlog-table-scroll::-webkit-scrollbar { height: 11px; }

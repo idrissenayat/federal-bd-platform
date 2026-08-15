@@ -1426,12 +1426,13 @@ function Backlog({ items, onOpen, onCreate }: { items: WorkItem[]; onOpen: (item
           <div className="backlog-filters" role="group" aria-label="Filter backlog by state">
             {(["all", "open", "closed"] as BacklogScope[]).map((filter) => <button className={scope === filter ? "active" : ""} aria-pressed={scope === filter} key={filter} onClick={() => setScope(filter)}>{filter === "all" ? `All ${items.length}` : filter === "open" ? `Open ${open.length}` : `Closed ${closed.length}`}</button>)}
           </div>
-          <div className="backlog-date-filters" role="group" aria-label="Filter backlog by date">
-            <label><span>Date</span><select aria-label="Date field" value={dateField} onChange={(event) => setDateField(event.target.value as BacklogDateField)}><option value="created_at">Created</option><option value="closed_at">Closed</option></select></label>
-            <label><span>From</span><input aria-label="From date" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
-            <label><span>To</span><input aria-label="To date" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
-            {(dateFrom || dateTo) && <button type="button" onClick={() => { setDateFrom(""); setDateTo(""); }}>Clear dates</button>}
-          </div>
+          <form className="backlog-date-filters" aria-label="Filter backlog by date" onSubmit={(event) => { event.preventDefault(); const values = new FormData(event.currentTarget); setDateField(String(values.get("dateField")) as BacklogDateField); setDateFrom(String(values.get("dateFrom") ?? "")); setDateTo(String(values.get("dateTo") ?? "")); }}>
+            <label><span>Date</span><select aria-label="Date field" name="dateField" defaultValue={dateField}><option value="created_at">Created</option><option value="closed_at">Closed</option></select></label>
+            <label><span>From</span><input aria-label="From date" name="dateFrom" type="date" defaultValue={dateFrom} /></label>
+            <label><span>To</span><input aria-label="To date" name="dateTo" type="date" defaultValue={dateTo} /></label>
+            <button className="apply-date-filter" type="submit">Apply dates</button>
+            {(dateFrom || dateTo) && <button type="button" onClick={(event) => { event.currentTarget.form?.reset(); setDateFrom(""); setDateTo(""); }}>Clear dates</button>}
+          </form>
           <StatusPill value={`${open.filter((item) => item.priority === "Now").length} Now`} kind="now" />
           <StatusPill value={`${open.filter((item) => item.state === "blocked").length} Blocked`} kind="blocked" />
         </div>
