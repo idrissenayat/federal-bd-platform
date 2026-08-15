@@ -37,24 +37,61 @@ authority.
 - Human, platform-agent, runtime-adapter, and supervisor identities are distinct
   principals. Consequential writes record the authenticated principal and its type;
   display names or prompt claims never establish identity.
-- Named-agent authorship is established by a service-bound `AgentOutputAttestation/v1`,
-  not Git author metadata, a role prompt, a run label, or a runtime-host assertion. The
-  STEER identity/attestation service—not Codex and not the runtime adapter—issues a
-  15-minute, audience-restricted, proof-of-possession workload credential to the exact
-  agent principal after validating the authorized run and current claim. Its signing
-  key is non-exportable to the runtime host. The canonical DSSE envelope uses an
-  Ed25519 signature over an in-toto statement containing run/attempt, agent and config
-  versions, artifact SHA-256, input/instruction/tool-policy digests, current lease fence,
-  final agent-event sequence, and issuer nonce. The independently administered verifier
-  resolves the issuer public key, credential status and run binding and rejects an
-  adapter, human or supervisor signature, replayed nonce, stale fence, revoked identity,
-  digest mismatch, or post-attestation edit.
-- The credential scope is exactly one agent principal, run, attempt, organization/POD/
-  project/item, adapter audience and worker capability set. Renewal requires a current
-  claim/lease and unchanged authorization; stop, reassignment, invalidating revision or
-  credential revocation ends renewal immediately. Signing keys rotate every 30 days or
-  on suspected compromise; retired public keys and revocation times remain verifiable
-  for the 365-day audit window but cannot sign new events.
+- Named-agent authorship means: **the independently measured isolated agent workload
+  executed the exact authorized agent/config/instruction/input/tool policy and generated
+  the attested bytes through its sealed output finalizer**. It does not claim that a
+  provider model possesses human authorship or that a signer merely endorsed submitted
+  bytes. Git metadata, role prompts, run labels and host assertions are not proof.
+- Work Management signs one non-replayable `AgentExecutionManifest/v1` containing
+  organization/POD/project/item, authorization/run/attempt, assigned agent principal,
+  exact agent/config/instruction/input/model/provider/tool-policy digests, current fence,
+  allowed provider/tool destinations, 15-minute start/expiry, one-time nonce and expected
+  output policy. The manifest is the only executable input accepted by the workload.
+- `STEER Isolated Agent Workload/v1` is a hardware-backed remotely attested execution
+  boundary administered separately from Codex and the transport adapter. Its attestation
+  quote binds a platform root certificate, boot/runtime measurement, measured agent
+  harness and configuration digests, ephemeral workload public key, manifest digest and
+  nonce. The independent identity/attestation verifier compares those claims to the
+  ratified allowlist before releasing a run/attempt-scoped credential and sealed
+  Ed25519 output/event key. Keys and plaintext memory are unavailable to Codex, the host
+  kernel, adapter and evaluator; debug, host stdin, writable shared mounts, environment
+  overrides and unapproved network are disabled.
+- Fixture delivery uses HPKE authenticated encryption from the Work Management or
+  independent evaluator principal directly to the attested workload ephemeral key.
+  Codex and the runtime **transport principal** may relay quote and ciphertext bytes but
+  cannot decrypt, alter or semantically inspect them. The measured **agent workload
+  principal** decrypts once after verifying the signed manifest and nonce. Model/provider
+  requests originate inside that boundary over an allowlisted TLS channel with a sealed
+  run-scoped provider credential; request/response ids and content digests enter the
+  execution trace. If the provider does not sign its response, evidence claims only that
+  the measured agent workload used the recorded provider response—not independent proof
+  that the model itself authored it.
+- Approved tool calls, when a tool policy permits them, pass through a separately
+  authenticated policy gateway and return nonce/run/call-bound signed result digests.
+  The bootstrap fixture permits no tools. The host has no semantic input channel after
+  launch and cannot inject tool results or output bytes.
+- The measured agent loop appends instruction/input, provider request/response, approved
+  tool and final-output digests to a hash-chained trace. Its sealed finalizer accepts only
+  the loop's internal final-output buffer after trace closure; there is no API that signs
+  a caller-supplied byte string or digest. It emits `AgentOutputAttestation/v1` as a DSSE
+  Ed25519 envelope over an in-toto statement containing the quote/manifest/trace digests,
+  run/attempt, agent/config versions, artifact SHA-256, current fence, final agent-event
+  sequence and nonce. Output is encrypted directly to the evidence store or evaluator
+  principal, while the host relays opaque bytes only.
+- The independently administered verifier checks the root/quote measurements, signed
+  manifest, one-time nonce, credential/revocation/fence, complete trace, sealed-finalizer
+  claim and artifact digest. It rejects supervisor/adapter/human signatures, altered
+  ciphertext, host-supplied known bytes through the legitimate workload path, arbitrary
+  signer use, replay, stale fence, revoked identity, missing provider/tool trace,
+  post-attestation edit and unmeasured code/config/channel. Codex cannot use the agent as
+  a signing oracle because the workload accepts exactly one signed/encrypted manifest,
+  exposes no semantic host input, and signs only its internally traced final buffer.
+- Credential scope is exactly one measured workload, agent principal, run, attempt,
+  organization/POD/project/item, manifest/nonce, adapter audience and worker capability
+  set. Stop, reassignment, invalidating revision or revocation ends it immediately.
+  Allowlisted measurements and signing keys rotate every 30 days or on suspected
+  compromise; retired public keys, quotes and revocation times remain verifiable for the
+  365-day audit window but cannot start or sign a new execution.
 - Agent, supervisor, human, adapter, and control-plane events use separately issued
   actor credentials and append-only attribution. An actor cannot select another actor
   type in its payload. Mixed work is a sequence of actor-signed patches; the final
@@ -89,8 +126,9 @@ listed is denied and audited without a state change:
 | `CLAIMED` | start | `RUNNING` | claimed agent/adapter with current fencing token |
 | `CLAIMED` or `RUNNING` | current heartbeat/progress | same state | claimed agent/adapter with current fence |
 | `RUNNING` | retryable failure before retry budget is exhausted | `RETRY_WAIT` | claimed agent/adapter or control plane on verified provider result |
-| `CLAIMED` or `RUNNING` | lease expires and attempt budget remains | `RETRY_WAIT` | Work Management control plane; old fence revoked |
+| `CLAIMED` or `RUNNING` | lease expires at 120 seconds and attempt budget remains | `RETRY_WAIT` | Work Management control plane; old fence revoked immediately |
 | `RETRY_WAIT` | retry | `RUNNING` | same assigned agent/adapter with a new attempt and current authorization |
+| `RETRY_WAIT` after lease expiry | the same assigned agent with unchanged authorization, valid identity and remaining attempt budget does not start by 150 seconds | `FAILED_BLOCKED` | Work Management control plane with `LEASE_STALE` |
 | any nonterminal | human stop, authorization revocation, invalidating revision, or Codex safety stop | `STOP_REQUESTED` | authorized human; control plane for verified revocation/revision; Codex only for enumerated imminent safety conditions |
 | `STOP_REQUESTED` before claim | control-plane stop acknowledgement | `STOPPED` | Work Management control plane |
 | `STOP_REQUESTED` after claim | safe-boundary acknowledgement or 30-second stop deadline | `STOPPED` | claimed agent/adapter; control plane may fence and stop after deadline |
@@ -111,10 +149,15 @@ release, and closure are separate human-authorized records, never run terminal s
 
 The conservative lifecycle policy proposed for human ratification is:
 
-- lease duration 120 seconds; heartbeat target every 30 seconds; warning at 60 seconds;
-  stale at 150 seconds from the last server-accepted heartbeat; renewal retains the
-  current fence and a reclaim increments it; client timestamps never order events;
-  diagnostic clock skew over ±5 seconds is flagged;
+- lease duration and authoritative write fence both expire at 120 seconds from the last
+  server-accepted heartbeat; heartbeat target is every 30 seconds and UI warning begins
+  at 60 seconds. At 120 seconds the old fence is revoked, the UI says
+  `stale — recovery pending`, and the control plane commits `RETRY_WAIT`. The interval
+  from 120 through 150 seconds is recovery grace with **no write authority**; only the
+  same assigned agent may claim a new attempt/higher fence only with unchanged
+  authorization, valid identity and remaining attempt budget. If that retry does not
+  start by 150 seconds, the control plane commits `FAILED_BLOCKED/LEASE_STALE`. Client
+  timestamps never order events; diagnostic clock skew over ±5 seconds is flagged;
 - heartbeat maximum one per 10 seconds and 8 KiB; progress maximum one per 30 seconds
   unless the phase changes, at least one material update every 5 minutes, and 64 KiB;
   event/output metadata maximum 256 KiB and artifact payloads stay in the evidence
@@ -181,11 +224,11 @@ may correct the delivery artifact; Codex support can never be relabeled as agent
 
 The corrected supervisor boundary is pinned to Docs Agent commit
 `bcf4856f4193ce3339cbdc58ea26b7cc6e5cd9de`, which supersedes the rejected broad
-wording at `909f438ca646ecb8e38aad2d2008c4082c6d7adb`. The corrected commit is on a
-parallel branch, so it is a proposed normative dependency rather than an ancestor of
-this Exam. Gate 2 requires proof that exact corrected revision is incorporated through
-the governed default-closed path; until then this Exam's equal-or-narrower default-deny
-boundary is the test oracle and no broader Codex authority exists.
+wording at `909f438ca646ecb8e38aad2d2008c4082c6d7adb`. Exact `bcf4856f` is incorporated
+as an ancestor of this Exam branch through a non-fast-forward merge and its corrected
+`docs/steer/OPERATING-MODEL.md` content is present. The Gate 2 ancestry check must prove
+that exact commit remains an ancestor and no descendant broadens Codex authority; this
+Exam's equal-or-narrower default-deny boundary remains the test oracle.
 
 ### Required endpoint/capability policy
 
@@ -217,43 +260,128 @@ production claims or approvals. Before Gate 2, each row requires an authenticate
 
 | ID | Proposed ratifier | Proposed value set | Decision |
 |---|---|---|---|
-| RAT-IDENTITY | Idriss Enayat as Product/Tech owner; named identity/security owner must co-ratify if that is a different human | service-bound 15-minute proof-of-possession credential; non-exportable key; DSSE/Ed25519 in-toto attestation; independently administered verifier; immutable per-actor events | UNRATIFIED |
+| RAT-IDENTITY | Idriss Enayat as Product/Tech owner; named identity/security owner must co-ratify if that is a different human | `AgentExecutionManifest/v1`; hardware-backed measured isolated workload; HPKE one-way input; sealed agent/model/tool trace and finalizer; DSSE/Ed25519 output attestation; independent verifier; immutable per-actor events | UNRATIFIED |
 | RAT-LIFECYCLE | Idriss Enayat as Tech Lead; named runtime/Ops owner must co-ratify if different | complete transition/failure/revision/lease/heartbeat/retry/stop/health policies and limits above | UNRATIFIED |
 | RAT-PRIVACY | Idriss Enayat as authenticated owner; named privacy/data owner must co-ratify if different | field/access/retention/deletion/backup policy under NFR-002 | UNRATIFIED |
 | RAT-SLO | Idriss Enayat as Tech Lead; named reliability owner must co-ratify if different | load, p95, availability, detection, telemetry, RPO/RTO and reconciliation budgets under NFR-001/003 | UNRATIFIED |
-| RAT-EVAL | Idriss Enayat as Product/experiment owner; named Test owner must co-ratify | rubric, cohort, denominators, benchmark/holdout and contamination policy under EVID-005/007 and MET-002/004 | UNRATIFIED |
+| RAT-EVAL | Idriss Enayat as Product/experiment owner; named Test owner must co-ratify | exhaustive eligibility, fixed 12-case denominator/point rubric, `str024.scoring-manifest.v1`, distinct custodian/evaluator/transport principals, one-way encrypted holdouts and contamination policy under EVID-005/007 and MET-002/004 | UNRATIFIED — SIGNED MANIFEST/DIGESTS REQUIRED |
 | RAT-CANARY | Idriss Enayat as Product Lead; named Ops/reliability owner must co-ratify | five-run/seven-day canary, stop triggers and rollback contract under EVID-007/NFR-003 | UNRATIFIED |
 | RAT-A11Y | Idriss Enayat as Product Lead; named accessibility/design owners must co-ratify | surface/state/control and assistive-technology matrix under UX-002/003 | UNRATIFIED |
 | RAT-DEPS | Idriss Enayat as Tech/security owner or a separately named security owner | dependency pass/exception semantics under NFR-002 | UNRATIFIED |
-| RAT-SUPERVISOR | Idriss Enayat as Product/Tech owner | corrected boundary `bcf4856f4193ce3339cbdc58ea26b7cc6e5cd9de`; prove incorporation/ancestry and no broader Codex authority | PINNED / INCORPORATION EVIDENCE REQUIRED |
-| RAT-GATE1-RECEIPT | Idriss Enayat as Gate 1 approver plus platform owner | independently exportable signed receipt for the authoritative 2026-08-15 16:22 ET Work Management ruling bound to `5c0db389d1b0` | PLATFORM DEPENDENCY |
+| RAT-SUPERVISOR | Idriss Enayat as Product/Tech owner | corrected boundary `bcf4856f4193ce3339cbdc58ea26b7cc6e5cd9de`; equal to or narrower than this Exam | INCORPORATED AS EXACT ANCESTOR / CONTENT PRESENT |
+| RAT-GATE1-RECEIPT | Idriss Enayat as Gate 1 approver plus platform owner | export signed Work Management receipt; authenticated countersignature on `steer/evidence/0024-gate-1-receipt.md`; then human-authorized signature-only Brief descendant updates only `GATE 1`/`GATE 1 EVIDENCE` lines while preserving approved content hash | AWAITING PLATFORM EXPORT + HUMAN COUNTERSIGNATURE/IN-FILE RECORD |
+
+The Gate 1 mechanism follows current policy without treating a detached receipt as an
+exception. The platform first exports `steer.gate-receipt.v1` with signed actor/role/
+decision/time/sequence and exact Brief commit/blob/SHA-256. Idriss Enayat verifies and
+countersigns the prepared receipt through an authenticated repository action. A
+separately human-authorized signature-only Brief descendant then records the required
+in-file `GATE 1: APPROVED — timestamp — initials` and immutable receipt link; automated
+comparison proves the substantive-body hash is unchanged. This Architect does not sign
+or modify the frozen Brief and no receipt/template is effective while marked pending.
 
 ### Frozen evaluation and bootstrap proposal
 
-The proposed evaluation schema is `str024.eval.v1`. The unit is one unique authorized
-`run_id`, never a transport request, replay, attempt, event or artifact. The role rubric
-is 100 points: functional correctness 30, contract/scope compliance 30, evidence and
-authorship integrity 25, and clarity/usability 15. Passing requires at least 90 overall,
-at least 80% in each dimension, complete required evidence, and no authority, secret,
-restricted-data, attestation, or policy violation. Test evaluation additionally requires
-100% Brief-line/acceptance-ID coverage; Critic evaluation requires the declared fresh
-context and explicit disposition of up to three blocker/should-fix findings. Builder,
-Test and Critic must have distinct service principals; the artifact author cannot be a
-Test/Critic principal, and no evaluated agent can score its own output.
+The proposed evaluation schema is `str024.eval.v1`. An **eligible pilot run** is every
+unique run with an `AUTHORIZED` event whose immutable authorization already contains
+`purpose=PILOT`, `cohort_id=STR024-PILOT-V1`, the evaluated agent/config version, and a
+server event sequence from the cohort's first authorization through its frozen closing
+sequence. There are no post-authorization analytic exclusions: create failures, killed,
+stopped, blocked, failed, contaminated, rolled-back, retried, intervention-touched,
+human-edited and telemetry-incomplete runs all remain in the first-pass, useful-output
+and lifecycle denominators and contribute zero where their numerator conditions fail.
+Unauthorized requests never reach `AUTHORIZED` and appear only in the attempt guardrail
+denominator. Idempotent transport replays remain attempt events for one run. A separately
+human-authorized successor is a new eligible run. `purpose=BENCHMARK` and
+`purpose=OPERATIONS` must be set before authorization under separate cohort ids and can
+never be relabeled into or out of the pilot.
 
-Benchmark `STR024-BENCH-V1` has 12 public/synthetic cases: B01 authorized create, B02
-concurrent idempotent replay, B03 forged/cross-scope denial, B04 exact assigned claim,
-B05 stale lease/fence, B06 retry/exhaustion, B07 stop/completion race, B08 evidence
-digest/attestation, B09 Codex relabel attack, B10 Buzz authorization/audience denial,
-B11 feedback/version correction, and B12 rollback/reconciliation. B01–B08 are development
-fixtures; B09–B12 are blind holdouts. Holdout inputs and oracles are encrypted or access
-controlled by the independent evaluator until execution, are never present in agent
-instructions/tools/retrieval, and rotate after feedback. Evaluator identity, model,
-prompt/config, fixture access and release are logged. Any evaluated-agent, prompt author,
-supervisor or runtime access to a holdout/oracle before scoring marks the result
-`CONTAMINATED`, excludes it from quality/promotion numerators, records a policy event,
-and requires a new uncontaminated holdout. The frozen manifest and oracle digests are
-attached to the Gate 2 evidence receipt; missing digests block ratification.
+For a candidate agent/config/manifest version, the **benchmark denominator** is exactly
+the first authorized run for each of B01–B12: 12 case-run pairs. Missing, failed,
+contaminated or invalid case runs score zero and remain in the denominator; diagnostic
+reruns cannot replace them. A rotated holdout creates a new manifest/candidate
+evaluation, while the contaminated evaluation remains reported. First-pass numerator
+means an eligible run's first attempt is untouched, reaches `AWAITING_HUMAN_REVIEW`,
+scores ≥90 with every dimension ≥80 and has no hard-fail. Useful-output numerator uses
+the same conditions except it may complete after an allowed agent retry; human/Codex
+touch still disqualifies it. Lifecycle numerator is complete-evidence terminal/
+awaiting-review runs regardless of usefulness.
+
+The non-selectable scoring manifest schema is `str024.scoring-manifest.v1`. Human owner
+is Idriss Enayat as Product/experiment owner; fixture custodian principal is
+`steer-test-fixture-custodian-v1`; evaluator principal is `steer-test-evaluator-v1`;
+transport principal is the separately authenticated runtime adapter; and evaluated
+agent principals are never any of those three. The owner and custodian sign the manifest
+before a candidate run. It contains exact Exam commit/blob digest, manifest id/revision,
+creation/freeze time, owner/custodian/evaluator key ids, candidate agent/config/model/
+provider/tool-policy digests, and exactly B01–B12. Each case contains visibility,
+input-ciphertext SHA-256, oracle-ciphertext SHA-256, assertion-set SHA-256, fixed point
+allocation, hard-fail codes and evaluator-config digest. A canonical-JSON aggregate
+SHA-256 covers the entire manifest; no optional case, weight, exclusion or runtime
+selection field exists. Canonicalization is RFC 8785 JCS; owner and custodian each sign
+the canonical bytes with Ed25519, and the detached record stores both key ids/signatures
+plus canonical SHA-256. The exact signed manifest and ciphertext/oracle/assertion-set
+digests are a human Test-owner Gate 2 attachment; until supplied, RAT-EVAL remains
+`UNRATIFIED` and no score is valid.
+
+Point allocation is fixed. Each row is one Boolean assertion: all referenced acceptance
+oracles must pass to earn the row's points; there is no partial credit or evaluator-
+selected assertion:
+
+| Dimension / case | Non-selectable Boolean oracle | Points |
+|---|---|---:|
+| Functional B01 | STR024-AUTH-001 exact create/run/event/evidence oracle passes | 5 |
+| Functional B02 | STR024-AUTH-003 concurrent replay oracle passes | 4 |
+| Functional B04 | STR024-LIFE-001 assigned claim/fence oracle passes | 4 |
+| Functional B05 | STR024-LIFE-002 and LIFE-003 lease/heartbeat oracles both pass | 4 |
+| Functional B06 | STR024-LIFE-005 and LIFE-006 retry/failure oracles both pass | 4 |
+| Functional B07 | STR024-LIFE-007 and LIFE-009 stop/terminal oracles both pass | 4 |
+| Functional B12 | STR024-EVID-007 and NFR-003 rollback/reconciliation oracles both pass | 5 |
+| Contract B03 | STR024-AUTH-002, AUTH-005 and AUTH-006 denial/identity oracles all pass | 8 |
+| Contract B04 | STR024-LIFE-001 passes and every non-assigned principal is denied | 4 |
+| Contract B07 | STR024-LIFE-007 human-stop/agent-denial authority oracle passes | 4 |
+| Contract B09 | STR024-BOOT-001A, BOOT-002 and BOOT-004 all reject Codex/relabel paths | 8 |
+| Contract B10 | STR024-AUTH-002 and UX-001 Buzz authority/audience oracles both pass | 6 |
+| Evidence B08 | STR024-EVID-001, EVID-002 and BOOT-001 provenance oracles all pass | 10 |
+| Evidence B09 | STR024-BOOT-001A legitimate-workload signing-oracle attack is rejected | 8 |
+| Evidence B11 | STR024-EVID-004 and EVID-006 feedback/version oracles both pass | 7 |
+| Clarity B01 | STR024-UX-002 authorized/create panel state oracle passes | 4 |
+| Clarity B06 | STR024-LIFE-006 owner/next-check/dependency and UX-002 blocker state pass | 4 |
+| Clarity B10 | STR024-UX-001 safe redacted actionable Buzz mirror oracle passes | 3 |
+| Clarity B11 | STR024-EVID-004 exact feedback binding is human-readable/actionable | 4 |
+
+Passing requires at least 90/100 overall, at least 80% of each dimension, complete
+required evidence and no authority, secret, restricted-data, attestation, contamination
+or other policy hard-fail. Exact hard-fail codes are `AUTHORITY_VIOLATION`,
+`SECRET_OR_RESTRICTED_DATA`, `INVALID_ATTESTATION`, `CONTAMINATION`,
+`DUPLICATE_EFFECT`, `EVIDENCE_INTEGRITY`, `HUMAN_ONLY_MUTATION`, `SELF_EVALUATION`,
+and `MISSING_CASE`. Test evaluation additionally requires 100% Brief-line/
+acceptance-ID coverage; Critic evaluation requires a declared fresh context and explicit
+disposition of up to three blocker/should-fix findings. Builder, Test and Critic use
+distinct service principals; the artifact author cannot evaluate it, and no evaluated
+agent can score its own output.
+
+Benchmark `STR024-BENCH-V1` has exactly: B01 authorized create, B02 concurrent
+idempotent replay, B03 forged/cross-scope denial, B04 exact assigned claim, B05 stale
+lease/fence, B06 retry/exhaustion, B07 stop/completion race, B08 evidence digest/
+attestation, B09 Codex known-bytes/relabel/signing-oracle attack, B10 Buzz authority/
+audience denial, B11 feedback/version correction, and B12 rollback/reconciliation.
+B01–B08 are public synthetic development fixtures. B09–B12 are blind holdouts whose
+plaintext and oracle are accessible only to the fixture custodian/evaluator service.
+
+Holdout delivery is one-way and principal-separated. After verifying the workload's
+remote-attestation quote, the evaluator encrypts a fixed-size padded case input directly
+to that workload's ephemeral key and signs the ciphertext/manifest binding. The runtime
+transport and Codex relay only ciphertext; ciphertext digest, fixed padded length and
+delivery timing are permitted transport metadata and are not semantic access. Any
+plaintext, decrypted token, oracle, scoring assertion, unpadded content length or
+semantic summary disclosed to Codex, transport, prompt author, evaluated agent tools/
+retrieval, or another runtime principal before scoring marks the evaluation
+`CONTAMINATED`. The workload returns output encrypted directly to the evaluator key; the
+oracle is never sent to the workload. The evaluator decrypts/scores only after the
+workload output/trace is committed, and releases feedback only after signed score
+finalization. Contamination records a policy hard-fail, preserves the failed evaluation,
+and requires new custodian-generated ciphertext/oracle digests under a new manifest.
 
 The bootstrap fixture is `STR024-BOOT-V1`, assigned to service principal
 `steer-builder-bootstrap-v1`, agent configuration `builder-bootstrap-v1`, instruction
@@ -344,11 +472,12 @@ authorization, idempotency, adapter health, reconciliation and telemetry checks 
   agent obtains the lease/fencing token; all other agents, Codex acting as worker, and
   losing requests are denied and audited without ownership transfer.
 - **STR024-LIFE-002 — Lease and stale recovery.** Given a claimed/run state, when
-  heartbeats cease under the ratified 120/30/60/150-second policy, then the run becomes
-  warning then visibly stale at those exact server-time thresholds, old-fence writes
-  fail, and the control plane commits `RETRY_WAIT`; only the same assigned agent can
-  resume under a new attempt/higher fence within budget, otherwise the run becomes
-  `FAILED_BLOCKED` without duplicated effects.
+  heartbeats cease under the ratified policy, then warning begins at 60 seconds and the
+  lease/write fence expires exactly at 120 seconds, immediately displaying stale and
+  committing `RETRY_WAIT`. Old-fence writes fail throughout the 120–150-second no-write
+  recovery grace; only the same assigned agent may start a new attempt/higher fence. At
+  150 seconds without retry the run commits `FAILED_BLOCKED/LEASE_STALE`, without
+  duplicated effects.
 - **STR024-LIFE-003 — Heartbeats.** Given a valid lease, when bounded heartbeats arrive
   in, out of, and duplicate order, then only authenticated monotonic heartbeats for the
   current fence update freshness; the 30-second target, one-per-10-second maximum,
@@ -397,10 +526,12 @@ authorization, idempotency, adapter health, reconciliation and telemetry checks 
   `FAILED_BLOCKED`, never review-ready.
 - **STR024-EVID-002 — Output authorship provenance.** Given every changed artifact and
   deliverable, when evidence is assembled, then authorship is attributable to the
-  exact platform-agent attempt through valid `AgentOutputAttestation/v1` plus immutable
-  agent-only events, or to separately signed human/supervisor patches. The independent
-  verifier rejects Codex/runtime-host relabeling; mixed or unknown provenance cannot be
-  counted as untouched or autonomous agent work. Git author metadata never suffices.
+  exact measured isolated workload/attempt through a valid execution-manifest, remote
+  quote, sealed hash-chained model/tool/output trace, `AgentOutputAttestation/v1` and
+  immutable agent events—or to separately signed human/supervisor patches. The
+  independent verifier rejects mere signer endorsement, Codex known-byte injection and
+  runtime relabeling; mixed or unknown provenance cannot count as untouched/autonomous
+  agent work. Git author metadata never suffices.
 - **STR024-EVID-003 — Token, cost, and latency telemetry.** Given success, retry,
   failure, stop, cached response, or a provider that omits a field, when the run ends,
   then per-attempt and aggregate input/output token counts, provider-reported and
@@ -420,9 +551,11 @@ authorization, idempotency, adapter health, reconciliation and telemetry checks 
   when evaluation begins, then Test and fresh-context Critic runs have different run
   identities, service principals, role/config/model/context snapshots, and no
   deliverable-author permissions; Builder/author identity reuse is denied. Each applies
-  `str024.eval.v1` to the exact artifact commit and Exam revision. Shared host/model/
-  fixture dependencies are disclosed, blind-holdout access is isolated, results remain
-  separate from self-checks and human gates, and Critic blockers require explicit human
+  the signed non-selectable `str024.scoring-manifest.v1`/`str024.eval.v1` to the exact
+  artifact and Exam revision. Custodian, evaluator, transport and workload principals
+  are distinct; holdout input uses evaluator→attested-workload HPKE, output uses
+  workload→evaluator encryption, and the oracle never reaches runtime/workload. Results
+  remain separate from self-checks/human gates and Critic blockers require human
   disposition.
 - **STR024-EVID-006 — Versioned correction loop.** Given accepted human feedback or a
   verified failure, when an agent prompt, configuration, model, tool policy, adapter,
@@ -431,27 +564,31 @@ authorization, idempotency, adapter health, reconciliation and telemetry checks 
   metrics.
 - **STR024-EVID-007 — Benchmark replay, canary, and rollback.** Given a candidate agent
   version, when promotion is proposed, then `STR024-BENCH-V1` replays under holdout/
-  contamination isolation against the last ratified version using `str024.eval.v1`.
-  Promotion requires all 12 cases, score ≥90 with every dimension ≥80, no hard-fail,
-  no contamination and complete critical telemetry. `STR024-CANARY-V1` is separately
-  human-authorized; its exact stop triggers invoke the frozen disable command and
-  recovery checks while preserving runs, evidence and human decisions.
+  contamination isolation against the last ratified version using the owner/custodian-
+  signed manifest and exactly the first B01–B12 case-run pair for the candidate.
+  Promotion requires all 12 denominator cases, score ≥90 with every dimension ≥80, no
+  hard-fail/contamination and complete critical telemetry. Diagnostic reruns cannot
+  replace a case. `STR024-CANARY-V1` is separately human-authorized; its exact stop
+  triggers invoke the disable/recovery contract while preserving evidence/decisions.
 
 ### Codex-supervised bootstrap proof
 
 - **STR024-BOOT-001 — Named-agent end-to-end proof.** Given a synthetic/public fixture,
   an authenticated human dispatch of exact `STR024-BOOT-V1` to
   `steer-builder-bootstrap-v1`/`builder-bootstrap-v1`, and Codex limited to host/
-  observer, when the bootstrap runs, then the agent emits the exact expected bytes and
-  service-bound attestation; the independent verifier, immutable per-actor event store,
-  current fence, Buzz mirrors, telemetry, Test/Critic results and feedback bind to that
-  run/config. Codex has only separately authenticated host/observe events and no patch.
+  opaque-ciphertext transport/observer, when the bootstrap runs, then the remotely
+  measured isolated agent workload accepts the one-time signed/encrypted manifest,
+  executes the exact agent loop and emits the expected bytes only through its sealed
+  trace finalizer. Quote/manifest/trace/attestation verification, immutable events,
+  current fence and evidence bind that run/config; Codex has only ciphertext-relay/
+  observe events, no plaintext, semantic channel or patch.
 - **STR024-BOOT-001A — Hostile-host/confused-deputy proof.** Given Codex or a compromised
-  adapter knows the exact expected bytes, when it submits them using supervisor/adapter
-  credentials, forges actor fields/Git metadata, replays a valid agent envelope, invokes
-  the signer without the bound workload proof, or edits bytes after signing, then the
-  independently controlled verifier rejects the artifact and the attempt is a policy
-  violation excluded from agent output. The host cannot mint or rewrite agent events.
+  adapter knows the expected bytes, when it supplies them through supervisor/adapter
+  credentials **or the legitimate workload/signing path**, opens host stdin/shared
+  memory/debug/env/network, alters ciphertext/manifest/measurement, invokes the finalizer
+  on caller bytes, forges Git/events, replays an envelope, or edits after signing, then
+  the quote/workload/finalizer/verifier rejects it and records a policy violation. Only
+  the measured loop's sealed buffer may be signed; the host cannot mint agent events.
 - **STR024-BOOT-002 — Codex impersonation negative control.** Given the same fixture,
   when Codex submits, edits, or attempts to attest the assigned deliverable without the
   named agent, then the worker mutation is denied and audited; labeling it as an
@@ -519,14 +656,18 @@ authorization, idempotency, adapter health, reconciliation and telemetry checks 
   run reproducible without prompts, secrets, restricted data, or unnecessary PII.
 - **STR024-MET-002 — Per-agent/version scorecard.** Given a frozen observation window,
   when the scorecard is produced, then it reports by exact agent and configuration
-  version using unique authorized `run_id` as unit: eligible/started/completed run
+  version using the exhaustive eligible-pilot-run predicate above and unique authorized
+  `run_id` as unit: eligible/started/completed run
   counts; `str024.eval.v1` quality and uncontaminated benchmark pass rates; untouched
-  first-pass runs divided by all eligible runs; human/supervisor-touched runs divided by
-  all authorized runs; diff-fix minutes and rebuild attempts; human gate rejections
+  first-pass runs divided by **all eligible pilot runs with no exclusions**; human/
+  supervisor-touched runs divided by all eligible pilot runs; diff-fix minutes and
+  rebuild attempts; human gate rejections
   divided by completed human gate reviews; verified and escaped defects by severity;
   policy violations/unauthorized attempts over all attempts; retry/stale/failure/
-  rollback runs over authorized runs; token/cost and queue/execution/review/end-to-end
-  latency; and explicit missingness. Every numerator reconciles to run IDs.
+  rollback runs over all eligible pilot runs; benchmark score/pass over the fixed first
+  12 case-runs; token/cost and queue/execution/review/end-to-end latency; and explicit
+  missingness. Every numerator/zero/exclusion reconciles to run IDs and no reason code
+  can remove a run after authorization.
 - **STR024-MET-003 — Anti-gaming classification.** Given killed, blocked, stopped,
   failed, retried, rolled-back, Codex-touched, human-edited, or telemetry-incomplete
   attempts, when metrics calculate, then they remain in their declared denominators,
@@ -679,8 +820,10 @@ The automated suite must cover each case below and reference at least one accept
 ## Gate 2 preparation checklist
 
 - [ ] Authenticated Gate 1 evidence is durably mirrored with actor, time, decision and
-      exact Brief revision through RAT-GATE1-RECEIPT; the current supervisor verification
-      is recorded without a fabricated public URL or frozen-Brief rewrite.
+      exact Brief revision through a signed platform export, human countersignature on
+      `steer/evidence/0024-gate-1-receipt.md`, and human-authorized signature-only Brief
+      descendant whose substantive-body hash is unchanged. The current supervisor
+      verification/template alone is not a receipt or in-file signature.
 - [ ] Idriss Enayat and any separately required qualified co-ratifier record decisions
       for RAT-IDENTITY, RAT-LIFECYCLE, RAT-PRIVACY, RAT-SLO, RAT-EVAL, RAT-CANARY,
       RAT-A11Y and RAT-DEPS against this exact Exam revision.
