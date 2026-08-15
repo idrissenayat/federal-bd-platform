@@ -142,6 +142,11 @@ Every agent is a first-class member with its own identity, owner, role, channel 
 runtime, and audit trail. Agents must not reuse a human private key or another agent's
 identity.
 
+Codex may host and supervise a named agent run while the native runtime is unavailable,
+but it is not a delivery-team member and cannot substitute its work for that agent's.
+Configure and verify every agent against the
+[normative Codex supervision boundary](../docs/steer/OPERATING-MODEL.md#normative-codex-supervision-boundary).
+
 ### 1. Approve the role and boundary
 
 Before creating credentials, record:
@@ -232,6 +237,8 @@ The agent is onboarded only when:
 - its activity is visible in the signed Buzz record;
 - its Flight Board roster entry matches its Buzz role and human owner;
 - it cannot approve or impersonate a human gate ruling.
+- its run record distinguishes the named agent, agent version, and outputs from the
+  Codex runtime host and any separately labeled intervention.
 
 ### 7. Make coordination visible
 

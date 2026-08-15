@@ -17,5 +17,6 @@ Before changing product code:
 13. Work only in the assigned branch/worktree. Never push directly to `main`; every change uses a pull request and required green checks.
 14. Record Builder, Test, and fresh-context Critic evidence in the pull request. A green check or merge is not Gate 3 approval.
 15. Use the escalation issue form when the brief, exam, decision log, and guardrails do not answer a consequential question. Never resolve ambiguity silently in code.
+16. Follow the [Codex supervision boundary](docs/steer/OPERATING-MODEL.md#normative-codex-supervision-boundary): a named agent owns its assigned deliverable; Codex supervision or runtime hosting never transfers that ownership or counts as agent performance.
 
 When a conflict exists, the signed brief and exam govern the feature; project guardrails govern the repository.
