@@ -1,4 +1,15 @@
 import { evaluateAgentDispatch } from "./authorization";
+import {
+  buildPullForecast,
+  buildServiceLevelDistributions,
+  completionVarianceMinutes,
+  materialForecastChange,
+  serializeSection,
+  WORK_TYPES,
+  workEconomicsFromRow,
+  type DeliveryForecast,
+} from "../lib/work-economics";
+import { humanAcceptanceState, validateAndNormalizeWorkEconomics, type WorkEconomicsSection } from "../lib/work-economics-validation";
 
 type D1Result<T = Record<string, unknown>> = {
   results?: T[];
@@ -72,6 +83,67 @@ function json(data: unknown, status = 200) {
   });
 }
 
+type MemberContext = { id: string; kind: string; role: string; pod_id: string | null };
+
+async function memberContext(db: Database, user: User) {
+  return db.prepare("SELECT id, kind, role, pod_id FROM members WHERE id = ?").bind(user.id).first<MemberContext>();
+}
+
+async function scopedItem(db: Database, user: User, itemId: number) {
+  return db.prepare(`SELECT w.* FROM work_items w JOIN members actor ON actor.id = ? AND actor.pod_id = w.pod_id WHERE w.id = ?`)
+    .bind(user.id, itemId).first<Record<string, unknown>>();
+}
+
+async function auditItemControlDenial(db: Database, user: User, itemId: number, route: string) {
+  const existing = await db.prepare("SELECT id FROM work_items WHERE id = ?").bind(itemId).first<{ id: number }>();
+  if (!existing) return;
+  const member = await memberContext(db, user);
+  await db.prepare(`INSERT INTO work_economics_events
+    (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+    VALUES (?, 'itemControl', 'denied', ?, ?, NULL, NULL, ?, ?)`)
+    .bind(itemId, user.id, member?.role ?? "Unknown", `Denied cross-POD or unauthorized ${route} request.`, new Date().toISOString()).run();
+}
+
+async function scopedItemOrDenied(db: Database, user: User, itemId: number, route: string) {
+  const item = await scopedItem(db, user, itemId);
+  if (!item) await auditItemControlDenial(db, user, itemId, route);
+  return item;
+}
+
+function safeEconomicsFromRow(row: Record<string, unknown>, now: string) {
+  const columns: Array<[WorkEconomicsSection, string]> = [
+    ["valueHypothesis", "value_hypothesis_json"], ["deliveryForecast", "delivery_forecast_json"],
+    ["actualEconomics", "actual_economics_json"], ["realizedOutcome", "realized_outcome_json"],
+  ];
+  const safeRow = { ...row };
+  for (const [section, column] of columns) {
+    if (!safeRow[column]) continue;
+    try {
+      const parsed = JSON.parse(String(safeRow[column]));
+      if (validateAndNormalizeWorkEconomics(section, parsed).error) safeRow[column] = null;
+    } catch {
+      safeRow[column] = null;
+    }
+  }
+  return workEconomicsFromRow(safeRow, now);
+}
+
+function safeEconomicsEvent(event: Record<string, unknown>) {
+  const section = String(event.section ?? "") as WorkEconomicsSection;
+  const sanitize = (raw: unknown) => {
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(String(raw));
+      return section in economicsColumns && !validateAndNormalizeWorkEconomics(section, parsed).error
+        ? JSON.stringify(parsed)
+        : JSON.stringify({ state: "unavailable", reason: "Legacy record failed the current privacy/schema boundary." });
+    } catch {
+      return JSON.stringify({ state: "unavailable", reason: "Record could not be parsed safely." });
+    }
+  };
+  return { ...event, previous_json: sanitize(event.previous_json), replacement_json: sanitize(event.replacement_json) };
+}
+
 export function normalizeEngineeringRecordUrl(input: unknown) {
   const raw = String(input ?? "").trim();
   if (!raw) return null;
@@ -142,6 +214,7 @@ async function ensureSchema(db: Database) {
       phase text NOT NULL,
       priority text NOT NULL,
       workflow text NOT NULL,
+      work_type text DEFAULT 'Unclassified' NOT NULL,
       state text NOT NULL,
       gate text NOT NULL,
       decision_status text NOT NULL,
@@ -159,6 +232,67 @@ async function ensureSchema(db: Database) {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_work_items_phase_state ON work_items (phase, state)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_work_items_decision_status ON work_items (decision_status)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_work_items_assignee ON work_items (assignee_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS work_economics_events (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+      item_id integer NOT NULL,
+      section text NOT NULL,
+      action text NOT NULL,
+      actor_id text NOT NULL,
+      actor_role text NOT NULL,
+      previous_json text,
+      replacement_json text,
+      reason text NOT NULL,
+      created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_work_economics_item_created ON work_economics_events (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS work_economics_human_facts (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+      item_id integer NOT NULL,
+      record_kind text NOT NULL,
+      role text NOT NULL,
+      min_minutes integer,
+      max_minutes integer,
+      active_minutes integer,
+      recorded_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_work_economics_human_item_kind ON work_economics_human_facts (item_id, record_kind)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS work_economics_agent_facts (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+      item_id integer NOT NULL,
+      record_kind text NOT NULL,
+      event_id text NOT NULL,
+      provider text NOT NULL,
+      model text,
+      attempts integer NOT NULL,
+      input_tokens integer,
+      output_tokens integer,
+      min_cost_micros integer,
+      max_cost_micros integer,
+      metered_cost_micros integer,
+      currency text NOT NULL,
+      execution_seconds integer,
+      source text NOT NULL,
+      completeness text NOT NULL,
+      ingestion_state text NOT NULL,
+      observed_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_work_economics_agent_item_kind ON work_economics_agent_facts (item_id, record_kind)"),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_work_economics_agent_item_kind_event ON work_economics_agent_facts (item_id, record_kind, event_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS work_economics_delivery_events (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, item_id integer NOT NULL, event_kind text NOT NULL,
+      originating_phase text, severity text, minutes integer, count integer, reason text NOT NULL,
+      occurred_at text NOT NULL, recorded_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_work_economics_delivery_event_item_kind ON work_economics_delivery_events (item_id, event_kind)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS work_economics_duration_facts (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+      item_id integer NOT NULL,
+      fact_kind text NOT NULL,
+      minutes integer NOT NULL,
+      source text NOT NULL,
+      recorded_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_work_economics_duration_item_kind ON work_economics_duration_facts (item_id, fact_kind)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS activity (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
       item_id integer NOT NULL,
@@ -240,6 +374,21 @@ async function ensureSchema(db: Database) {
   ]);
   await ensureColumn(db, "work_items", "rework_instructions", "rework_instructions text");
   await ensureColumn(db, "work_items", "blocked_since", "blocked_since text");
+  await ensureColumn(db, "work_items", "value_hypothesis_json", "value_hypothesis_json text");
+  await ensureColumn(db, "work_items", "delivery_forecast_json", "delivery_forecast_json text");
+  await ensureColumn(db, "work_items", "actual_economics_json", "actual_economics_json text");
+  await ensureColumn(db, "work_items", "realized_outcome_json", "realized_outcome_json text");
+  await ensureColumn(db, "members", "pod_id", "pod_id text NOT NULL DEFAULT 'steer-flight-team'");
+  await ensureColumn(db, "work_items", "pod_id", "pod_id text NOT NULL DEFAULT 'steer-flight-team'");
+  await ensureColumn(db, "work_items", "work_type", "work_type text NOT NULL DEFAULT 'Unclassified'");
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_work_items_pod_work_type_state ON work_items (pod_id, work_type, state)").run();
+  await ensureColumn(db, "work_items", "delivery_owner_id", "delivery_owner_id text");
+  await ensureColumn(db, "work_items", "outcome_owner_id", "outcome_owner_id text");
+  await ensureColumn(db, "work_economics_agent_facts", "conflict_reason", "conflict_reason text NOT NULL DEFAULT ''");
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS work_economics_events_no_update
+    BEFORE UPDATE ON work_economics_events BEGIN SELECT RAISE(ABORT, 'work_economics_events are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS work_economics_events_no_delete
+    BEFORE DELETE ON work_economics_events BEGIN SELECT RAISE(ABORT, 'work_economics_events are immutable'); END`).run();
   await ensureColumn(db, "decisions", "review_id", "review_id integer");
   await ensureColumn(db, "decisions", "evidence_url", "evidence_url text");
   await ensureColumn(db, "decisions", "evidence_revision", "evidence_revision text");
@@ -438,32 +587,50 @@ async function bootstrap(db: Database, user: User) {
   await backfillReworkState(db);
   await backfillApprovedGateOneHandoffs(db);
   await backfillExplicitEngineeringRecords(db);
-  const [items, members, activity, decisions, reviews, notifications, currentMember] = await Promise.all([
+  const generatedAt = new Date().toISOString();
+  const [items, members, activity, decisions, reviews, notifications, currentMember, economicsEvents] = await Promise.all([
     db.prepare(
-      `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind
+      `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind,
+         (SELECT a.created_at FROM activity a
+          WHERE a.item_id = w.id AND a.action = 'updated' AND a.detail = 'state → complete'
+          ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS closed_at
        FROM work_items w LEFT JOIN members m ON m.id = w.assignee_id
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
        ORDER BY CASE w.priority WHEN 'Now' THEN 0 WHEN 'Next' THEN 1 ELSE 2 END, w.updated_at DESC`,
-    ).all(),
-    db.prepare("SELECT * FROM members ORDER BY kind DESC, display_name").all(),
+    ).bind(user.id).all(),
+    db.prepare("SELECT * FROM members WHERE pod_id = (SELECT pod_id FROM members WHERE id = ?) ORDER BY kind DESC, display_name").bind(user.id).all(),
     db.prepare(
       `SELECT a.*, w.key AS item_key, w.title AS item_title, m.display_name AS actor_name
        FROM activity a JOIN work_items w ON w.id = a.item_id
-       LEFT JOIN members m ON m.id = a.actor_id ORDER BY a.created_at DESC LIMIT 80`,
-    ).all(),
+       LEFT JOIN members m ON m.id = a.actor_id
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
+       ORDER BY a.created_at DESC LIMIT 80`,
+    ).bind(user.id).all(),
     db.prepare(
       `SELECT d.*, w.key AS item_key, w.title AS item_title
-       FROM decisions d JOIN work_items w ON w.id = d.item_id ORDER BY d.created_at DESC`,
-    ).all(),
+       FROM decisions d JOIN work_items w ON w.id = d.item_id
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?) ORDER BY d.created_at DESC`,
+    ).bind(user.id).all(),
     db.prepare(
       `SELECT r.*, w.key AS item_key, w.title AS item_title
-       FROM agent_reviews r JOIN work_items w ON w.id = r.item_id ORDER BY r.created_at DESC`,
-    ).all(),
+       FROM agent_reviews r JOIN work_items w ON w.id = r.item_id
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?) ORDER BY r.created_at DESC`,
+    ).bind(user.id).all(),
     db.prepare(
       `SELECT n.*, w.key AS item_key, w.title AS item_title, m.display_name AS member_name
        FROM notifications n JOIN work_items w ON w.id = n.item_id
-       LEFT JOIN members m ON m.id = n.member_id ORDER BY n.created_at DESC LIMIT 80`,
-    ).all(),
-    db.prepare("SELECT role, authority FROM members WHERE id = ?").bind(user.id).first<{ role: string; authority: string }>(),
+       LEFT JOIN members m ON m.id = n.member_id
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
+       ORDER BY n.created_at DESC LIMIT 80`,
+    ).bind(user.id).all(),
+    db.prepare("SELECT role, authority, pod_id FROM members WHERE id = ?").bind(user.id).first<{ role: string; authority: string; pod_id: string }>(),
+    db.prepare(
+      `SELECT e.*, w.key AS item_key, w.title AS item_title, m.display_name AS actor_name
+       FROM work_economics_events e JOIN work_items w ON w.id = e.item_id
+       LEFT JOIN members m ON m.id = e.actor_id
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
+       ORDER BY e.created_at DESC LIMIT 120`,
+    ).bind(user.id).all(),
   ]);
   const parsedReviews = (reviews.results ?? []).map((review) => ({
     ...review,
@@ -475,10 +642,11 @@ async function bootstrap(db: Database, user: User) {
   }));
   const authorizedItems = (items.results ?? []).map((item) => ({
     ...item,
+    work_economics: safeEconomicsFromRow(item as Record<string, unknown>, generatedAt),
     dispatch_authorization: evaluateAgentDispatch(item as Record<string, unknown>),
-  }));
+  })) as unknown as Array<Record<string, unknown> & { key: string; state: string; assignee_name?: string | null; work_economics: ReturnType<typeof safeEconomicsFromRow> }>;
   return {
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt,
     user: { ...user, role: currentMember?.role ?? "Contributor", authority: currentMember?.authority ?? "May own work", role_contexts: roleContexts(currentMember?.role ?? "Contributor") },
     items: authorizedItems,
     members: members.results ?? [],
@@ -486,15 +654,24 @@ async function bootstrap(db: Database, user: User) {
     decisions: decisions.results ?? [],
     reviews: parsedReviews,
     notifications: notifications.results ?? [],
+    work_economics_events: (economicsEvents.results ?? []).map((event) => safeEconomicsEvent(event as Record<string, unknown>)),
+    pull_forecast: buildPullForecast(authorizedItems, 2, generatedAt),
+    service_level_distributions: buildServiceLevelDistributions(authorizedItems),
   };
 }
 
 async function authorizeAgentDispatch(db: Database, user: User, itemId: number) {
+  const actor = await memberContext(db, user);
+  if (actor?.kind !== "human") return json({ error: "Only an authenticated human POD member may authorize agent dispatch." }, 403);
   const item = await db.prepare(
     `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind, m.role AS assignee_role
-     FROM work_items w LEFT JOIN members m ON m.id = w.assignee_id WHERE w.id = ?`,
-  ).bind(itemId).first<Record<string, unknown>>();
-  if (!item) return json({ error: "Work item not found." }, 404);
+     FROM work_items w JOIN members actor ON actor.id = ? AND actor.pod_id = w.pod_id
+     LEFT JOIN members m ON m.id = w.assignee_id WHERE w.id = ?`,
+  ).bind(user.id, itemId).first<Record<string, unknown>>();
+  if (!item) {
+    await auditItemControlDenial(db, user, itemId, "dispatch");
+    return json({ error: "Work item not found in your POD." }, 404);
+  }
 
   const authorization = evaluateAgentDispatch(item);
   if (!authorization.authorized || !authorization.handoff_message) {
@@ -523,18 +700,25 @@ async function authorizeAgentDispatch(db: Database, user: User, itemId: number) 
 }
 
 async function createItem(request: Request, db: Database, user: User) {
+  const actor = await memberContext(db, user);
+  if (!actor) return json({ error: "POD membership required." }, 403);
   const body = await request.json() as Record<string, unknown>;
   const title = String(body.title ?? "").trim();
   const description = String(body.description ?? "").trim();
   const phase = String(body.phase ?? "Sense");
   const priority = String(body.priority ?? "Next");
   const workflow = String(body.workflow ?? "Unassigned");
+  const workType = String(body.workType ?? "Unclassified");
   const assigneeId = body.assigneeId ? String(body.assigneeId) : null;
   const requestedGitHubUrl = String(body.githubUrl ?? "").trim();
   const githubUrl = requestedGitHubUrl ? normalizeEngineeringRecordUrl(requestedGitHubUrl) : null;
   if (title.length < 3 || description.length < 10) return json({ error: "Add a clear title and description." }, 400);
-  if (!phases.includes(phase) || !priorities.includes(priority) || !workflows.includes(workflow)) return json({ error: "Invalid workflow fields." }, 400);
+  if (!phases.includes(phase) || !priorities.includes(priority) || !workflows.includes(workflow) || !WORK_TYPES.includes(workType as typeof WORK_TYPES[number])) return json({ error: "Invalid workflow or work-type fields." }, 400);
   if (requestedGitHubUrl && !githubUrl) return json({ error: `Engineering record must be an issue or pull request from ${allowedGitHubRepository}.` }, 400);
+  if (assigneeId) {
+    const assignee = await db.prepare("SELECT id FROM members WHERE id = ? AND pod_id = ?").bind(assigneeId, actor.pod_id ?? "steer-flight-team").first<{ id: string }>();
+    if (!assignee) return json({ error: "Assignee must be an enrolled member of this POD." }, 400);
+  }
   const now = new Date().toISOString();
   let key = "";
   let result: { meta?: { last_row_id?: number } } | null = null;
@@ -544,10 +728,10 @@ async function createItem(request: Request, db: Database, user: User) {
     try {
       result = await db.prepare(
         `INSERT INTO work_items
-         (key, title, description, phase, priority, workflow, state, gate, decision_status,
-          decision_authority, assignee_id, next_action, github_url, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'queued', 'Gate 1 pending', 'Waiting', 'Product Lead', ?, ?, ?, ?, ?, ?)`,
-      ).bind(key, title, description, phase, priority, workflow, assigneeId, String(body.nextAction ?? "Frame the intended outcome and prepare Gate 1 evidence."), githubUrl, user.id, now, now).run();
+         (key, title, description, phase, priority, workflow, work_type, state, gate, decision_status,
+          decision_authority, assignee_id, next_action, github_url, pod_id, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', 'Gate 1 pending', 'Waiting', 'Product Lead', ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(key, title, description, phase, priority, workflow, workType, assigneeId, String(body.nextAction ?? "Frame the intended outcome and prepare Gate 1 evidence."), githubUrl, actor.pod_id ?? "steer-flight-team", user.id, now, now).run();
       break;
     } catch (error) {
       if (!/UNIQUE constraint failed: work_items\.key/i.test(String(error)) || attempt === 2) throw error;
@@ -571,13 +755,16 @@ export function nextWorkItemKey(existingKeys: string[]) {
 }
 
 async function updateItem(request: Request, db: Database, user: User, itemId: number) {
-  const current = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
-  if (!current) return json({ error: "Work item not found." }, 404);
+  const actor = await memberContext(db, user);
+  if (actor?.kind !== "human") return json({ error: "Only an authenticated human POD member may update authoritative work state." }, 403);
+  const current = await scopedItemOrDenied(db, user, itemId, "item update");
+  if (!current) return json({ error: "Work item not found in your POD." }, 404);
   const body = await request.json() as Record<string, unknown>;
   const allowed: Record<string, { column: string; values?: string[] }> = {
     phase: { column: "phase", values: phases },
     priority: { column: "priority", values: priorities },
     workflow: { column: "workflow", values: workflows },
+    workType: { column: "work_type", values: [...WORK_TYPES] },
     state: { column: "state", values: states },
     decisionStatus: { column: "decision_status", values: decisionStatuses },
     assigneeId: { column: "assignee_id" },
@@ -593,6 +780,11 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
   if ("githubUrl" in body && body.githubUrl !== null && String(body.githubUrl).trim()) {
     const normalized = normalizeEngineeringRecordUrl(body.githubUrl);
     if (!normalized) return json({ error: `Engineering record must be an issue or pull request from ${allowedGitHubRepository}.` }, 400);
+  }
+  if (body.assigneeId !== undefined && body.assigneeId !== null && String(body.assigneeId).trim()) {
+    const assignee = await db.prepare("SELECT id FROM members WHERE id = ? AND pod_id = ?")
+      .bind(String(body.assigneeId).trim(), current.pod_id ?? "steer-flight-team").first<{ id: string }>();
+    if (!assignee) return json({ error: "Assignee must be an enrolled member of this POD." }, 400);
   }
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -618,6 +810,273 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
   await db.prepare(`UPDATE work_items SET ${sets.join(", ")} WHERE id = ?`).bind(...values).run();
   await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'updated', ?, ?)")
     .bind(itemId, user.id, changes.join(" · "), now).run();
+  const forecastChange = materialForecastChange(entries.map(([key]) => key));
+  const resultingState = requestedState ?? String(current.state ?? "");
+  if (forecastChange && ["active", "blocked"].includes(resultingState) && current.delivery_forecast_json) {
+    try {
+      const previous = JSON.parse(String(current.delivery_forecast_json)) as DeliveryForecast;
+      const replacement = {
+        ...previous,
+        reforecastRequiredReason: forecastChange,
+        reforecastRequiredAt: now,
+        ...(resultingState === "blocked" ? {
+          blockedSince: String(current.blocked_since ?? now),
+          unblockOwner: String(current.delivery_owner_id ?? "Named delivery owner"),
+          unblockAction: String(body.nextAction ?? current.next_action ?? "Resolve the recorded blocker"),
+          cannotForecastUntil: `Cannot forecast until: ${String(body.nextAction ?? current.next_action ?? "the recorded dependency is resolved")}`,
+        } : {}),
+      };
+      const replacementJson = JSON.stringify(replacement);
+      const actor = await db.prepare("SELECT role FROM members WHERE id = ?").bind(user.id).first<{ role: string }>();
+      await db.batch([
+        db.prepare("UPDATE work_items SET delivery_forecast_json = ?, updated_at = ? WHERE id = ?").bind(replacementJson, now, itemId),
+        db.prepare(
+          `INSERT INTO work_economics_events
+           (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+           VALUES (?, 'deliveryForecast', 'reforecast_required', ?, ?, ?, ?, ?, ?)`,
+        ).bind(itemId, user.id, actor?.role ?? "Authenticated contributor", String(current.delivery_forecast_json), replacementJson, forecastChange, now),
+      ]);
+    } catch {
+      // A malformed legacy forecast remains visible as unknown; a human can replace it through the governed editor.
+    }
+  }
+  if (resultingState === "complete" && current.actual_economics_json) {
+    try {
+      const previous = JSON.parse(String(current.actual_economics_json)) as Record<string, unknown>;
+      const replacement = { ...previous, completionAt: now, likelyVarianceMinutes: completionVarianceMinutes(current.delivery_forecast_json ? JSON.parse(String(current.delivery_forecast_json)) as DeliveryForecast : null, now) };
+      const replacementJson = JSON.stringify(replacement);
+      const actor = await db.prepare("SELECT role FROM members WHERE id = ?").bind(user.id).first<{ role: string }>();
+      await db.batch([
+        db.prepare("UPDATE work_items SET actual_economics_json = ? WHERE id = ?").bind(replacementJson, itemId),
+        db.prepare(`INSERT INTO work_economics_events
+          (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+          VALUES (?, 'actualEconomics', 'completion_variance', ?, ?, ?, ?, 'Completion variance calculated against the accepted likely window.', ?)`)
+          .bind(itemId, user.id, actor?.role ?? "Authenticated contributor", String(current.actual_economics_json), replacementJson, now),
+      ]);
+    } catch {
+      // Legacy actuals remain visible as unavailable until corrected through the governed editor.
+    }
+  }
+  return json({ ok: true });
+}
+
+const economicsColumns: Record<WorkEconomicsSection, string> = {
+  valueHypothesis: "value_hypothesis_json",
+  deliveryForecast: "delivery_forecast_json",
+  actualEconomics: "actual_economics_json",
+  realizedOutcome: "realized_outcome_json",
+};
+
+export function workEconomicsAuthorized(section: WorkEconomicsSection, kind: string, role: string) {
+  if (kind !== "human") return false;
+  if (section === "valueHypothesis") return role.includes("Product Lead");
+  if (section === "deliveryForecast") return role.includes("Product Lead") || role.includes("Tech Lead") || role.includes("Delivery");
+  if (section === "actualEconomics") return role.includes("Tech Lead") || role.includes("Platform") || role.includes("Ops");
+  return role.includes("Product Lead") || role.includes("Tech Lead") || role.includes("Observe") || role.includes("Learn");
+}
+
+export function workEconomicsNamedAuthority(
+  section: WorkEconomicsSection,
+  member: { id: string; kind: string; role: string; pod_id?: string | null },
+  item: { pod_id?: unknown; delivery_owner_id?: unknown; outcome_owner_id?: unknown },
+) {
+  if (!workEconomicsAuthorized(section, member.kind, member.role)) return false;
+  if (String(member.pod_id ?? "steer-flight-team") !== String(item.pod_id ?? "steer-flight-team")) return false;
+  if (section === "deliveryForecast" && item.delivery_owner_id && String(item.delivery_owner_id) !== member.id) return false;
+  if (section === "realizedOutcome" && item.outcome_owner_id && String(item.outcome_owner_id) !== member.id && !/Observe|Learn/.test(member.role)) return false;
+  return true;
+}
+
+export function validateWorkEconomics(section: WorkEconomicsSection, value: Record<string, unknown>) {
+  return validateAndNormalizeWorkEconomics(section, value).error;
+}
+
+async function auditEconomicsDenial(db: Database, itemId: number, section: string, user: User, actorRole: string, reason: string) {
+  const now = new Date().toISOString();
+  await db.prepare(
+    `INSERT INTO work_economics_events
+     (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+     VALUES (?, ?, 'denied', ?, ?, NULL, NULL, ?, ?)`,
+  ).bind(itemId, section, user.id, actorRole || "Unauthorised member", reason, now).run();
+}
+
+function normalizedEconomicsStatements(db: Database, itemId: number, section: WorkEconomicsSection, value: Record<string, unknown>, now: string) {
+  const statements: Statement[] = [];
+  if (section === "deliveryForecast") {
+    statements.push(db.prepare("DELETE FROM work_economics_human_facts WHERE item_id = ? AND record_kind = 'forecast'").bind(itemId));
+    statements.push(db.prepare("DELETE FROM work_economics_agent_facts WHERE item_id = ? AND record_kind = 'forecast'").bind(itemId));
+    for (const range of value.humanEffortRanges as Array<Record<string, unknown>>) {
+      statements.push(db.prepare("INSERT INTO work_economics_human_facts (item_id, record_kind, role, min_minutes, max_minutes, active_minutes, recorded_at) VALUES (?, 'forecast', ?, ?, ?, NULL, ?)")
+        .bind(itemId, range.role, range.minMinutes, range.maxMinutes, now));
+    }
+    for (const [index, range] of (value.agentCostRanges as Array<Record<string, unknown>>).entries()) {
+      statements.push(db.prepare(`INSERT INTO work_economics_agent_facts
+        (item_id, record_kind, event_id, provider, model, attempts, input_tokens, output_tokens, min_cost_micros, max_cost_micros, metered_cost_micros, currency, execution_seconds, source, completeness, ingestion_state, observed_at)
+        VALUES (?, 'forecast', ?, ?, NULL, ?, NULL, NULL, ?, ?, NULL, ?, NULL, 'owner forecast', 'forecast', 'accepted', ?)`)
+        .bind(itemId, `forecast-${index}`, range.provider, range.expectedAttempts, Math.round(Number(range.minCost) * 1_000_000), Math.round(Number(range.maxCost) * 1_000_000), range.currency, now));
+    }
+  }
+  if (section === "actualEconomics") {
+    statements.push(db.prepare("DELETE FROM work_economics_human_facts WHERE item_id = ? AND record_kind = 'actual'").bind(itemId));
+    statements.push(db.prepare("DELETE FROM work_economics_agent_facts WHERE item_id = ? AND record_kind = 'actual'").bind(itemId));
+    statements.push(db.prepare("DELETE FROM work_economics_duration_facts WHERE item_id = ?").bind(itemId));
+    statements.push(db.prepare("DELETE FROM work_economics_delivery_events WHERE item_id = ?").bind(itemId));
+    for (const total of value.humanRoleTotals as Array<Record<string, unknown>>) {
+      statements.push(db.prepare("INSERT INTO work_economics_human_facts (item_id, record_kind, role, min_minutes, max_minutes, active_minutes, recorded_at) VALUES (?, 'actual', ?, NULL, NULL, ?, ?)")
+        .bind(itemId, total.role, total.activeMinutes, now));
+    }
+    for (const event of value.agentTelemetry as Array<Record<string, unknown>>) {
+      statements.push(db.prepare(`INSERT INTO work_economics_agent_facts
+        (item_id, record_kind, event_id, provider, model, attempts, input_tokens, output_tokens, min_cost_micros, max_cost_micros, metered_cost_micros, currency, execution_seconds, source, completeness, ingestion_state, observed_at, conflict_reason)
+        VALUES (?, 'actual', ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(itemId, event.eventId, event.provider, event.model, event.attempts, event.inputTokens, event.outputTokens, event.meteredCost === null ? null : Math.round(Number(event.meteredCost) * 1_000_000), event.currency, Math.round(Number(event.executionMinutes) * 60), event.source, event.completeness, event.ingestionState, event.observedAt, event.conflictReason));
+    }
+    for (const [factKind, minutes] of Object.entries(value.durationFacts as Record<string, unknown>)) {
+      statements.push(db.prepare("INSERT INTO work_economics_duration_facts (item_id, fact_kind, minutes, source, recorded_at) VALUES (?, ?, ?, ?, ?)")
+        .bind(itemId, factKind, minutes, value.telemetrySource, now));
+    }
+    for (const event of value.reworkEvents as Array<Record<string, unknown>>) statements.push(db.prepare(`INSERT INTO work_economics_delivery_events (item_id, event_kind, originating_phase, severity, minutes, count, reason, occurred_at, recorded_at) VALUES (?, 'rework', ?, NULL, ?, NULL, ?, ?, ?)`)
+      .bind(itemId, event.originatingPhase, event.minutes, event.reason, now, now));
+    for (const event of value.defectEvents as Array<Record<string, unknown>>) statements.push(db.prepare(`INSERT INTO work_economics_delivery_events (item_id, event_kind, originating_phase, severity, minutes, count, reason, occurred_at, recorded_at) VALUES (?, 'defect', NULL, ?, NULL, ?, 'Defect count recorded from governed actuals.', ?, ?)`)
+      .bind(itemId, event.severity, event.count, now, now));
+    for (const event of value.rollbackEvents as Array<Record<string, unknown>>) statements.push(db.prepare(`INSERT INTO work_economics_delivery_events (item_id, event_kind, originating_phase, severity, minutes, count, reason, occurred_at, recorded_at) VALUES (?, 'rollback', NULL, NULL, NULL, 1, ?, ?, ?)`)
+      .bind(itemId, event.reason, event.occurredAt, now));
+  }
+  return statements;
+}
+
+async function serverVerifiedEvidence(url: unknown) {
+  const evidence = await readEvidence(url);
+  return evidence.text && evidence.sha256 && evidence.revision && /^[0-9a-f]{40}$/i.test(evidence.revision)
+    ? { evidenceStatus: "verified", evidenceRevision: evidence.revision, evidenceSha256: evidence.sha256, evidenceVerifiedAt: new Date().toISOString() }
+    : null;
+}
+
+async function authoritativeServiceLevel(db: Database, current: Record<string, unknown>) {
+  const workType = String(current.work_type ?? "Unclassified");
+  if (!WORK_TYPES.includes(workType as typeof WORK_TYPES[number]) || workType === "Unclassified") return null;
+  const rows = await db.prepare("SELECT * FROM work_items WHERE pod_id = ? AND work_type = ? AND state = 'complete'")
+    .bind(current.pod_id ?? "steer-flight-team", workType).all<Record<string, unknown>>();
+  const now = new Date().toISOString();
+  const records = (rows.results ?? []).map((row) => ({ ...row, work_economics: safeEconomicsFromRow(row, now) })) as unknown as Array<Record<string, unknown> & { work_economics: ReturnType<typeof safeEconomicsFromRow> }>;
+  return buildServiceLevelDistributions(records).find((entry) => entry.podId === String(current.pod_id ?? "steer-flight-team") && entry.workType === workType) ?? null;
+}
+
+async function authoritativeCompletionAt(db: Database, current: Record<string, unknown>, itemId: number) {
+  if (String(current.state) !== "complete") return null;
+  const event = await db.prepare("SELECT created_at FROM activity WHERE item_id = ? AND detail LIKE '%state → complete%' ORDER BY id DESC LIMIT 1")
+    .bind(itemId).first<{ created_at: string }>();
+  return event?.created_at ?? String(current.updated_at);
+}
+
+async function updateWorkEconomics(request: Request, db: Database, user: User, itemId: number) {
+  const current = await scopedItemOrDenied(db, user, itemId, "Work Economics update");
+  if (!current) return json({ error: "Permission denied. Ask the named record owner in this POD to review or edit this record." }, 403);
+  const member = await db.prepare("SELECT id, kind, role, pod_id FROM members WHERE id = ?").bind(user.id).first<{ id: string; kind: string; role: string; pod_id: string | null }>();
+  const body = await request.json() as { section?: unknown; value?: unknown; reason?: unknown };
+  const section = String(body.section ?? "") as WorkEconomicsSection;
+  if (!(section in economicsColumns)) return json({ error: "Choose a valid Work Economics section." }, 400);
+  if (!member || !workEconomicsNamedAuthority(section, member, current)) {
+    await auditEconomicsDenial(db, itemId, section, user, member?.role ?? "Unknown", "Denied: role, named-owner, or POD scope did not authorize this mutation.");
+    return json({ error: "Permission denied. Ask the named record owner in this POD to review or edit this record." }, 403);
+  }
+  if (!body.value || typeof body.value !== "object" || Array.isArray(body.value)) return json({ error: "Supply a structured Work Economics record." }, 400);
+  const value = { ...(body.value as Record<string, unknown>) };
+  const now = new Date().toISOString();
+  if (section === "deliveryForecast") {
+    if (String(current.state) === "blocked") {
+      value.blockedSince = String(current.blocked_since ?? current.updated_at ?? now);
+      if (![value.unblockOwner, value.unblockAction, value.cannotForecastUntil].every((entry) => typeof entry === "string" && entry.trim().length > 0)) {
+        return json({ error: "Blocked work must retain an unblock owner, unblock action, and cannot-forecast dependency before the forecast can be accepted." }, 400);
+      }
+    } else {
+      value.blockedSince = null;
+      value.unblockOwner = "";
+      value.unblockAction = "";
+      value.cannotForecastUntil = "";
+    }
+    const distribution = String(value.basisKind) === "comparable history" ? await authoritativeServiceLevel(db, current) : null;
+    if (String(value.basisKind) === "comparable history" && !distribution) return json({ error: "Comparable history is unavailable until five completed same-POD/work-type observations exist." }, 409);
+    value.serviceLevel = distribution ? { podId: distribution.podId, workType: distribution.workType, sampleSize: distribution.sampleSize, percentile: distribution.percentile, lowHours: distribution.lowHours, highHours: distribution.highHours } : null;
+    value.deliveryOwnerId = user.id;
+    value.acceptedBy = user.id;
+    value.acceptedAt = now;
+    value.updatedAt = now;
+    value.acceptanceState = humanAcceptanceState(value.advisory, value.acceptanceState);
+    value.reforecastRequiredReason = undefined;
+    value.reforecastRequiredAt = undefined;
+  }
+  if (section === "actualEconomics") {
+    const completionAt = await authoritativeCompletionAt(db, current, itemId);
+    let acceptedForecast: DeliveryForecast | null = null;
+    try { acceptedForecast = current.delivery_forecast_json ? JSON.parse(String(current.delivery_forecast_json)) as DeliveryForecast : null; } catch { acceptedForecast = null; }
+    value.completionAt = completionAt;
+    value.likelyVarianceMinutes = completionAt ? completionVarianceMinutes(acceptedForecast, completionAt) : null;
+    value.correctedBy = user.id;
+    value.correctedAt = now;
+    value.acceptanceState = humanAcceptanceState(value.advisory, value.acceptanceState);
+  }
+  if (section === "realizedOutcome") {
+    value.outcomeOwnerId = String(current.outcome_owner_id ?? value.outcomeOwnerId ?? user.id);
+    value.acceptanceState = humanAcceptanceState(value.advisory, value.acceptanceState);
+  }
+  if (section === "realizedOutcome" && ["not due", "pending evidence"].includes(String(value.status))) {
+    value.verifier = "";
+    value.verifiedAt = "";
+    value.evidenceRevision = "";
+    value.evidenceSha256 = "";
+    value.evidenceVerifiedAt = "";
+  }
+  if (section === "realizedOutcome" && !["not due", "pending evidence"].includes(String(value.status))) {
+    value.verifier = user.id;
+    value.verifiedAt = now;
+  }
+  if (section === "valueHypothesis") {
+    const verified = await serverVerifiedEvidence(value.evidence);
+    if (!verified) return json({ error: "Value evidence must resolve to an approved GitHub text artifact before acceptance." }, 409);
+    value.evidenceStatus = verified.evidenceStatus;
+    value.evidenceRevision = verified.evidenceRevision;
+    value.evidenceSha256 = verified.evidenceSha256;
+    value.evidenceVerifiedAt = verified.evidenceVerifiedAt;
+    value.acceptedBy = user.id;
+    value.acceptedAt = now;
+    value.acceptanceState = humanAcceptanceState(value.advisory, value.acceptanceState);
+  }
+  if (section === "realizedOutcome" && !["not due", "pending evidence"].includes(String(value.status))) {
+    const verified = await serverVerifiedEvidence(value.evidence);
+    if (!verified) return json({ error: "Verified outcome evidence must resolve to an approved GitHub text artifact." }, 409);
+    value.evidenceStatus = verified.evidenceStatus;
+    value.evidenceRevision = verified.evidenceRevision;
+    value.evidenceSha256 = verified.evidenceSha256;
+    value.evidenceVerifiedAt = verified.evidenceVerifiedAt;
+  }
+  if (section === "valueHypothesis") {
+    const outcomeOwner = await db.prepare("SELECT id FROM members WHERE id = ? AND pod_id = ? AND kind = 'human'")
+      .bind(value.outcomeOwnerId, current.pod_id ?? "steer-flight-team").first<{ id: string }>();
+    if (!outcomeOwner) return json({ error: "Outcome owner must be an enrolled human member of this POD." }, 400);
+  }
+  const validationError = validateWorkEconomics(section, value);
+  if (validationError) return json({ error: validationError }, 400);
+  const reason = String(body.reason ?? value.changeReason ?? value.correctionReason ?? "Accepted governed record").trim();
+  if (reason.length < 8) return json({ error: "Add a meaningful audit reason." }, 400);
+  const column = economicsColumns[section];
+  const replacementJson = serializeSection(section, value);
+  const previousJson = current[column] ? String(current[column]) : null;
+  const ownerStatements: Statement[] = [];
+  if (section === "deliveryForecast") ownerStatements.push(db.prepare("UPDATE work_items SET delivery_owner_id = ? WHERE id = ?").bind(user.id, itemId));
+  if (section === "valueHypothesis") ownerStatements.push(db.prepare("UPDATE work_items SET outcome_owner_id = ? WHERE id = ?").bind(value.outcomeOwnerId, itemId));
+  await db.batch([
+    db.prepare(`UPDATE work_items SET ${column} = ?, updated_at = ? WHERE id = ?`).bind(replacementJson, now, itemId),
+    db.prepare(
+      `INSERT INTO work_economics_events
+       (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(itemId, section, previousJson ? "corrected" : "accepted", user.id, member.role, previousJson, replacementJson, reason, now),
+    db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'work_economics', ?, ?)")
+      .bind(itemId, user.id, `${section} ${previousJson ? "corrected" : "accepted"}: ${reason}`, now),
+    ...ownerStatements,
+    ...normalizedEconomicsStatements(db, itemId, section, value, now),
+  ]);
   return json({ ok: true });
 }
 
@@ -678,8 +1137,8 @@ async function readEvidence(urlValue: unknown): Promise<EvidenceRead> {
 }
 
 async function runCriticReview(db: Database, user: User, itemId: number) {
-  const item = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
-  if (!item) return json({ error: "Work item not found." }, 404);
+  const item = await scopedItemOrDenied(db, user, itemId, "Critic review");
+  if (!item) return json({ error: "Work item not found in your POD." }, 404);
 
   const evidence = await readEvidence(item.evidence_url);
   const joinedText = [item.title, item.description, item.next_action, evidence.text].filter(Boolean).join("\n");
@@ -808,6 +1267,34 @@ function firstRequiredChange(reasoning: string) {
   return line?.slice("required change:".length).trim() || "Complete the requested changes in the linked evidence and resubmit for a fresh Critic review.";
 }
 
+async function requireMaterialReforecast(db: Database, current: Record<string, unknown>, itemId: number, user: User, reason: string, now: string, blocked = false) {
+  if (!current.delivery_forecast_json) return;
+  try {
+    const previous = JSON.parse(String(current.delivery_forecast_json)) as DeliveryForecast;
+    const replacement = {
+      ...previous,
+      reforecastRequiredReason: reason,
+      reforecastRequiredAt: now,
+      ...(blocked ? {
+        blockedSince: String(current.blocked_since ?? now),
+        unblockOwner: String(current.delivery_owner_id ?? "Named delivery owner"),
+        unblockAction: String(current.next_action ?? "Resolve the recorded blocker"),
+        cannotForecastUntil: `Cannot forecast until: ${String(current.next_action ?? "the recorded dependency is resolved")}`,
+      } : {}),
+    };
+    const actor = await db.prepare("SELECT role FROM members WHERE id = ?").bind(user.id).first<{ role: string }>();
+    await db.batch([
+      db.prepare("UPDATE work_items SET delivery_forecast_json = ? WHERE id = ?").bind(JSON.stringify(replacement), itemId),
+      db.prepare(`INSERT INTO work_economics_events
+        (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+        VALUES (?, 'deliveryForecast', 'reforecast_required', ?, ?, ?, ?, ?, ?)`)
+        .bind(itemId, user.id, actor?.role ?? "Authenticated contributor", String(current.delivery_forecast_json), JSON.stringify(replacement), reason, now),
+    ]);
+  } catch {
+    // Legacy malformed forecasts fail closed as unknown and must be replaced by the named owner.
+  }
+}
+
 export function decisionTransition(current: Record<string, unknown>, decision: string, reasoning = "") {
   const gate = String(current.gate ?? "Gate pending");
   let nextGate = gate;
@@ -828,7 +1315,13 @@ export function decisionTransition(current: Record<string, unknown>, decision: s
       nextAssignee = "agent-architect";
       nextAction = gateTwoExamNextAction;
     }
-    if (gate === "Gate 2 pending") { nextGate = "Gate 2 passed"; nextPhase = "Engineer"; nextState = "active"; }
+    if (gate === "Gate 2 pending") {
+      nextGate = "Gate 2 passed";
+      nextPhase = "Engineer";
+      nextState = "active";
+      nextAssignee = "agent-builder";
+      nextAction = "Implement the exact approved Gate 2 Exam attached to this item, add the mapped automated and human-check evidence, and return the verified build to Evaluate. Do not release or request Gate 3 until the full Exam is verified.";
+    }
     if (gate === "Gate 3 pending") { nextGate = "Gate 3 passed"; nextPhase = "Release"; nextState = "active"; }
   } else {
     nextAssignee = reworkAssigneeForGate(gate) ?? current.assignee_id;
@@ -848,9 +1341,19 @@ export function decisionTransition(current: Record<string, unknown>, decision: s
   };
 }
 
+export function gateOneValueReady(valueJson: unknown) {
+  try {
+    const value = JSON.parse(String(valueJson ?? "")) as Record<string, unknown>;
+    return !validateAndNormalizeWorkEconomics("valueHypothesis", value).error
+      && Boolean(value.acceptedBy && value.acceptedAt && value.evidenceStatus === "verified" && value.acceptanceState !== "proposed");
+  } catch {
+    return false;
+  }
+}
+
 async function decide(request: Request, db: Database, user: User, itemId: number) {
-  const current = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
-  if (!current) return json({ error: "Work item not found." }, 404);
+  const current = await scopedItemOrDenied(db, user, itemId, "gate decision");
+  if (!current) return json({ error: "Work item not found in your POD." }, 404);
   const body = await request.json() as Record<string, unknown>;
   const decision = String(body.decision ?? "");
   const reasoning = String(body.reasoning ?? "").trim();
@@ -867,6 +1370,9 @@ async function decide(request: Request, db: Database, user: User, itemId: number
     (gate === "Gate 3 pending" && role.includes("Product Lead") && role.includes("Tech Lead"))
   );
   if (!authorized) return json({ error: `Your recorded role is not the named authority for ${gate}.` }, 403);
+  if (decision === "APPROVED" && gate === "Gate 1 pending" && !gateOneValueReady(current.value_hypothesis_json)) {
+    return json({ error: "Gate 1 is default-closed until the Product Lead accepts a complete, evidence-verified Value Hypothesis in native units." }, 409);
+  }
   const review = await db.prepare(
     "SELECT id, reviewed_item_updated_at, evidence_url, evidence_revision, evidence_sha256 FROM agent_reviews WHERE id = ? AND item_id = ?",
   ).bind(reviewId, itemId).first<{ id: number; reviewed_item_updated_at: string; evidence_url: string | null; evidence_revision: string | null; evidence_sha256: string | null }>();
@@ -891,6 +1397,7 @@ async function decide(request: Request, db: Database, user: User, itemId: number
   ).bind(transition.gate, transition.phase, transition.decisionStatus, transition.state, transition.decisionAuthority, transition.assigneeId, transition.nextAction, transition.reworkInstructions, blockedSince, now, itemId).run();
   await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'decision', ?, ?)")
     .bind(itemId, user.id, `${gate}: ${decision} — ${reasoning}`, now).run();
+  await requireMaterialReforecast(db, current, itemId, user, `Gate decision ${decision.toLowerCase()} changed execution expectations.`, now, transition.state === "blocked");
   if (decision === "CHANGES_REQUESTED") {
     const recipient = transition.assigneeId
       ? await db.prepare("SELECT role FROM members WHERE id = ?").bind(transition.assigneeId).first<{ role: string }>()
@@ -908,8 +1415,10 @@ async function decide(request: Request, db: Database, user: User, itemId: number
 }
 
 async function transitionItem(request: Request, db: Database, user: User, itemId: number) {
-  const current = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
-  if (!current) return json({ error: "Work item not found." }, 404);
+  const actor = await memberContext(db, user);
+  if (actor?.kind !== "human") return json({ error: "Only an authenticated human POD member may transition authoritative workflow state." }, 403);
+  const current = await scopedItemOrDenied(db, user, itemId, "workflow transition");
+  if (!current) return json({ error: "Work item not found in your POD." }, 404);
   const body = await request.json() as Record<string, unknown>;
   const action = String(body.action ?? "");
   const status = String(current.decision_status);
@@ -919,6 +1428,7 @@ async function transitionItem(request: Request, db: Database, user: User, itemId
     if (status !== "Changes requested") return json({ error: "This item is not waiting to begin rework." }, 409);
     await db.prepare("UPDATE work_items SET decision_status = 'Rework', state = 'active', blocked_since = NULL, updated_at = ? WHERE id = ?").bind(now, itemId).run();
     await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'workflow', 'Rework started from the recorded change request.', ?)").bind(itemId, user.id, now).run();
+    await requireMaterialReforecast(db, current, itemId, user, "Test result or change request started a new rework cycle.", now);
     return json({ ok: true, status: "Rework" });
   }
 
@@ -934,6 +1444,7 @@ async function transitionItem(request: Request, db: Database, user: User, itemId
       return json({ error: "The evidence content has not changed since the change request. Update the artifact before resubmitting." }, 409);
     }
     await db.prepare("UPDATE work_items SET decision_status = 'Resubmitted', state = 'blocked', blocked_since = ?, updated_at = ? WHERE id = ?").bind(now, now, itemId).run();
+    await requireMaterialReforecast(db, current, itemId, user, "Updated test or dependency evidence was resubmitted for a new gate ruling.", now, true);
     await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'workflow', 'Updated evidence resubmitted for a fresh Critic review and human ruling.', ?)").bind(itemId, user.id, now).run();
     await db.prepare(
       `INSERT OR IGNORE INTO notifications
@@ -952,7 +1463,17 @@ async function transitionItem(request: Request, db: Database, user: User, itemId
 
 async function markNotificationRead(db: Database, user: User, notificationId: number) {
   const now = new Date().toISOString();
-  await db.prepare("UPDATE notifications SET status = 'read', read_at = ? WHERE id = ?").bind(now, notificationId).run();
+  const notification = await db.prepare(`SELECT n.id FROM notifications n
+    JOIN work_items w ON w.id = n.item_id
+    JOIN members actor ON actor.id = ? AND actor.pod_id = w.pod_id
+    WHERE n.id = ? AND (n.member_id = actor.id OR (n.member_id IS NULL AND instr(actor.role, n.recipient_role) > 0))`)
+    .bind(user.id, notificationId).first<{ id: number }>();
+  if (!notification) {
+    const target = await db.prepare("SELECT item_id FROM notifications WHERE id = ?").bind(notificationId).first<{ item_id: number }>();
+    if (target) await auditItemControlDenial(db, user, target.item_id, "notification mutation");
+    return json({ error: "Notification not found in your POD or assigned role." }, 404);
+  }
+  await db.prepare("UPDATE notifications SET status = 'read', read_at = ? WHERE id = ?").bind(now, notification.id).run();
   return json({ ok: true, actor: user.id });
 }
 
@@ -1218,9 +1739,9 @@ export function codeReviewDecisionGuidance(
   return { recommended_action: recommendedAction, headline, summary, actions: { accept, request_changes: requestChanges, merge } };
 }
 
-async function loadCodeReview(db: Database, env: Env, itemId: number) {
-  const item = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
-  if (!item) return json({ error: "Work item not found." }, 404);
+async function loadCodeReview(db: Database, env: Env, user: User, itemId: number) {
+  const item = await scopedItemOrDenied(db, user, itemId, "code review read");
+  if (!item) return json({ error: "Work item not found in your POD." }, 404);
   const reference = pullRequestFromItem(item);
   if (!reference) return json({ error: `Attach a pull request from ${allowedGitHubRepository} to this work item's evidence or engineering record.` }, 409);
   const basePath = `/repos/${reference.owner}/${reference.repo}`;
@@ -1282,9 +1803,9 @@ async function deliverGitHubReview(env: Env, reference: PullRequestReference, ac
 }
 
 async function actOnCodeReview(request: Request, db: Database, env: Env, user: User, itemId: number) {
+  const item = await scopedItemOrDenied(db, user, itemId, "code review mutation");
+  if (!item) return json({ error: "Work item not found in your POD." }, 404);
   if (!env.GITHUB_TOKEN) return json({ error: "GitHub write actions are not connected yet. Add the repository credential to the hosted STEER environment first." }, 503);
-  const item = await db.prepare("SELECT * FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
-  if (!item) return json({ error: "Work item not found." }, 404);
   const reference = pullRequestFromItem(item);
   if (!reference) return json({ error: "This work item is not linked to an approved pull request." }, 409);
   const member = await db.prepare("SELECT kind, role FROM members WHERE id = ?").bind(user.id).first<{ kind: string; role: string }>();
@@ -1338,6 +1859,15 @@ async function actOnCodeReview(request: Request, db: Database, env: Env, user: U
   } else if (action === "MERGE") {
     await db.prepare("UPDATE work_items SET next_action = 'Pull request merged. Verify the deployment or operational outcome, then close this work item.', updated_at = ? WHERE id = ?").bind(now, itemId).run();
   }
+  await requireMaterialReforecast(
+    db,
+    item,
+    itemId,
+    user,
+    `Code-review test result ${action.toLowerCase().replace("_", " ")} changed execution expectations for commit ${pull.head.sha.slice(0, 12)}.`,
+    now,
+    action === "REQUEST_CHANGES",
+  );
   return json({ ok: true, action, delivery: delivery.delivery, url: delivery.url }, 201);
 }
 
@@ -1356,12 +1886,14 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "POST" && url.pathname === "/api/items") return createItem(request, env.DB, user);
     const itemMatch = url.pathname.match(/^\/api\/items\/(\d+)$/);
     if (request.method === "PATCH" && itemMatch) return updateItem(request, env.DB, user, Number(itemMatch[1]));
+    const economicsMatch = url.pathname.match(/^\/api\/items\/(\d+)\/work-economics$/);
+    if (request.method === "PATCH" && economicsMatch) return updateWorkEconomics(request, env.DB, user, Number(economicsMatch[1]));
     const reviewMatch = url.pathname.match(/^\/api\/items\/(\d+)\/reviews$/);
     if (request.method === "POST" && reviewMatch) return runCriticReview(env.DB, user, Number(reviewMatch[1]));
     const dispatchMatch = url.pathname.match(/^\/api\/items\/(\d+)\/dispatch$/);
     if (request.method === "POST" && dispatchMatch) return authorizeAgentDispatch(env.DB, user, Number(dispatchMatch[1]));
     const codeReviewMatch = url.pathname.match(/^\/api\/items\/(\d+)\/code-review$/);
-    if (request.method === "GET" && codeReviewMatch) return loadCodeReview(env.DB, env, Number(codeReviewMatch[1]));
+    if (request.method === "GET" && codeReviewMatch) return loadCodeReview(env.DB, env, user, Number(codeReviewMatch[1]));
     if (request.method === "POST" && codeReviewMatch) return actOnCodeReview(request, env.DB, env, user, Number(codeReviewMatch[1]));
     const workflowMatch = url.pathname.match(/^\/api\/items\/(\d+)\/workflow$/);
     if (request.method === "POST" && workflowMatch) return transitionItem(request, env.DB, user, Number(workflowMatch[1]));

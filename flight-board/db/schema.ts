@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const members = sqliteTable(
   "members",
@@ -11,6 +11,7 @@ export const members = sqliteTable(
     authority: text("authority").notNull(),
     status: text("status").notNull().default("available"),
     accent: text("accent").notNull().default("aqua"),
+    podId: text("pod_id").notNull().default("steer-flight-team"),
   },
   (table) => [index("idx_members_kind").on(table.kind)],
 );
@@ -25,6 +26,7 @@ export const workItems = sqliteTable(
     phase: text("phase").notNull(),
     priority: text("priority").notNull(),
     workflow: text("workflow").notNull(),
+    workType: text("work_type").notNull().default("Unclassified"),
     state: text("state").notNull(),
     gate: text("gate").notNull(),
     decisionStatus: text("decision_status").notNull(),
@@ -35,6 +37,13 @@ export const workItems = sqliteTable(
     githubUrl: text("github_url"),
     reworkInstructions: text("rework_instructions"),
     blockedSince: text("blocked_since"),
+    podId: text("pod_id").notNull().default("steer-flight-team"),
+    deliveryOwnerId: text("delivery_owner_id"),
+    outcomeOwnerId: text("outcome_owner_id"),
+    valueHypothesisJson: text("value_hypothesis_json"),
+    deliveryForecastJson: text("delivery_forecast_json"),
+    actualEconomicsJson: text("actual_economics_json"),
+    realizedOutcomeJson: text("realized_outcome_json"),
     createdBy: text("created_by").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -43,7 +52,90 @@ export const workItems = sqliteTable(
     index("idx_work_items_phase_state").on(table.phase, table.state),
     index("idx_work_items_decision_status").on(table.decisionStatus),
     index("idx_work_items_assignee").on(table.assigneeId),
+    index("idx_work_items_pod_work_type_state").on(table.podId, table.workType, table.state),
   ],
+);
+
+export const workEconomicsEvents = sqliteTable(
+  "work_economics_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    itemId: integer("item_id").notNull(),
+    section: text("section").notNull(),
+    action: text("action").notNull(),
+    actorId: text("actor_id").notNull(),
+    actorRole: text("actor_role").notNull(),
+    previousJson: text("previous_json"),
+    replacementJson: text("replacement_json"),
+    reason: text("reason").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_work_economics_item_created").on(table.itemId, table.createdAt)],
+);
+
+export const workEconomicsHumanFacts = sqliteTable(
+  "work_economics_human_facts",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    itemId: integer("item_id").notNull(),
+    recordKind: text("record_kind").notNull(),
+    role: text("role").notNull(),
+    minMinutes: integer("min_minutes"),
+    maxMinutes: integer("max_minutes"),
+    activeMinutes: integer("active_minutes"),
+    recordedAt: text("recorded_at").notNull(),
+  },
+  (table) => [index("idx_work_economics_human_item_kind").on(table.itemId, table.recordKind)],
+);
+
+export const workEconomicsAgentFacts = sqliteTable(
+  "work_economics_agent_facts",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    itemId: integer("item_id").notNull(),
+    recordKind: text("record_kind").notNull(),
+    eventId: text("event_id").notNull(),
+    provider: text("provider").notNull(),
+    model: text("model"),
+    attempts: integer("attempts").notNull(),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    minCostMicros: integer("min_cost_micros"),
+    maxCostMicros: integer("max_cost_micros"),
+    meteredCostMicros: integer("metered_cost_micros"),
+    currency: text("currency").notNull(),
+    executionSeconds: integer("execution_seconds"),
+    source: text("source").notNull(),
+    completeness: text("completeness").notNull(),
+    ingestionState: text("ingestion_state").notNull(),
+    conflictReason: text("conflict_reason").notNull().default(""),
+    observedAt: text("observed_at").notNull(),
+  },
+  (table) => [
+    index("idx_work_economics_agent_item_kind").on(table.itemId, table.recordKind),
+    uniqueIndex("uq_work_economics_agent_item_kind_event").on(table.itemId, table.recordKind, table.eventId),
+  ],
+);
+
+export const workEconomicsDeliveryEvents = sqliteTable(
+  "work_economics_delivery_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }), itemId: integer("item_id").notNull(), eventKind: text("event_kind").notNull(), originatingPhase: text("originating_phase"), severity: text("severity"), minutes: integer("minutes"), count: integer("count"), reason: text("reason").notNull(), occurredAt: text("occurred_at").notNull(), recordedAt: text("recorded_at").notNull(),
+  },
+  (table) => [index("idx_work_economics_delivery_event_item_kind").on(table.itemId, table.eventKind)],
+);
+
+export const workEconomicsDurationFacts = sqliteTable(
+  "work_economics_duration_facts",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    itemId: integer("item_id").notNull(),
+    factKind: text("fact_kind").notNull(),
+    minutes: integer("minutes").notNull(),
+    source: text("source").notNull(),
+    recordedAt: text("recorded_at").notNull(),
+  },
+  (table) => [index("idx_work_economics_duration_item_kind").on(table.itemId, table.factKind)],
 );
 
 export const activity = sqliteTable(
