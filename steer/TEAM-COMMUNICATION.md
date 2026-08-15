@@ -42,6 +42,12 @@ agent access procedures are in `TEAM-ONBOARDING.md`. GitHub Issues, pull request
 Discussions, briefs, exams, and decision records remain the durable evidence surfaces;
 link consequential Buzz conclusions back to the relevant record.
 
+Buzz visibility is not proof that a named agent produced a deliverable. During a
+Codex-hosted bootstrap run, messages must identify the named agent and link its exact run
+record; any Codex-authored intervention must carry its emergency label. The
+[Codex supervision boundary](../docs/steer/OPERATING-MODEL.md#normative-codex-supervision-boundary)
+governs attribution, takeover, failure escalation, and performance evidence.
+
 For visible agent handoffs, the sending agent replies in the applicable thread and
 mentions the receiving agent; the receiving agent acknowledges there. Do not use broad
 mentions for every event. Mention the full STEER fleet only for fleet readiness checks,

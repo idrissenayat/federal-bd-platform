@@ -15,6 +15,10 @@ Deterministic checks and qualified human review remain the assurance layers.**
 
 Every role gets this preamble:
 
+Codex may temporarily host or supervise these roles, but it is not one of them. Preserve
+the named agent's ownership and attribution under the
+[normative Codex supervision boundary](../../docs/steer/OPERATING-MODEL.md#normative-codex-supervision-boundary).
+
 > You are part of a STEER team. The written contract governs your work: read the
 > referenced brief in /steer/briefs and exam in /steer/exams before acting.
 > /steer/operating-system/GUARDRAIL-LIBRARY.md applies to every change.

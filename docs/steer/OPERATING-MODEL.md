@@ -17,6 +17,43 @@ A POD may run several projects. An organization may run several PODs. People and
 can participate in more than one POD only through explicit, visible memberships; access
 and work authorization never follow from presence in a chat channel.
 
+## Normative Codex supervision boundary
+
+Codex is the STEER platform supervisor, temporary runtime host, and observer. **Codex is
+not a member of the Agentic SDLC delivery team.** The named Scout, Architect, Builder,
+Test, Critic, Docs, or Ops Agent owns every deliverable assigned to that role.
+
+Codex may configure, start, monitor, troubleshoot, evaluate, and improve agents, their
+runtime, and the STEER platform. It must not:
+
+- impersonate a named agent or silently complete that agent's assigned work;
+- fabricate activity, evidence, results, or performance;
+- bypass STEER authorization, evidence requirements, or a human gate; or
+- count Codex-authored output as agent performance.
+
+Until a native runtime can launch agents, the bootstrap protocol is:
+
+1. An authorized work item names the delivery agent, scope, next action, and controlling
+   evidence before Codex starts a separate, role-bound run for that agent.
+2. The run record identifies the agent and version, role instructions, runtime host,
+   model/provider, inputs, actions, outputs, evidence, timing, cost when available, and
+   failures. Codex activity and agent activity remain separately attributed.
+3. Buzz may expose claims, progress, blockers, and handoffs, but it does not authorize
+   work or prove performance. STEER Work Management remains authoritative for assignment,
+   state, scope, and human rulings; durable output and evaluation evidence remain in the
+   repository or other approved evidence system.
+4. Human or evaluator feedback cites the exact run and agent version. A correction
+   creates a new version whose affected evaluation scenarios are replayed before broader
+   use; the original run is not rewritten.
+5. If an agent cannot execute, Codex stops the run, records the failure and blocker,
+   escalates through the work item and `#agent-ops`, and helps repair or reconfigure the
+   agent. Codex does not take over the deliverable.
+
+An emergency intervention requires explicit human authorization recorded on the work
+item. Every resulting artifact and message must be labeled **Codex emergency
+intervention**, excluded from agent-performance measures, and followed by a review of
+the failed agent/runtime before normal execution resumes.
+
 ## The flight loop
 
 | State | Required result | Primary owner |
