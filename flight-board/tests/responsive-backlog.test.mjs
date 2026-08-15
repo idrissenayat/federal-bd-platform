@@ -5,6 +5,7 @@ import test from "node:test";
 const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 const api = await readFile(new URL("../worker/api.ts", import.meta.url), "utf8");
+const backlog = page.slice(page.indexOf("function Backlog("), page.indexOf("function DecisionInbox", page.indexOf("function Backlog(")));
 
 test("keeps the full Product Backlog table inside a viewport-width scroll region", () => {
   assert.match(page, /className="backlog-table-scroll" role="region" aria-label="Scrollable Product Backlog table"/);
@@ -21,6 +22,11 @@ test("uses separate Created and Closed columns", () => {
   assert.match(page, /<span>Work item<\/span><span>Created<\/span><span>Closed<\/span><span>State<\/span>/);
   assert.match(page, /<time className="date-cell" dateTime=\{item\.created_at\}>\{formatCreatedDate\(item\.created_at\)\}<\/time>/);
   assert.match(css, /\.date-cell \{[^}]*white-space: nowrap;/);
+});
+
+test("keeps Work Economics details out of backlog rows", () => {
+  assert.doesNotMatch(backlog, /<ForecastSummary/);
+  assert.match(backlog, /<strong>\{item\.title\}<\/strong><small>\{item\.next_action\}<\/small>/);
 });
 
 test("shows an audited closed date only for completed work", () => {
