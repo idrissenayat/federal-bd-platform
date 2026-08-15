@@ -134,33 +134,95 @@ numerators, and remains in failure/intervention/rework/cost/latency denominators
 | 14. Rollout and rollback | STR024-EVID-007, STR024-LIFE-008, STR024-NFR-003 |
 | 15. Falsifiable evaluation | STR024-MET-002..004 |
 
-## Open Gate 2 readiness findings
+## Independent rework inputs
 
-1. **BLOCK — independent Exam evidence is not yet present.** A named Test Agent must map
-   every Brief line to acceptance IDs, and a fresh-context Critic must challenge the
-   Exam. This Architect cannot self-certify their independent results.
-2. **BLOCK — default-closed human rulings are not yet recorded in durable evidence.**
-   The Exam requires the exact run-data inventory, retention/deletion/revocation/access
-   decision, worker-authentication and lease/fencing policy, endpoint inventory,
-   race-precedence table, performance/recovery budgets, cohort/threshold freeze,
-   benchmark/rubric revision, canary scope, rollback owner, and specialist owners.
-   The Brief and repository intentionally do not supply these values; the Architect did
-   not guess them.
-3. **TRACEABILITY — GitHub lacks a public Gate 1 mirror.** This does not negate the
-   authoritative Work Management ruling or block Exam drafting, but CORE-11/GATES
-   require durable authenticated gate evidence tied to exact artifact revision before a
-   later gate can pass.
+- Independent Test Agent evidence commit
+  `6026dcc401d97e2fa5e39f0d803683db305bfed3` reviewed exact Architect commit
+  `df0cdde2e1916062c239fa3867588a855f9b691b` and reported 20 PASS / 20 BLOCK.
+- Fresh Critic Agent evidence commit
+  `203c685ee558a4a57bba3d55d6845263c0b44188` reviewed the same target and reported
+  three BLOCKERs. No finding was dismissed.
+- Corrected Docs Agent supervisor-boundary commit
+  `bcf4856f4193ce3339cbdc58ea26b7cc6e5cd9de` supersedes the rejected broad wording at
+  `909f438ca646ecb8e38aad2d2008c4082c6d7adb`. It is pinned as a proposed normative
+  dependency; because it remains a parallel branch, incorporation/ancestry evidence is
+  still required.
+
+The rework revision is the immutable containing commit for this response and its paired
+`steer/exams/0024-governed-agent-execution.md`. The post-push Architect handoff supplies
+that exact commit URL. The source review commits remain immutable and are preserved in
+this branch history.
+
+## Test BLOCK rework-response matrix
+
+| Independent Test BLOCK at `6026dcc` | Disposition in this exact rework revision |
+|---|---|
+| STR024-AUTH-001 | Replaced the minimum table with a complete default-deny state/event table including no-run→`AUTHORIZED`→`CREATED`, invalid transitions and actors. |
+| STR024-AUTH-004 | Frozen all invalidating revisions to `STOP_REQUESTED`; only digest-neutral display/redaction corrections may continue. |
+| STR024-LIFE-002 | Proposed exact 120-second lease, 30-second heartbeat, 60-second warning, 150-second stale threshold, reclaim/fence and skew policy under RAT-LIFECYCLE. |
+| STR024-LIFE-003 | Added exact cadence, one-per-10-second rate, 8-KiB limit, server ordering and ±5-second skew diagnostic. |
+| STR024-LIFE-005 | Added three-attempt limit, exact 5/20-second seeded jitter, retryable/non-retryable code sets and side-effect receipt rule. |
+| STR024-LIFE-006 | Added canonical failure codes, owner roles, unknown-code safe stop, dependency/next-check/retry fields. |
+| STR024-LIFE-007 | Added pre-claim stop, exact safe boundary, 5-second acknowledgement, 30-second fence, Codex safety-stop conditions and CAS race precedence. |
+| STR024-LIFE-008 | Added 30-second health checks, degraded/unhealthy/recovery thresholds and deterministic blocker versus lease-stale semantics. |
+| STR024-EVID-003 | Defined rate-card authority, unknown-cost rule and exact queue/claim/execution/review-ready latency boundaries. |
+| STR024-EVID-005 | Added `str024.eval.v1`, distinct service-principal/author exclusion, explicit rubric/pass floor, shared-dependency disclosure and holdout isolation. |
+| STR024-EVID-007 | Defined B01–B12, pass threshold, contamination invalidation, five-run/seven-day canary, stop triggers, owner and disable/recovery contract. |
+| STR024-BOOT-001 | Frozen `STR024-BOOT-V1` agent/config/tool policy, exact input/output bytes and hashes, service-bound attestation oracle and hostile-host test STR024-BOOT-001A. |
+| STR024-UX-002 | Named Work Management `Agent run` panel, unexpected-error state and principal/state control rules with server enforcement. |
+| STR024-UX-003 | Pinned browser/AT/viewport matrix, focus behavior, reduced motion, live-region rate and manual evidence format. |
+| STR024-MET-002 | Defined unique-run unit and exact numerators/denominators for quality, first-pass, intervention, rework, rejection, defects, policy, cost and latency. |
+| STR024-MET-004 | Defined `STR024-PILOT-V1`, exact close/extension rule, lifecycle versus useful-output measures, replay deduplication and feasibility-only claim. |
+| STR024-NFR-001 | Proposed exact load profile, operation p95s, error/drop bounds and CI budget under RAT-SLO. |
+| STR024-NFR-002 | Proposed exact data/access/90-day/365-day/35-day/deletion/revocation/export policy and explicitly dispositioned the current dev/build dependency exception through 2026-08-27 under RAT-PRIVACY/RAT-DEPS. |
+| STR024-NFR-003 | Proposed 99.0% canary availability, 100% critical telemetry, RPO 0, RTO 30 minutes, 100-run restore and zero-mismatch reconciliation under RAT-SLO/RAT-CANARY. |
+| STR024-NFR-005 | Defined `steer-runtime-adapter/v1`, B01–B12 100% hard-control pass, deterministic fake export/import and honest one-versus-two-adapter portability claims. |
+
+## Critic BLOCKER rework-response matrix
+
+| Fresh Critic BLOCKER at `203c685` | Disposition in this exact rework revision |
+|---|---|
+| BLOCKER 1 — named-agent authorship not independently provable | Defined an independently administered identity/attestation verifier, 15-minute proof-of-possession workload credential, non-exportable agent key, DSSE/Ed25519 in-toto artifact statement, immutable separately credentialed actor events, segmented mixed edits, hostile-host/confused-deputy/replay/post-signing tests, and Git metadata as non-proof. Current un-attested Architect work remains excluded from platform-agent performance. |
+| BLOCKER 2 — authority chain inconsistent and parallel rule over-broad | Retained the authenticated Work Management Gate 1 ruling as authoritative while naming the missing independently exportable receipt as RAT-GATE1-RECEIPT. Rejected `909f438`, pinned corrected `bcf4856`, requires incorporation/ancestry, and limited ordinary Codex activity to enumerated read-only/non-deliverable actions under a separate platform item; emergency work requires a new human-authorized failed-run-linked/exact-scope/time/evidence-bound intervention run, cannot edit/finish the failed deliverable, become agent work, or approve a gate. |
+| BLOCKER 3 — placeholders/gameable measures | Converted policy/numeric/fixture placeholders into conservative proposed values with RAT-IDENTITY/LIFECYCLE/PRIVACY/SLO/EVAL/CANARY/A11Y/DEPS/SUPERVISOR fields; completed endpoint/transition/race oracles; deduplicated replay attempts from unique-run outcomes; separated lifecycle accountability from useful output; froze rubric/benchmark/holdout contamination/canary/rollback/a11y/privacy/security/reliability parameters. |
+
+## Residual human decisions and platform dependencies
+
+These are genuine residuals; the Architect cannot sign or implement them:
+
+1. **Human ratification:** Idriss Enayat must record authenticated `RATIFIED` or `REVISE`
+   decisions for RAT-IDENTITY, RAT-LIFECYCLE, RAT-PRIVACY, RAT-SLO, RAT-EVAL,
+   RAT-CANARY, RAT-A11Y and RAT-DEPS against the exact reworked Exam. Where he does not
+   hold the qualified specialist capacity, the Product Lead must name and obtain that
+   human co-ratifier. Silence is not acceptance.
+2. **Platform provenance:** Work Management must produce an independently exportable,
+   signed Gate 1 receipt for Idriss Enayat's authoritative 2026-08-15 16:22 ET ruling
+   bound to Brief `5c0db389d1b0`; the current supervisor-observed trail is authoritative
+   but not independently exportable. This is RAT-GATE1-RECEIPT, not a reason to rewrite
+   the frozen Brief.
+3. **Normative ancestry:** exact corrected boundary `bcf4856f4193ce3339cbdc58ea26b7cc6e5cd9de`
+   must enter the governed base/target ancestry without broadening Codex authority.
+4. **Attested runtime support:** the identity/attestation service, immutable per-actor
+   event attribution and negative controls do not exist yet. This Architect attempt is
+   human-reviewable design evidence only and must be excluded from platform-agent,
+   first-pass and quality performance claims unless the authorized human rules
+   otherwise; metadata cannot backfill proof.
+5. **Independent rerun:** the Test Agent and a fresh Critic must re-review the exact
+   rework commit, verify every prior BLOCK disposition and fixture/oracle, and leave
+   human Gate 2 untouched.
 
 ## Recommendation
 
-**Gate 2 readiness: BLOCK.** The Exam is ready for independent Test/Critic challenge and
-the named human/default-closed rulings, but it is not ready for Gate 2 approval until
-the three findings above are resolved against the exact committed Exam revision. This
-recommendation is not a Gate 2 ruling.
+**Gate 2 readiness: BLOCK pending human/platform dependencies and independent rerun.**
+The Exam design now has deterministic conservative proposals for every prior content
+BLOCK, but proposed defaults are not human ratification, a parallel normative commit is
+not ancestry, and a supervisor-observed ruling is not an exportable receipt. This is an
+Architect recommendation only, not a gate ruling.
 
 ## Verification record
 
-Verified 2026-08-15T16:39:21-04:00 in the dedicated Architect worktree:
+Initial revision `df0cdde2e1916062c239fa3867588a855f9b691b` was verified
+2026-08-15T16:39:21-04:00 in the dedicated Architect worktree:
 
 | Check | Result |
 |---|---|
@@ -176,3 +238,18 @@ Verified 2026-08-15T16:39:21-04:00 in the dedicated Architect worktree:
 The expected SAM.gov warning is unrelated to this documentation-only Exam change and no
 credential was added. Exact commit and GitHub evidence URLs are supplied in the
 Architect handoff after commit/push rather than guessed in this pre-commit artifact.
+
+Rework verification completed 2026-08-15T17:01:46-04:00:
+
+| Check | Result |
+|---|---|
+| `./scripts/gauntlet.sh` | PASS in 10.5s — readiness 35 pass, expected missing-SAM-key warning, 0 fail; Ruff, mypy, pytest 3/3, gitleaks, `uv.lock` OSV and Semgrep 252 rules clean |
+| `npm ci && npm run lint && npm test` in `flight-board/` | PASS — build, render test 1/1 and TypeScript tests 27/27 |
+| Production-only npm audit | PASS — 0 vulnerabilities |
+| Full npm/OSV audit | QUALIFIED AS SPECIFIED — npm 2 high + 4 moderate dev/build nodes; OSV 2 high + 1 medium advisories across 2 dev packages; 0 critical and unchanged from the time-bounded 2026-08-13 exception |
+| `./scripts/prove-gauntlet-blocks.sh` | PASS — planted secret and failing test blocked |
+| Bootstrap fixture hash reproduction | PASS — exact input/output SHA-256 values reproduce |
+| Acceptance/rework inventory | PASS — 41 unique Exam IDs including new hostile-host STR024-BOOT-001A; no duplicates; matrix contains all 20 Test BLOCKs and all 3 Critic BLOCKERs |
+| `git diff --check` and scope | PASS — rework changes only the STR-024 Exam and Architect evidence after importing the two independent review artifacts |
+| Frozen Brief integrity | PASS — no byte change from `5c0db389d1b0e9fa492a33930febcf4d1c067cb0` |
+| Corrected supervisor dependency | PASS for exact remote existence/content of `bcf4856f4193ce3339cbdc58ea26b7cc6e5cd9de`; ancestry remains an explicit dependency, not silently asserted |
