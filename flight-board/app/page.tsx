@@ -367,6 +367,28 @@ function ForecastSummary({ item, compact = false }: { item: WorkItem; compact?: 
   const value = economics.valueHypothesis;
   const outcome = economics.realizedOutcome;
   const humanRange = economics.deliveryForecast?.humanEffortRanges.reduce((total, range) => ({ min: total.min + range.minMinutes, max: total.max + range.maxMinutes }), { min: 0, max: 0 });
+  const nextMilestone = forecast.nextMilestoneAt
+    ? `${forecast.nextMilestone} · ${formatDate(forecast.nextMilestoneAt)}`
+    : "Forecast needed";
+  const compactLabel = [
+    `Next milestone: ${nextMilestone}`,
+    `Forecast status: ${forecast.state}`,
+    `Confidence: ${forecast.confidence}`,
+    `Likely completion: ${forecast.likelyWindow}`,
+    `Last forecast update: ${forecast.lastUpdatedAt ? formatDate(forecast.lastUpdatedAt) : "unknown"}`,
+    `Value hypothesis: ${value ? `${value.primaryType}, ${value.confidence}` : "unknown"}`,
+    `Effort forecast: ${humanRange ? `${humanRange.min} to ${humanRange.max} role minutes` : "unknown"}`,
+    `Outcome: ${outcome?.status ?? "not yet due"}`,
+  ].join(". ");
+
+  if (compact) return <div className="economics-summary economics-summary-compact" aria-label={compactLabel}>
+    <div className="forecast-focus">
+      <b>Next</b>
+      <span>{nextMilestone}</span>
+      <small>{forecast.state === "unknown" ? "Needs forecast" : `${forecast.state} · ${forecast.confidence} confidence`}</small>
+    </div>
+  </div>;
+
   return <div className={`economics-summary ${compact ? "economics-summary-compact" : ""}`} aria-label={`Work Economics for ${item.key}`}>
     <span><b>Value hypothesis</b>{value ? `${value.primaryType} · ${value.confidence}` : "Unknown · Product Lead must provide it"}</span>
     <span><b>Effort forecast</b>{humanRange ? `${humanRange.min}–${humanRange.max} role minutes` : "Unknown · delivery owner must provide it"}</span>

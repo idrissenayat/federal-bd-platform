@@ -28,6 +28,14 @@ test("shows governed forecast range, milestone, confidence, and freshness", () =
   assert.ok((page.match(/<ForecastSummary/g) ?? []).length >= 6);
 });
 
+test("compact work lists show one action-focused forecast line", () => {
+  assert.match(page, /if \(compact\) return <div className="economics-summary economics-summary-compact"/);
+  assert.match(page, /className="forecast-focus"/);
+  assert.match(page, /<b>Next<\/b>/);
+  assert.match(page, /Needs forecast/);
+  assert.doesNotMatch(css, /economics-summary-compact span\s*\{[^}]*background:\s*#fff7e6/);
+});
+
 test("work-economics UI is responsive and does not rely on color alone", () => {
   assert.match(css, /\.work-economics/);
   assert.match(css, /\.economics-summary, \.economics-form-grid \{ grid-template-columns: 1fr; \}/);
@@ -53,6 +61,6 @@ test("work-economics UI is responsive and does not rely on color alone", () => {
   assert.match(page, /entry\.updatedAt/);
   assert.match(page, /Work type/);
   assert.match(page, /item\.work_type/);
-  assert.match(css, /economics-summary-compact span[^}]*font-size:\s*12px/);
+  assert.match(css, /economics-summary-compact \.forecast-focus span[^}]*font-size:\s*12px/);
   assert.match(css, /economics-record form > button[^}]*color:\s*#39232d/);
 });

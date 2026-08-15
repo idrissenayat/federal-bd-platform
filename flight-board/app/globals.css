@@ -290,9 +290,11 @@ body { background: radial-gradient(circle at 8% 8%, rgba(246, 197, 210, .34), tr
 .economics-summary { display: grid; gap: 7px; grid-template-columns: repeat(2, 1fr); padding: 10px 17px 15px; }
 .economics-summary span { background: #fff7ed; border: 1px solid #eadfd4; border-radius: 8px; color: #725d65; display: flex; flex-direction: column; font-size: 11px; line-height: 1.4; min-width: 0; padding: 9px; }
 .economics-summary b { color: #9d496a; font-size: 9px; letter-spacing: .06em; margin-bottom: 3px; text-transform: uppercase; }
-.economics-summary-compact { display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 0 0; }
-.economics-summary-compact span { background: #fff7e6; border-radius: 5px; display: inline-flex; flex-direction: column; font-size: 12px; gap: 2px; min-width: min(100%, 165px); padding: 7px 8px; }
-.economics-summary-compact b { font-size: 11px; margin: 0; }
+.economics-summary-compact { display: block; padding: 7px 0 0; }
+.economics-summary-compact .forecast-focus { align-items: center; background: #fffaf0; border-left: 3px solid #d78aa6; border-radius: 0 6px 6px 0; color: #604f56; display: grid; font-size: 12px; gap: 7px; grid-template-columns: auto minmax(0, 1fr) auto; line-height: 1.35; padding: 6px 9px; }
+.economics-summary-compact .forecast-focus b { color: #9d496a; font-size: 10px; letter-spacing: .05em; margin: 0; text-transform: uppercase; }
+.economics-summary-compact .forecast-focus span { background: none; border: 0; color: #514248; display: block; font-size: 12px; overflow: hidden; padding: 0; text-overflow: ellipsis; white-space: nowrap; }
+.economics-summary-compact .forecast-focus small { color: #725d65; font-size: 11px; font-weight: 750; white-space: nowrap; }
 .forecast-callout { border-block: 1px solid #e6d7ca; padding: 13px 17px; }
 .forecast-callout strong { display: block; font-size: 13px; text-transform: capitalize; }
 .forecast-callout p, .forecast-callout small { color: #705e65; display: block; font-size: 11px; line-height: 1.5; margin: 4px 0 0; }
@@ -332,6 +334,8 @@ body { background: radial-gradient(circle at 8% 8%, rgba(246, 197, 210, .34), tr
 
 @media (max-width: 680px), (min-resolution: 2dppx) and (max-width: 980px) {
   .economics-summary, .economics-form-grid { grid-template-columns: 1fr; }
+  .economics-summary-compact .forecast-focus { align-items: start; grid-template-columns: auto minmax(0, 1fr); }
+  .economics-summary-compact .forecast-focus small { grid-column: 2; }
   .economics-form-grid .span-two { grid-column: auto; }
   .economics-record > summary { grid-template-columns: 28px 1fr; }
   .economics-record > summary > b { grid-column: 2; }
