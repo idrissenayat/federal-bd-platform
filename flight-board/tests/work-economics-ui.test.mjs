@@ -13,6 +13,13 @@ test("renders four separate work-economics records", () => {
   assert.match(page, /<WorkEconomicsPanel/);
 });
 
+test("initial delivery forecast is prefilled by the Forecast Agent for one-click human acceptance", () => {
+  assert.match(page, /Forecast Agent completed the first draft/);
+  assert.match(page, /Review & accept AI forecast/);
+  assert.match(page, /buildForecastProposal/);
+  assert.doesNotMatch(page, /Unknown · assigned delivery owner must accept a range/);
+});
+
 test("shows governed forecast range, milestone, confidence, and freshness", () => {
   for (const field of ["Earliest completion", "Likely completion", "Latest completion", "Next milestone", "Confidence", "Freshness hours", "Forecast updated", "Human gate target"]) {
     assert.match(page, new RegExp(field));
