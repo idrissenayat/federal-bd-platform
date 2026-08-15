@@ -23,10 +23,16 @@ Codex is the STEER platform supervisor, temporary runtime host, and observer. **
 not a member of the Agentic SDLC delivery team.** The named Scout, Architect, Builder,
 Test, Critic, Docs, or Ops Agent owns every deliverable assigned to that role.
 
-Codex may configure, start, monitor, troubleshoot, evaluate, and improve agents, their
-runtime, and the STEER platform. It must not:
+Codex may start, monitor, stop for safety, and perform read-only troubleshooting on a
+named-agent run authorized by its delivery work item. Codex may configure, evaluate, or
+improve **agent, runtime, or platform configuration only** under a separate authorized
+platform work item that binds the exact configuration revision, capability, and scope.
+Those powers never extend to the current delivery artifact, its content, or its
+evaluation decision; ambiguous repair authority is denied. Codex must not:
 
 - impersonate a named agent or silently complete that agent's assigned work;
+- edit, replace, or finish a failed agent deliverable while diagnosing or repairing the
+  agent, runtime, or platform;
 - fabricate activity, evidence, results, or performance;
 - bypass STEER authorization, evidence requirements, or a human gate; or
 - count Codex-authored output as agent performance.
@@ -37,22 +43,32 @@ Until a native runtime can launch agents, the bootstrap protocol is:
    evidence before Codex starts a separate, role-bound run for that agent.
 2. The run record identifies the agent and version, role instructions, runtime host,
    model/provider, inputs, actions, outputs, evidence, timing, cost when available, and
-   failures. Codex activity and agent activity remain separately attributed.
+   failures. The agent and supervisor use distinct principals: their events and artifact
+   boundaries are separately authenticated or independently attested, append-only, and
+   immutable. A supervisor-authored agent event, rewritten history, forgeable display
+   name, or unsegmented mixed output is not agent-performance evidence.
 3. Buzz may expose claims, progress, blockers, and handoffs, but it does not authorize
    work or prove performance. STEER Work Management remains authoritative for assignment,
    state, scope, and human rulings; durable output and evaluation evidence remain in the
    repository or other approved evidence system.
 4. Human or evaluator feedback cites the exact run and agent version. A correction
    creates a new version whose affected evaluation scenarios are replayed before broader
-   use; the original run is not rewritten.
+   use; the original run is not rewritten. The evaluated agent cannot grade itself or
+   access blind holdouts or scoring oracles before scoring. Evaluator identity, fixture
+   access, and feedback release are logged; contamination invalidates the score and
+   requires an uncontaminated fixture.
 5. If an agent cannot execute, Codex stops the run, records the failure and blocker,
    escalates through the work item and `#agent-ops`, and helps repair or reconfigure the
-   agent. Codex does not take over the deliverable.
+   agent under an authorized platform work item. The failed deliverable remains sealed;
+   only a successor named-agent run may correct or finish it.
 
-An emergency intervention requires explicit human authorization recorded on the work
-item. Every resulting artifact and message must be labeled **Codex emergency
-intervention**, excluded from agent-performance measures, and followed by a review of
-the failed agent/runtime before normal execution resumes.
+After a named-agent run is failed or blocked, an emergency intervention requires a new,
+explicitly human-authorized run recorded on the work item with the source run, exact
+scope, start and expiry, permitted actions, and evidence destination. Every resulting
+artifact and message must be labeled **Codex emergency intervention**. The intervention
+cannot approve a gate, is counted only as supervisor intervention—not agent work or
+performance—and requires a review of the failed agent/runtime before normal execution
+resumes.
 
 ## The flight loop
 
