@@ -20,6 +20,14 @@ test("initial delivery forecast is prefilled by the Forecast Agent for one-click
   assert.doesNotMatch(page, /Unknown · assigned delivery owner must accept a range/);
 });
 
+test("initial value hypothesis is prefilled by the Value Agent for editable human acceptance", () => {
+  assert.match(page, /buildValueHypothesisProposal/);
+  assert.match(page, /AI proposal ready · human review only/);
+  assert.match(page, /Accept AI-prepared value hypothesis/);
+  assert.match(page, /defaultValue=\{proposedValue\.beneficiary\}/);
+  assert.doesNotMatch(page, /defaultValue=\{value\?\.beneficiary \?\? ""\}/);
+});
+
 test("shows governed forecast range, milestone, confidence, and freshness", () => {
   for (const field of ["Earliest completion", "Likely completion", "Latest completion", "Next milestone", "Confidence", "Freshness hours", "Forecast updated", "Human gate target"]) {
     assert.match(page, new RegExp(field));
