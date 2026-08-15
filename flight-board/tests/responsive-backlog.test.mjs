@@ -9,23 +9,29 @@ const api = await readFile(new URL("../worker/api.ts", import.meta.url), "utf8")
 test("keeps the full Product Backlog table inside a viewport-width scroll region", () => {
   assert.match(page, /className="backlog-table-scroll" role="region" aria-label="Scrollable Product Backlog table"/);
   assert.match(css, /\.backlog-table-scroll \{[^}]*max-width: 100%;[^}]*overflow-x: auto;/);
-  assert.match(css, /\.backlog-table \{ min-width: 1030px; \}/);
+  assert.match(css, /\.backlog-table \{ min-width: 1270px; \}/);
 });
 
 test("explains the horizontal gesture on small screens", () => {
-  assert.match(page, /Swipe horizontally to see Owner and Gate/);
+  assert.match(page, /Swipe horizontally to see dates, Owner and Gate/);
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*\.backlog-scroll-hint \{[^}]*display: flex;/);
 });
 
-test("keeps each creation date with the visible work-item identity", () => {
-  assert.match(page, /<time className="created-date" dateTime=\{item\.created_at\}>Added \{formatCreatedDate\(item\.created_at\)\}<\/time>/);
-  assert.match(css, /\.created-date \{[^}]*white-space: nowrap;/);
+test("uses separate Created and Closed columns", () => {
+  assert.match(page, /<span>Work item<\/span><span>Created<\/span><span>Closed<\/span><span>State<\/span>/);
+  assert.match(page, /<time className="date-cell" dateTime=\{item\.created_at\}>\{formatCreatedDate\(item\.created_at\)\}<\/time>/);
+  assert.match(css, /\.date-cell \{[^}]*white-space: nowrap;/);
 });
 
 test("shows an audited closed date only for completed work", () => {
-  assert.match(page, /item\.state === "complete" && \(item\.closed_at \? <time className="closed-date" dateTime=\{item\.closed_at\}>Closed \{formatCreatedDate\(item\.closed_at\)\}<\/time>/);
+  assert.match(page, /item\.closed_at \? <time dateTime=\{item\.closed_at\}>\{formatCreatedDate\(item\.closed_at\)\}<\/time> : "—"/);
   assert.match(api, /a\.action = 'updated' AND a\.detail = 'state → complete'/);
-  assert.match(css, /\.closed-date \{[^}]*white-space: nowrap;/);
+});
+
+test("provides created or closed date-range filters", () => {
+  assert.match(page, /aria-label="Date field"/);
+  assert.match(page, /aria-label="From date" type="date"/);
+  assert.match(page, /aria-label="To date" type="date"/);
 });
 
 test("moves navigation above the workspace before it crowds the table", () => {

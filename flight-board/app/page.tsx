@@ -1238,11 +1238,30 @@ export function itemVisibleInMyWork(item: RoleRoutableItem, userId: string, role
 }
 
 export type BacklogScope = "all" | "open" | "closed";
+export type BacklogDateField = "created_at" | "closed_at";
 
 export function backlogItemsForScope<T extends { state: string }>(items: T[], scope: BacklogScope) {
   if (scope === "open") return items.filter((item) => item.state !== "complete");
   if (scope === "closed") return items.filter((item) => item.state === "complete");
   return items;
+}
+
+function localDateKey(value: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+export function backlogItemsForDateRange<T extends { created_at: string; closed_at: string | null }>(items: T[], field: BacklogDateField, from: string, to: string) {
+  if (!from && !to) return items;
+  return items.filter((item) => {
+    const date = localDateKey(item[field]);
+    if (!date) return false;
+    return (!from || date >= from) && (!to || date <= to);
+  });
 }
 
 function RoleWorkCard({ item, canAct, saving, onOpen, onDecision, onTransition }: { item: WorkItem; canAct: boolean; saving: boolean; onOpen: (item: WorkItem) => void; onDecision: (item: WorkItem) => void; onTransition: (item: WorkItem, action: "START_REWORK" | "RESUBMIT") => Promise<void> }) {
@@ -1392,9 +1411,12 @@ function FlightBoard({ items, onOpen, onMove, saving }: { items: WorkItem[]; onO
 
 function Backlog({ items, onOpen, onCreate }: { items: WorkItem[]; onOpen: (item: WorkItem) => void; onCreate: () => void }) {
   const [scope, setScope] = useState<BacklogScope>("all");
+  const [dateField, setDateField] = useState<BacklogDateField>("created_at");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const open = items.filter((item) => item.state !== "complete");
   const closed = items.filter((item) => item.state === "complete");
-  const visibleItems = backlogItemsForScope(items, scope);
+  const visibleItems = backlogItemsForDateRange(backlogItemsForScope(items, scope), dateField, dateFrom, dateTo);
   return <>
     <PageHeading eyebrow="Complete work register" title="Product backlog" copy="See every work item from capture through closure. New demand enters here, stays traceable, and can be filtered without losing delivery history." actions={<button className="primary-button compact" onClick={onCreate}>＋ Add to backlog</button>} />
     <section className="panel backlog-panel">
@@ -1404,15 +1426,21 @@ function Backlog({ items, onOpen, onCreate }: { items: WorkItem[]; onOpen: (item
           <div className="backlog-filters" role="group" aria-label="Filter backlog by state">
             {(["all", "open", "closed"] as BacklogScope[]).map((filter) => <button className={scope === filter ? "active" : ""} aria-pressed={scope === filter} key={filter} onClick={() => setScope(filter)}>{filter === "all" ? `All ${items.length}` : filter === "open" ? `Open ${open.length}` : `Closed ${closed.length}`}</button>)}
           </div>
+          <div className="backlog-date-filters" role="group" aria-label="Filter backlog by date">
+            <label><span>Date</span><select aria-label="Date field" value={dateField} onChange={(event) => setDateField(event.target.value as BacklogDateField)}><option value="created_at">Created</option><option value="closed_at">Closed</option></select></label>
+            <label><span>From</span><input aria-label="From date" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
+            <label><span>To</span><input aria-label="To date" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
+            {(dateFrom || dateTo) && <button type="button" onClick={() => { setDateFrom(""); setDateTo(""); }}>Clear dates</button>}
+          </div>
           <StatusPill value={`${open.filter((item) => item.priority === "Now").length} Now`} kind="now" />
           <StatusPill value={`${open.filter((item) => item.state === "blocked").length} Blocked`} kind="blocked" />
         </div>
       </header>
-      <span className="backlog-scroll-hint" aria-hidden="true">Swipe horizontally to see Owner and Gate →</span>
+      <span className="backlog-scroll-hint" aria-hidden="true">Swipe horizontally to see dates, Owner and Gate →</span>
       <div className="backlog-table-scroll" role="region" aria-label="Scrollable Product Backlog table">
         <div className="backlog-table">
-          <div className="table-head"><span>Work item</span><span>State</span><span>Phase</span><span>Priority</span><span>Workflow</span><span>Owner</span><span>Gate</span></div>
-          {visibleItems.map((item) => <button className={`table-row state-${item.state}`} key={item.id} onClick={() => onOpen(item)}><span className="title-cell"><span className="work-key"><b>{item.key}</b><time className="created-date" dateTime={item.created_at}>Added {formatCreatedDate(item.created_at)}</time>{item.state === "complete" && (item.closed_at ? <time className="closed-date" dateTime={item.closed_at}>Closed {formatCreatedDate(item.closed_at)}</time> : <span className="closed-date">Closed date unavailable</span>)}</span><div><strong>{item.title}</strong><small>{item.next_action}</small><ForecastSummary item={item} compact /></div></span><span><StatusPill value={item.state === "complete" ? "Closed" : item.state} /></span><span><StatusPill value={item.phase} /></span><span><StatusPill value={item.priority} /></span><span><StatusPill value={item.workflow} /></span><span className="owner-cell"><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><span><StatusPill value={item.gate} kind="gate" /></span></button>)}
+          <div className="table-head"><span>Work item</span><span>Created</span><span>Closed</span><span>State</span><span>Phase</span><span>Priority</span><span>Workflow</span><span>Owner</span><span>Gate</span></div>
+          {visibleItems.map((item) => <button className={`table-row state-${item.state}`} key={item.id} onClick={() => onOpen(item)}><span className="title-cell"><b>{item.key}</b><div><strong>{item.title}</strong><small>{item.next_action}</small><ForecastSummary item={item} compact /></div></span><time className="date-cell" dateTime={item.created_at}>{formatCreatedDate(item.created_at)}</time><span className="date-cell">{item.closed_at ? <time dateTime={item.closed_at}>{formatCreatedDate(item.closed_at)}</time> : "—"}</span><span><StatusPill value={item.state === "complete" ? "Closed" : item.state} /></span><span><StatusPill value={item.phase} /></span><span><StatusPill value={item.priority} /></span><span><StatusPill value={item.workflow} /></span><span className="owner-cell"><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><span><StatusPill value={item.gate} kind="gate" /></span></button>)}
           {visibleItems.length === 0 && <div className="backlog-empty"><strong>No {scope} items</strong><span>Choose another filter or add the next work item to the backlog.</span></div>}
         </div>
       </div>
