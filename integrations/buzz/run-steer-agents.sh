@@ -7,22 +7,30 @@ readonly configured_roles="${STEER_AGENT_ROLES:-}"
 readonly worker_home="${STEER_WORKER_HOME:-${HOME:-/var/lib/buzz-worker}}"
 
 architect_git_ssh_command=""
+test_git_ssh_command=""
+critic_git_ssh_command=""
+configured_git_ssh_command=""
 
-configure_architect_git() {
-  if [[ -z "${STEER_ARCHITECT_GITHUB_SSH_PRIVATE_KEY:-}" ]]; then
-    echo "STEER agent supervisor: Architect GitHub write capability is not configured"
+configure_role_git() {
+  local role="$1"
+  local private_key="$2"
+  local key_slug="$3"
+  configured_git_ssh_command=""
+
+  if [[ -z "${private_key}" ]]; then
+    echo "STEER agent supervisor: ${role} GitHub write capability is not configured"
     return
   fi
 
   local ssh_directory="${worker_home}/.ssh"
-  local private_key_path="${ssh_directory}/architect_deploy_key"
+  local private_key_path="${ssh_directory}/${key_slug}_deploy_key"
   umask 077
   mkdir -p "${ssh_directory}"
-  printf '%s\n' "${STEER_ARCHITECT_GITHUB_SSH_PRIVATE_KEY}" > "${private_key_path}"
+  printf '%s\n' "${private_key}" > "${private_key_path}"
   chmod 700 "${ssh_directory}"
   chmod 600 "${private_key_path}"
-  architect_git_ssh_command="ssh -p 443 -i ${private_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
-  echo "STEER agent supervisor: Architect repo-scoped GitHub transport configured"
+  configured_git_ssh_command="ssh -p 443 -i ${private_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+  echo "STEER agent supervisor: ${role} repo-scoped GitHub transport configured"
 }
 
 if [[ -z "${configured_roles}" ]]; then
@@ -57,6 +65,8 @@ launch_agent() {
   local system_prompt="$3"
   local model="$4"
   local git_ssh_command="${5:-}"
+  local git_name="${6:-}"
+  local git_email="${7:-}"
 
   require_value "${role} private key" "${private_key}"
   require_value "${role} system prompt" "${system_prompt}"
@@ -71,8 +81,8 @@ launch_agent() {
       BUZZ_ACP_AGENTS="${STEER_AGENT_PROCESS_COUNT:-1}" \
       GIT_SSH_COMMAND="${git_ssh_command}" \
       STEER_GIT_REMOTE_URL="${STEER_GIT_REMOTE_URL:-ssh://git@ssh.github.com:443/idrissenayat/federal-bd-platform.git}" \
-      STEER_AGENT_GIT_NAME="${STEER_ARCHITECT_GIT_NAME:-STEER Architect Agent}" \
-      STEER_AGENT_GIT_EMAIL="${STEER_ARCHITECT_GIT_EMAIL:-steer-architect-agent@users.noreply.github.com}" \
+      STEER_AGENT_GIT_NAME="${git_name}" \
+      STEER_AGENT_GIT_EMAIL="${git_email}" \
       "${acp_executable}" &
   else
     env \
@@ -85,7 +95,12 @@ launch_agent() {
   child_pids+=("$!")
 }
 
-configure_architect_git
+configure_role_git "Architect" "${STEER_ARCHITECT_GITHUB_SSH_PRIVATE_KEY:-}" "architect"
+architect_git_ssh_command="${configured_git_ssh_command}"
+configure_role_git "Test" "${STEER_TEST_GITHUB_SSH_PRIVATE_KEY:-}" "test"
+test_git_ssh_command="${configured_git_ssh_command}"
+configure_role_git "Critic" "${STEER_CRITIC_GITHUB_SSH_PRIVATE_KEY:-}" "critic"
+critic_git_ssh_command="${configured_git_ssh_command}"
 IFS=',' read -r -a roles <<< "${configured_roles}"
 for role in "${roles[@]}"; do
   case "${role}" in
@@ -102,7 +117,29 @@ for role in "${roles[@]}"; do
         "${STEER_ARCHITECT_BUZZ_PRIVATE_KEY:-}" \
         "${STEER_ARCHITECT_SYSTEM_PROMPT:-}" \
         "${STEER_ARCHITECT_MODEL:-gpt-5.6-sol}" \
-        "${architect_git_ssh_command}"
+        "${architect_git_ssh_command}" \
+        "${STEER_ARCHITECT_GIT_NAME:-STEER Architect Agent}" \
+        "${STEER_ARCHITECT_GIT_EMAIL:-steer-architect-agent@users.noreply.github.com}"
+      ;;
+    test)
+      launch_agent \
+        "test" \
+        "${STEER_TEST_BUZZ_PRIVATE_KEY:-}" \
+        "${STEER_TEST_SYSTEM_PROMPT:-}" \
+        "${STEER_TEST_MODEL:-gpt-5.6-terra}" \
+        "${test_git_ssh_command}" \
+        "${STEER_TEST_GIT_NAME:-STEER Test Agent}" \
+        "${STEER_TEST_GIT_EMAIL:-steer-test-agent@users.noreply.github.com}"
+      ;;
+    critic)
+      launch_agent \
+        "critic" \
+        "${STEER_CRITIC_BUZZ_PRIVATE_KEY:-}" \
+        "${STEER_CRITIC_SYSTEM_PROMPT:-}" \
+        "${STEER_CRITIC_MODEL:-gpt-5.6-sol}" \
+        "${critic_git_ssh_command}" \
+        "${STEER_CRITIC_GIT_NAME:-STEER Critic Agent}" \
+        "${STEER_CRITIC_GIT_EMAIL:-steer-critic-agent@users.noreply.github.com}"
       ;;
     *)
       echo "STEER agent supervisor: unsupported role '${role}'" >&2
