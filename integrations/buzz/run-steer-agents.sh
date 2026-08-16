@@ -7,6 +7,7 @@ readonly configured_roles="${STEER_AGENT_ROLES:-}"
 readonly worker_home="${STEER_WORKER_HOME:-${HOME:-/var/lib/buzz-worker}}"
 
 architect_git_ssh_command=""
+scout_git_ssh_command=""
 test_git_ssh_command=""
 critic_git_ssh_command=""
 configured_git_ssh_command=""
@@ -97,6 +98,8 @@ launch_agent() {
 
 configure_role_git "Architect" "${STEER_ARCHITECT_GITHUB_SSH_PRIVATE_KEY:-}" "architect"
 architect_git_ssh_command="${configured_git_ssh_command}"
+configure_role_git "Scout" "${STEER_SCOUT_GITHUB_SSH_PRIVATE_KEY:-}" "scout"
+scout_git_ssh_command="${configured_git_ssh_command}"
 configure_role_git "Test" "${STEER_TEST_GITHUB_SSH_PRIVATE_KEY:-}" "test"
 test_git_ssh_command="${configured_git_ssh_command}"
 configure_role_git "Critic" "${STEER_CRITIC_GITHUB_SSH_PRIVATE_KEY:-}" "critic"
@@ -120,6 +123,16 @@ for role in "${roles[@]}"; do
         "${architect_git_ssh_command}" \
         "${STEER_ARCHITECT_GIT_NAME:-STEER Architect Agent}" \
         "${STEER_ARCHITECT_GIT_EMAIL:-steer-architect-agent@users.noreply.github.com}"
+      ;;
+    scout)
+      launch_agent \
+        "scout" \
+        "${STEER_SCOUT_BUZZ_PRIVATE_KEY:-}" \
+        "${STEER_SCOUT_SYSTEM_PROMPT:-}" \
+        "${STEER_SCOUT_MODEL:-gpt-5.6-terra}" \
+        "${scout_git_ssh_command}" \
+        "${STEER_SCOUT_GIT_NAME:-STEER Scout Agent}" \
+        "${STEER_SCOUT_GIT_EMAIL:-steer-scout-agent@users.noreply.github.com}"
       ;;
     test)
       launch_agent \

@@ -5,9 +5,10 @@ platform:
   deployment_stage: railway-shared-b1
   relay_url: wss://blockbuzzmain-production-5bcb.up.railway.app
   railway_project: steer-block-buzz
-  hosted_agent_workers: builder-online-1-of-7
+  hosted_agent_workers: shared-railway-5-of-7
   reference_agent_identities: enrolled-7-of-7
   authority: github-and-versioned-steer
+  supported_adapters: [buzz-agent-openai-compatible, codex-acp, claude-agent-acp]
 
 relay_policy:
   membership_required: true
@@ -71,11 +72,13 @@ identities:
   - id: critic
     kind: agent
     steer_role: critic
-    adapter: claude-agent-acp
+    adapter: buzz-agent-openai-compatible
     buzz_role: bot
     public_key: 873eacdb79becf6b5e18f4aec79decad3c80bcce3d3c6c690e6dd773256f12c1
     enrollment_status: enrolled
-    worker_status: blocked-pending-provider-service-credentials
+    worker_status: online-owner-only-railway
+    runtime: openai-compatible
+    model: gpt-5.6-sol
     channels: [steer-huddle, signals, agent-escalations, critic-findings, learning-review]
     fresh_context_required: true
   - id: test-agent
@@ -85,25 +88,31 @@ identities:
     buzz_role: bot
     public_key: 692f22559c40755774615c070956134867995f07f54c1f2507b905d3b9bb0a52
     enrollment_status: enrolled
-    worker_status: blocked-pending-provider-service-credentials
+    worker_status: online-owner-only-railway
+    runtime: openai-compatible
+    model: gpt-5.6-terra
     channels: [steer-huddle, signals, agent-escalations, release-watch, learning-review]
   - id: scout
     kind: agent
     steer_role: scout
-    adapter: pending-approved-lane
+    adapter: buzz-agent-openai-compatible
     buzz_role: bot
     public_key: f66f2459a92b793fd40bbf7f38553df37c6674bf273d85dbf85787290cc2237a
     enrollment_status: enrolled
-    worker_status: not-activated
+    worker_status: online-owner-only-railway
+    runtime: openai-compatible
+    model: gpt-5.6-terra
     channels: [steer-huddle, signals, agent-escalations, learning-review]
   - id: architect
     kind: agent
     steer_role: architect
-    adapter: pending-approved-lane
+    adapter: buzz-agent-openai-compatible
     buzz_role: bot
     public_key: 9c764661a78b480a324c8da9a5b86cf0224ad992467c324358e88fab4b85b2ea
     enrollment_status: enrolled
-    worker_status: not-activated
+    worker_status: online-owner-only-railway
+    runtime: openai-compatible
+    model: gpt-5.6-sol
     channels: [steer-huddle, agent-escalations, learning-review]
   - id: docs-agent
     kind: agent
@@ -140,5 +149,5 @@ credential_policy:
   committed: false
   displayed_in_logs_or_evidence: false
   rotation_and_revocation_test_required: true
-  hosted_provider_credentials_configured: builder-only
+  hosted_provider_credentials_configured: builder-scout-architect-test-critic
   hosted_secret_destination: railway-service-variables

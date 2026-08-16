@@ -53,10 +53,10 @@ Public keys and signed event IDs from both local and remote proofs live in
 The shared relay B1 communication slice is proven, including TLS reachability,
 enrollment, signed messages, denial, revocation, and restart retention. It is ready for
 controlled human onboarding. All seven reference agent identities are enrolled, profiled,
-and channel-scoped. The Builder now has a persistent, owner-only Railway worker backed by
-the OpenAI-compatible runtime and a signed post-restart reply proof. The other six roles
-remain default-closed until their provider service credentials, runtime assignments, and
-remote ACP proofs are complete. Backup restore, external alerting, GitHub B2
+and channel-scoped. Builder, Scout, Architect, Test, and Critic now run as separately
+signed, owner-only processes in one supervised Railway service backed by the
+OpenAI-compatible runtime. Docs and Ops remain default-closed until their runtime
+assignments and remote ACP proofs are complete. Backup restore, external alerting, GitHub B2
 reconciliation, and a custom-domain decision remain open production controls.
 
 ## Railway worker deployment
