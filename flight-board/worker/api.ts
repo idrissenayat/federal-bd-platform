@@ -9,7 +9,7 @@ import {
   workEconomicsFromRow,
   type DeliveryForecast,
 } from "../lib/work-economics";
-import { humanAcceptanceState, validateAndNormalizeWorkEconomics, type WorkEconomicsSection } from "../lib/work-economics-validation";
+import { acceptedValueHypothesisReady, humanAcceptanceState, validateAndNormalizeWorkEconomics, type WorkEconomicsSection } from "../lib/work-economics-validation";
 
 type D1Result<T = Record<string, unknown>> = {
   results?: T[];
@@ -1343,9 +1343,7 @@ export function decisionTransition(current: Record<string, unknown>, decision: s
 
 export function gateOneValueReady(valueJson: unknown) {
   try {
-    const value = JSON.parse(String(valueJson ?? "")) as Record<string, unknown>;
-    return !validateAndNormalizeWorkEconomics("valueHypothesis", value).error
-      && Boolean(value.acceptedBy && value.acceptedAt && value.evidenceStatus === "verified" && value.acceptanceState !== "proposed");
+    return acceptedValueHypothesisReady(JSON.parse(String(valueJson ?? "")));
   } catch {
     return false;
   }

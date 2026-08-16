@@ -5,6 +5,7 @@ import { buildApprovalReasoningDraft, recommendGateDecision } from "./decision-r
 import { WORK_TYPES } from "../lib/work-economics";
 import { buildForecastProposal } from "../lib/forecast-proposal";
 import { buildValueHypothesisProposal } from "../lib/value-hypothesis-proposal";
+import { acceptedValueHypothesisReady } from "../lib/work-economics-validation";
 import type {
   ActualEconomics,
   AiAdvisory,
@@ -492,7 +493,7 @@ export function WorkEconomicsPanel({ item, events, members, serviceLevels, curre
     <ForecastSummary item={item} />
     <div className={`forecast-callout forecast-${economics.forecast.state.replace(" ", "-")}`}><strong>{economics.forecast.state === "unknown" ? "Owner forecast required" : `${economics.forecast.state} · ${economics.forecast.confidence} confidence`}</strong><p>{economics.forecast.reason}</p>{economics.forecast.nextMilestoneAt && <small>Next: {economics.forecast.nextMilestone} · {formatDate(economics.forecast.nextMilestoneAt)} · Updated {economics.forecast.lastUpdatedAt ? formatDate(economics.forecast.lastUpdatedAt) : "unknown"}</small>}</div>
 
-    <details className="economics-record" open={!value}><summary><span>01</span><div><strong>Value hypothesis</strong><small>{value ? `${value.outcomeMetric}: ${value.baseline} → ${value.target} ${value.unit}` : "AI proposal ready · human review only"}</small></div><b>{proposedValue.confidence}</b></summary><form key={value?.acceptedAt ?? proposedValue.advisory?.createdAt} onSubmit={submitValue}>
+    <details id={`value-hypothesis-${item.id}`} className="economics-record" open={!value}><summary><span>01</span><div><strong>Value hypothesis</strong><small>{value ? `${value.outcomeMetric}: ${value.baseline} → ${value.target} ${value.unit}` : "AI proposal ready · human review only"}</small></div><b>{proposedValue.confidence}</b></summary><form key={value?.acceptedAt ?? proposedValue.advisory?.createdAt} onSubmit={submitValue}>
       <RecordAdvisory advisory={proposedValue.advisory} acceptanceState={value?.acceptanceState ?? proposedValue.acceptanceState} />
       <div className="economics-form-grid economics-governance-row"><label>Value treatment<select name="valueMode" defaultValue={proposedValue.valueMode}><option value="non-monetary">Non-monetary native unit</option><option value="monetary">Monetary · currency and period required</option></select></label></div>
       <div className="economics-form-grid"><label>Primary value type<select name="primaryType" defaultValue={proposedValue.primaryType}>{["revenue or mission enablement", "user/customer outcome", "time or operating-cost reduction", "risk, security, compliance, or reliability improvement", "learning or option value", "platform capability or reuse"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Beneficiary<input name="beneficiary" defaultValue={proposedValue.beneficiary} required /></label><label>Outcome metric<input name="outcomeMetric" defaultValue={proposedValue.outcomeMetric} required /></label><label>Baseline<input name="baseline" defaultValue={proposedValue.baseline} required /></label><label>Target<input name="target" defaultValue={proposedValue.target} required /></label><label>Native unit<input name="unit" defaultValue={proposedValue.unit} required /></label><label>Observation date<input name="observationDate" type="date" defaultValue={proposedValue.observationDate.slice(0, 10)} required /></label><label>Outcome owner label<input name="outcomeOwner" defaultValue={proposedValue.outcomeOwner} required /></label><label>Named outcome owner<select name="outcomeOwnerId" defaultValue={proposedValue.outcomeOwnerId}>{members.filter((member) => member.kind === "human").map((member) => <option key={member.id} value={member.id}>{member.display_name} · {member.role}</option>)}</select></label><label>Impact<select name="impact" defaultValue={proposedValue.impact}>{["Low", "Medium", "High"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Time criticality<select name="timeCriticality" defaultValue={proposedValue.timeCriticality}>{["Low", "Medium", "High"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Strategic alignment<select name="strategicAlignment" defaultValue={proposedValue.strategicAlignment}>{["Low", "Medium", "High"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Confidence<select name="confidence" defaultValue={proposedValue.confidence}>{["low", "medium", "high"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Currency if monetary<input name="currency" defaultValue={proposedValue.currency ?? ""} /></label><label>Measurement period<input name="period" defaultValue={proposedValue.period ?? ""} /></label>{proposedValue.advisory && <label>AI proposal ruling<select name="acceptanceState" defaultValue={value?.acceptanceState === "human edited" ? "human edited" : "human accepted"}><option value="human accepted">Accept unchanged</option><option value="human edited">Accept with human edits</option></select></label>}<label className="span-two">Evidence URL · human verifies before acceptance<input name="evidence" type="url" defaultValue={proposedValue.evidence} required /></label><label className="span-two">Visible assumptions / limitations<textarea name="assumptions" defaultValue={proposedValue.assumptions} required /></label><label className="span-two">Audit reason<input name="auditReason" defaultValue="Product Lead reviewed the AI-prepared value hypothesis and exact evidence before acceptance." required /></label></div><button disabled={saving}>{saving ? "Saving…" : value ? "Save audited correction" : "Accept AI-prepared value hypothesis"}</button>
@@ -682,6 +683,7 @@ export default function Home() {
   const [decisionChoice, setDecisionChoice] = useState("");
   const [decisionReasoning, setDecisionReasoning] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [buzzOpen, setBuzzOpen] = useState(false);
   const [buzzStatus, setBuzzStatus] = useState<BuzzStatus | null>(null);
@@ -740,6 +742,8 @@ export default function Home() {
   const changeRequestDraft = freshSelectedReview ? buildChangeRequestDraft(freshSelectedReview) : "";
   const approvalReasoningDraft = selected && freshSelectedReview ? buildApprovalReasoningDraft(selected, freshSelectedReview) : "";
   const gateRecommendation = freshSelectedReview ? recommendGateDecision(freshSelectedReview) : null;
+  const gateOneValueReady = selected?.gate !== "Gate 1 pending" || acceptedValueHypothesisReady(selected.work_economics.valueHypothesis);
+  const approvalPrerequisiteMissing = decisionChoice === "APPROVED" && !gateOneValueReady;
   const activeDecisionDraft = decisionChoice === "APPROVED" ? approvalReasoningDraft : decisionChoice === "CHANGES_REQUESTED" ? changeRequestDraft : "";
   const decisionItems = data?.items.filter((item) => ["Needed now", "Resubmitted"].includes(item.decision_status)) ?? [];
   const blockedItems = data?.items.filter((item) => item.state === "blocked") ?? [];
@@ -759,9 +763,14 @@ export default function Home() {
 
   async function updateWorkEconomics(id: number, section: EconomicsSection, value: Record<string, unknown>, reason: string) {
     setSaving(true);
+    setError(null);
+    setNotice(null);
     try {
       await api(`/api/items/${id}/work-economics`, { method: "PATCH", body: JSON.stringify({ section, value, reason }) });
       await load();
+      setNotice(section === "valueHypothesis"
+        ? "Value hypothesis accepted and the work item was refreshed. Gate 1 can now be reviewed."
+        : "The governed record was saved and the work item was refreshed.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The Work Economics record could not be updated.");
     } finally {
@@ -793,13 +802,16 @@ export default function Home() {
     if (!selected) return;
     const form = new FormData(event.currentTarget);
     setSaving(true);
+    setError(null);
+    setNotice(null);
     try {
       await api(`/api/items/${selected.id}/decisions`, {
         method: "POST",
         body: JSON.stringify(Object.fromEntries(form.entries())),
       });
-      closeDecisionWorkspace();
       await load();
+      closeDecisionWorkspace();
+      setNotice(`${selected.gate} ruling recorded. The decision inbox and work item are now refreshed.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The ruling could not be recorded.");
     } finally {
@@ -930,6 +942,15 @@ export default function Home() {
     setDecisionReasoning("");
   }
 
+  function reviewGateOneValuePrerequisite() {
+    if (!selected) return;
+    const itemId = selected.id;
+    closeDecisionWorkspace();
+    requestAnimationFrame(() => {
+      document.getElementById(`value-hypothesis-${itemId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
   function navigateTo(nextView: View) {
     setView(nextView);
     setMobileNav(false);
@@ -1048,7 +1069,8 @@ export default function Home() {
           </div>
         </header>
 
-        {error && <div className="error-banner"><span>{error}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
+        {error && <div className="action-feedback action-feedback-error" role="alert" aria-live="assertive"><div><strong>Action not completed</strong><span>{error}</span></div><button onClick={() => setError(null)}>Dismiss</button></div>}
+        {notice && <div className="action-feedback action-feedback-success" role="status" aria-live="polite"><div><strong>Saved</strong><span>{notice}</span></div><button onClick={() => setNotice(null)}>Dismiss</button></div>}
 
         <div className="content-area">
           {view === "my-work" && (
@@ -1213,15 +1235,16 @@ export default function Home() {
             <header><div><span>◆ Authenticated human ruling</span><h2>{selected.gate}</h2></div><button type="button" onClick={closeDecisionWorkspace}>×</button></header>
             <div className="decision-item-summary"><span>{selected.key}</span><strong>{selected.title}</strong><p>{selected.description}</p></div>
             <AgentReviewBrief compact item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => void requestAgentReview(selected.id)} />
-            {gateRecommendation && <section className={`gate-ai-recommendation recommendation-${gateRecommendation.action === "APPROVED" ? "approve" : "changes"}`}><header><span>◇ AI recommendation</span><strong>{gateRecommendation.label}</strong></header><p>{gateRecommendation.reason}</p><small>Advisory only. You must select a ruling, review or edit its reasoning, and record it yourself.</small></section>}
+            {gateRecommendation && <section className={`gate-ai-recommendation recommendation-${gateRecommendation.action === "APPROVED" && gateOneValueReady ? "approve" : "changes"}`}><header><span>◇ AI recommendation</span><strong>{gateRecommendation.action === "APPROVED" && !gateOneValueReady ? "Complete one prerequisite" : gateRecommendation.label}</strong></header><p>{gateRecommendation.action === "APPROVED" && !gateOneValueReady ? "The evidence supports approval, but Gate 1 remains locked until you accept the AI-prepared Value Hypothesis. Nothing needs to be written from scratch." : gateRecommendation.reason}</p><small>Advisory only. You must select a ruling, review or edit its reasoning, and record it yourself.</small></section>}
             {freshSelectedReview?.evidence_sha256 ? <div className="decision-evidence-bound"><span>✓ Exact evidence captured</span><strong>{freshSelectedReview.evidence_revision ? freshSelectedReview.evidence_revision.slice(0, 12) : freshSelectedReview.evidence_sha256.slice(0, 12)}</strong><small>This ruling will retain the Critic review and content fingerprint.</small></div> : <div className="review-stale">A fresh review with resolvable evidence is required before this ruling can be recorded.</div>}
+            {!gateOneValueReady && <section className="decision-prerequisite" role="alert"><div><span>Required before Gate 1 approval</span><strong>Accept the AI-prepared Value Hypothesis</strong><p>The proposal is already filled. Review it, accept it unchanged or edit it, then return here. The app will confirm the save and refresh this item.</p></div><button type="button" onClick={reviewGateOneValuePrerequisite}>Review prepared proposal</button></section>}
             <div className="authority-warning"><strong>You are acting as {selected.decision_authority}.</strong><p>This ruling is attributed to {data.user.email ?? data.user.name}. Agents cannot submit this form without an authenticated human identity.</p></div>
             <fieldset><legend>Ruling</legend><label className={`radio-card ${gateRecommendation?.action === "APPROVED" ? "ai-recommended" : ""}`}><input aria-label="Approve this gate" type="radio" name="decision" value="APPROVED" required checked={decisionChoice === "APPROVED"} onChange={() => { setDecisionChoice("APPROVED"); setDecisionReasoning(approvalReasoningDraft); }} /><span>{gateRecommendation?.action === "APPROVED" && <em>◇ AI recommends</em>}<strong>Approve</strong><small>Evidence is sufficient for this gate. Advance the work.</small></span></label><label className={`radio-card ${gateRecommendation?.action === "CHANGES_REQUESTED" ? "ai-recommended" : ""}`}><input aria-label="Request changes for this gate" type="radio" name="decision" value="CHANGES_REQUESTED" required checked={decisionChoice === "CHANGES_REQUESTED"} onChange={() => { setDecisionChoice("CHANGES_REQUESTED"); setDecisionReasoning(changeRequestDraft); }} /><span>{gateRecommendation?.action === "CHANGES_REQUESTED" && <em>◇ AI recommends</em>}<strong>Request changes</strong><small>Keep the gate pending and block work until the named gaps are resolved.</small></span></label></fieldset>
             {decisionChoice === "APPROVED" && approvalReasoningDraft && <section className="ai-reasoning-draft"><header><div><span>◇ Critic-drafted approval reasoning</span><strong>Ready for your review</strong></div><button type="button" disabled={decisionReasoning === approvalReasoningDraft} onClick={() => setDecisionReasoning(approvalReasoningDraft)}>{decisionReasoning === approvalReasoningDraft ? "Draft applied" : "Restore AI draft"}</button></header><p>AI prepared this from the exact Critic review. Edit it as needed; recording the ruling remains your decision.</p><pre>{approvalReasoningDraft}</pre></section>}
             {decisionChoice === "CHANGES_REQUESTED" && changeRequestDraft && <section className="ai-reasoning-draft"><header><div><span>◇ Critic-drafted instructions</span><strong>Ready for your reasoning</strong></div><button type="button" disabled={decisionReasoning === changeRequestDraft} onClick={() => setDecisionReasoning(changeRequestDraft)}>{decisionReasoning === changeRequestDraft ? "Draft applied" : decisionReasoning.trim() ? "Restore AI draft" : "Use AI draft"}</button></header><p>Editable advice from the current review. You remain the author and decision authority.</p><pre>{changeRequestDraft}</pre></section>}
             {decisionChoice === "CHANGES_REQUESTED" && !changeRequestDraft && reviewingIds.includes(selected.id) && <div className="draft-waiting"><span>◇</span><p><strong>Critic is preparing proposed instructions.</strong> You can write now or apply the draft when the review finishes.</p></div>}
             <label><span className="reasoning-label-row"><span>Reasoning</span>{activeDecisionDraft && decisionReasoning === activeDecisionDraft && <em>AI draft applied · editable</em>}</span><textarea name="reasoning" required minLength={12} value={decisionReasoning} onChange={(event) => setDecisionReasoning(event.target.value)} placeholder="State why this evidence is or is not sufficient. This becomes part of the audit trail." /></label>
-            <footer><button type="button" className="secondary-button" onClick={closeDecisionWorkspace}>Cancel</button><button className="decision-button" disabled={saving || !freshSelectedReview?.evidence_sha256}>{saving ? "Recording…" : "Record human ruling"}</button></footer>
+            <footer><button type="button" className="secondary-button" onClick={closeDecisionWorkspace}>Cancel</button><button className="decision-button" disabled={saving || !freshSelectedReview?.evidence_sha256 || approvalPrerequisiteMissing}>{saving ? "Recording…" : approvalPrerequisiteMissing ? "Complete prerequisite first" : "Record human ruling"}</button></footer>
           </form>
         </div>
       )}
