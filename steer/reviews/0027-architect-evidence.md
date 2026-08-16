@@ -1,166 +1,97 @@
-# Architect evidence — STR-027 Gate 2 Exam preparation
+# Architect rework evidence — STR-027 Gate 2 Exam correction
 
 **Role:** STEER Architect Agent
 **Work item:** STR-027 / issue #55
-**Branch:** `architect/str-027-gate-2-exam`
-**Brief authority:** exact corrected commit `b15efdc2355089c90c943eaa374d0b5e290b5343`
-**Fresh Critic input:** exact commit `5337659ca59504d9ffa9106cfa03e45f06a90171`
-**Prepared artifact:** `steer/exams/0027-signed-gate-receipts-and-ratification-packages.md`
-**Authority boundary:** Exam and Architect evidence only; no Brief edit, implementation,
-credential/key, signature, receipt, ratification, holdout access, gate decision, merge,
-deploy, release or claim of evidence not generated in this run
+**Branch:** `architect/str-027-gate-2-correction`
+**Correction base:** `6c962bf0e54c594409a27e91456d090e4d62b8eb`
+**Frozen Brief authority:** `b15efdc2355089c90c943eaa374d0b5e290b5343`
+**Independent Test input:** `a5efbd607fec9932ba0e147100482a069d13cb11`
+**Fresh Critic input:** `a7f05e8faee7bba5dfb31b68d962faea535496d7`
+**Authority boundary:** corrected Exam and this Architect rework evidence only; no Brief
+edit, implementation, credential/key, signature, receipt, ratification, holdout access,
+gate decision, ready PR, merge, deployment, or release.
 
-## Authorization provenance and preserved boundary
+## Authorization and unresolved authority evidence
 
-Idriss Enayat's authenticated Buzz handoff states that STR-027 is active in STEER Work
-Management and its human Gate 1 ruling is `APPROVED`; it directs this Architect to use
-the exact corrected Brief and final fresh-Critic commits above. The handoff authorizes
-Gate 2 Exam/evidence preparation only. This record reports that supplied authority; it
-does not impersonate the Product Lead, manufacture the platform receipt, or treat the
-handoff as Gate 2 approval.
+Idriss Enayat's authenticated 2026-08-16 Buzz correction directs the Architect to apply
+this policy: when countersignature is required, the ruling remains
+`PENDING_COUNTERSIGNATURE` and has no effect until every required independently
+authenticated human has signed. This is the policy input for the corrected Exam, not a
+Gate 1 or Gate 2 ruling.
 
-The worktree was based on Critic evidence commit `5337659...`, which has Brief commit
-`b15efdc...` as a true ancestor. The Brief at the two revisions is byte-identical. The
-Exam and this evidence are new files; the Brief and prior evidence remain untouched.
+The exact frozen Brief still contains `GATE 1: PENDING` and `GATE 1 EVIDENCE: PENDING`.
+The authenticated Work Management Gate 1 receipt and policy-compliant in-file audit-note
+descendant required by repository policy and the Exam are absent from this target. The
+Buzz direction is dispatch/correction provenance only and is not substituted for either
+artifact. Gate 2 therefore remains default-closed.
 
-## Inputs read
+## Independent findings reconciled
 
-- Exact STR-027 corrected Brief and final fresh Critic evidence above.
-- `AGENTS.md`, `steer/templates/exam.md`, `steer/operating-system/GATES.md`,
-  `steer/operating-system/GUARDRAIL-LIBRARY.md`, `steer/PROJECT-GUARDRAILS.md`,
-  and the existing STR-024 Exam/Architect evidence for repository conventions.
-- The authorized handoff's required surfaces: signed gate receipts, detached signature
-  envelopes, atomic/idempotent effect, editable AI RATs, blind B01–B12 custody,
-  recovery, privacy, security, accessibility and unresolved named-human decisions.
+The independent Test found the original 59 IDs structurally falsifiable but recommended
+`BLOCK` pending authenticated Gate 1 evidence, human RAT dispositions, frozen protocol
+and custody vectors, and fresh Critic review. The fresh Critic independently identified
+three blockers and three should-fix findings. This correction preserves the Test's useful
+acceptance inventory while adopting the Critic's safe corrections:
 
-## Architecture options considered
+1. **Effect-authorizing countersignature.** The state machine now includes durable,
+   ineffective `PENDING_COUNTERSIGNATURE`. Every required independently authenticated
+   countersignature binds the pending receipt. Current policy, role, revision, sequence,
+   proof set and CAS are rechecked in the one atomic/idempotent transition to `EFFECTIVE`.
+   Missing, rejected, revoked, stale, duplicate or crashing signatures have no effect.
+2. **Gate separation.** Gate 2 freezes human-ratified design/policy, schemas, exact
+   canonical/signature/event/CAS specifications, implementation-independent vectors,
+   custody and field inventories, threat/fault models, metric definitions, campaigns,
+   harness specifications and fixed acceptance oracles. Builder implementation and
+   independent execution of every acceptance ID against the exact build are Gate 3
+   evidence. A `REVISE` disposition blocks and requires a governed Exam revision.
+3. **Gate 1 evidence remains absent.** The corrected Exam explicitly requires the real
+   authenticated receipt and governed in-file descendant. Neither is fabricated here.
+4. **Canonical signed-byte grammar.** The Exam fixes UTF-8 domain bytes, unsigned 64-bit
+   big-endian octet lengths, RFC 8785 JCS UTF-8 header/payload bytes, invalid duplicate
+   keys/lone surrogates, exact media type, and required boundary/invalid vectors.
+   `RAT-SIGN` may select algorithm and trust policy but cannot mutate this grammar.
+5. **Measurable blind leakage oracle.** `RAT-EVAL` must freeze allowed task inputs,
+   protected secret classes, threat principal, metadata/padding/schedule/error classes,
+   and a balanced >=1,000-sample-per-class held-out distinguishability test. The 95%
+   Wilson upper bound may not exceed random-guess accuracy + 0.02.
+6. **Fixed outcome denominator and useful rubric.** The eligible-unit manifest is frozen
+   before Gate 2; cohort closure is the earlier of ten eligible units or exactly 30 days,
+   with day-30 closure even below ten. Units are deduplicated by ratified intent identity,
+   and failures/missing/abandoned units remain. Success requires qualified-human blinded
+   usability and evidence-correctness under a frozen rubric; nonblank text is insufficient.
 
-### A — Authoritative intent ledger + bounded issuer + transactional effect/outbox
+## Preserved architecture and coverage
 
-Work Management commits authenticated human intent first. A narrowly authorized issuer
-reconstructs canonical payload from that intent and returns a detached envelope. One
-transaction verifies current policy, appends proof/verification, changes effect exactly
-once and enqueues projections/mirrors. Independent verification consumes an export.
+The original recommendation remains: Work Management holds authenticated human intent;
+a bounded issuer reconstructs the exact payload; required humans countersign through
+separate capabilities; and one transactional ledger/CAS/outbox boundary creates effect.
+Mirrors, Git, Buzz, signer, verifier, AI preparer, evaluator, transport and Codex remain
+non-authoritative. The corrected Exam retains 59 unique acceptance IDs and all authority,
+cryptographic, RAT, blind custody, privacy, security, accessibility, recovery,
+reliability, metric, STR-024 and Codex surfaces.
 
-- **Strength:** clearest human/issuer separation, idempotency, atomic effect and recovery.
-- **Risk:** transaction/outbox, canonicalization and trust-snapshot contracts must be
-  exact; partial implementations could mislabel pending intent as authority.
-- **Complexity:** M–L.
+No signature vector, human RAT, Gate receipt, audit-note descendant, B01–B12 manifest,
+custody log, specialist review, implementation behavior, runtime execution, or production
+performance was generated or claimed by this correction.
 
-### B — Dedicated append-only transparency ledger with Work Management projection
+## Gate status and next human action
 
-Intent and proof enter a cryptographically linked external ledger; Work Management is a
-projection and gate policy client.
+**Gate 2 readiness remains `BLOCKED`.** A human must preserve the authenticated Gate 1
+receipt and governed in-file Brief audit-note descendant, name all required specialists,
+ratify the final exact policies/specifications/vectors/oracles, and commission independent
+Test and fresh Critic review against this corrected revision. Only after all required
+Gate 2 evidence exists may the authenticated Tech Lead issue a separate-session ruling.
+Runtime pass evidence is then generated against the exact build for Gate 3.
 
-- **Strength:** strong replay and independent audit properties.
-- **Risk:** splits authority, increases consistency/recovery burden and may make the
-  external service a de facto decision-maker or source of truth.
-- **Complexity:** L.
-
-### C — External signer signs exported Work Management snapshots
-
-Work Management exports a package to a signing provider, then imports the envelope.
-
-- **Strength:** smallest apparent integration and replaceable signing vendor.
-- **Risk:** mutable/stale snapshot, signing-oracle abuse and crash gaps make atomic effect,
-  exact intent and role/revision revalidation harder; vendor callbacks may gain authority.
-- **Complexity:** S initially, L to govern safely.
-
-**Recommendation:** A is the narrowest direction that preserves Work Management as
-human-decision authority and keeps issuer, verifier, projections and mirrors bounded.
-The Exam is implementation/provider neutral: options B/C can pass only if they prove the
-same intent, canonicalization, CAS, atomicity, custody and recovery oracles. This design
-recommendation does not select a vendor/algorithm/storage technology or authorize build.
-
-## Falsifiability and coverage
-
-The Exam defines 59 stable acceptance IDs plus six adversarial campaigns. It requires
-reproducible protocol bytes and signatures, fault injection at every effect boundary,
-100-worker concurrency, offline verification, authority-denial matrices, AI prompt and
-bulk-approval negatives, custody side-channel/dictionary/replay attacks, scoped recovery,
-privacy lifecycle, accessible manual evidence, and exact outcome denominators.
-
-| Brief “done and correct” item | Primary Exam coverage |
-|---|---|
-| 1. Human-only authority | STR027-AUTH-001..003, STR027-SEC-002 |
-| 2. Distinct intent/signing/countersigning | STR027-AUTH-002..005, STR027-SIGN-006 |
-| 3. Canonical payload/detached envelope | STR027-SIGN-001..008 |
-| 4. Atomic/idempotent effect/correction | STR027-EFF-001..008 |
-| 5. Policy-compliant gate evidence | STR027-AUTH-004..006, required Gate 2 evidence |
-| 6. AI-prepared editable package | STR027-RAT-001..003 |
-| 7. No automatic/bundled judgment | STR027-RAT-004..005 |
-| 8. RAT role/sequence | STR027-RAT-005..007 |
-| 9. Evaluator-owned B01–B12 manifest | STR027-BLIND-001..002 |
-| 10. Confidential bindings/custody | STR027-BLIND-003..008 |
-| 11. Export/independent verification | STR027-SIGN-007..008, STR027-PRIV-003 |
-| 12. Key/identity safety | STR027-SIGN-005..006, STR027-SEC-001..002 |
-| 13. Privacy/minimization | STR027-PRIV-001..003 |
-| 14. Accessible review | STR027-UX-001..003 |
-| 15. Honest/idempotent feedback | STR027-EFF-005..006, STR027-UX-004 |
-| 16. Rollback/recovery | STR027-REC-001..003, STR027-REL-002 |
-| 17. STR-024 remains human-controlled | STR027-STR024-001..002, STR027-BLIND-008 |
-| 18. Codex boundary | STR027-CODEX-001, STR027-AUTH-001/005 |
-| 19. Falsifiable learning | STR027-MET-001..004, STR027-REL-003 |
-
-## Named-human decisions deliberately unresolved
-
-The Exam does not silently choose protocol or policy values that the Brief assigns to
-humans. It converts every unresolved row into a named, testable, default-closed Gate 2
-input: `RAT-SIGN`, `RAT-PRIVACY`, `RAT-ROLES`, `RAT-POLICY`, `RAT-AI`, `RAT-EVAL`,
-`RAT-A11Y` and `RAT-SLO`. Idriss Enayat is the accountable Product/Tech/data/experiment
-owner where the Brief names him. The qualified identity/security, privacy/data,
-accessibility/design, Test/custody and Ops/reliability humans remain **unresolved** and
-must be explicitly named; ownership is not treated as specialist competence.
-
-The narrow `RAT-EVAL` choice is especially blocking: Idriss Enayat and the named human
-Test owner/custodian must either ratify randomized fixed-size assertion-ciphertext
-semantics plus frozen vectors for STR-024's `assertion-set SHA-256`, or request a governed
-STR-024 Exam revision. Until then no raw digest, manifest, score, RAT-EVAL or STR-024
-Gate 2 package is valid.
-
-## Evidence generated by this Architect run
-
-- New falsifiable Exam at
-  `steer/exams/0027-signed-gate-receipts-and-ratification-packages.md`.
-- This provenance/options/traceability/default-closed evidence at
-  `steer/reviews/0027-architect-evidence.md`.
-- Local integrity, scope, static and repository validation reported below after execution.
-
-No signature vector, human RAT, Gate receipt, B01–B12 manifest, custody log, specialist
-review, Test result, Critic result, implementation behavior or production performance was
-generated. The Exam requires those future artifacts; this evidence does not claim them.
-
-## Current blockers and next human action
-
-**Gate 2 readiness remains `BLOCKED`, by design, pending evidence and human decisions.**
-The smallest next action is for Idriss Enayat to review the editable eight-row RAT package
-against this exact Exam revision, name each required qualified human, and route the Exam
-to independent Test and a fresh Critic. The human Product/Tech owner and named
-co-ratifiers must record their own dispositions; only after all blocking evidence exists
-may the authenticated Tech Lead decide Gate 2 in a different session from Gate 1.
-
-This Architect neither approves Gate 2 nor authorizes implementation.
+This Architect does not approve a gate or authorize implementation.
 
 ## Validation record
 
-Executed from branch `architect/str-027-gate-2-exam` based at exact Critic commit
-`5337659ca59504d9ffa9106cfa03e45f06a90171`:
+Validation is recorded against the final correction commit in the signed Buzz completion
+report because a commit cannot truthfully self-reference its own SHA. Required checks:
 
-- `git merge-base --is-ancestor b15efdc... 5337659...` — `PASS`.
-- SHA-256 plus byte comparison of the Brief at `b15efdc...`, `5337659...`, and the
-  worktree — all exactly
-  `24d43671eab43d9a50b1d8a638b2209e0313cdaa0f8d605f888d58492be4bcce`; `PASS`.
-- Tracked/untracked scope check — no tracked modification and exactly the two new
-  Architect artifacts named above before staging; `PASS`.
-- Acceptance-ID extraction — 59 unique IDs and 59 occurrences; `PASS`.
-- `git diff --check --no-index /dev/null <artifact>` for each new file, trailing-space
-  scan and conflict-marker scan — `PASS`.
-- `uv run ruff check . && uv run pytest -q` — not executed because `uv` is unavailable
-  in this harness (`uv: command not found`); these are documentation-only additions.
-- `gitleaks detect --no-banner --redact --source .` — not executed because `gitleaks` is
-  unavailable in this harness. Manual scope review found only synthetic/public protocol
-  descriptions and commit/file digests, but is not represented as a secret-scanner pass.
-
-The immutable commit and remote push state are recorded by Git and in the signed Buzz
-completion report after commit/push; they cannot be truthfully self-referenced inside the
-commit's own file content.
+- frozen Brief at the authority commit and correction worktree is byte-identical;
+- correction diff contains only the Exam and this Architect evidence;
+- 59 acceptance IDs remain unique and occur once;
+- whitespace/conflict-marker and repository integrity checks pass;
+- local and remote correction-branch SHAs match after the repo-scoped SSH port-443 push.

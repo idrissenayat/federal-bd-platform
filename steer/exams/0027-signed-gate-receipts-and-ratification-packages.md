@@ -2,11 +2,12 @@
 
 **Brief:** `steer/briefs/0027-signed-gate-receipts-and-ratification-packages.md`
 **Exact approved Brief revision supplied by STEER:** `b15efdc2355089c90c943eaa374d0b5e290b5343`
-**Fresh Critic evidence:** `steer/reviews/0027-final-fresh-critic-recheck-evidence.md` at `5337659ca59504d9ffa9106cfa03e45f06a90171`
+**Fresh Brief-stage Critic evidence:** `steer/reviews/0027-final-fresh-critic-recheck-evidence.md` at `5337659ca59504d9ffa9106cfa03e45f06a90171`
+**Correction inputs:** independent Test `a5efbd607fec9932ba0e147100482a069d13cb11` and fresh Critic `a7f05e8faee7bba5dfb31b68d962faea535496d7`
 **Guardrails in force:** CORE-01..11, SEC-01..05, PRIV-01..03, A11Y-01..03,
 REL-01..04, DES-01..02
-**Status:** Architect draft for independent Test/Critic review and authenticated human
-Gate 2 decision; not approved for implementation
+**Status:** Corrected Architect draft for independent Test/Critic review and authenticated
+human Gate 2 decision; not approved for implementation
 
 ## Authority and test conventions
 
@@ -20,28 +21,36 @@ separate principals and capabilities.
 All protocol fixtures use public synthetic identities and content. No test receives a
 production key, credential, private reasoning, personal profile, or B09–B12 plaintext,
 semantic summary, oracle, assertion, opening, decryption material, unpadded length, or
-stable low-entropy hash. A result is `PASS` only when the named positive and negative
-oracles are reproducible against the same implementation revision. Missing evidence is
-`BLOCK`, never an inferred pass.
+stable low-entropy hash. At Gate 2, a result is `PASS` only when the human-ratified
+design and policies, schemas,
+canonical/signature/event/CAS specifications, fixed synthetic vectors, threat/fault
+models, metric definitions, and positive/negative acceptance oracles are complete and
+independently inspectable without product code. Missing Gate 2 evidence is `BLOCK`, never
+an inferred pass. Runtime execution against the exact implementation revision is Gate 3
+evidence and cannot be a prerequisite for pre-build Gate 2.
 
-The Builder must publish deterministic conformance fixtures for the ratified protocol:
-canonical payload bytes, protected-header bytes, exact domain-separated length-delimited
-signed bytes, payload/envelope/event digests, valid and invalid signatures, event chains,
-and state projections. Each fixture records schema/profile/algorithm versions and exact
-hex/base64 encodings. Independent Test regenerates—not merely snapshots—those values.
+Before Gate 2, the accountable humans and Architect must freeze deterministic conformance
+fixtures independent of implementation output: canonical payload bytes, protected-header
+bytes, exact domain-separated length-delimited signed bytes, payload/envelope/event
+digests, valid and invalid signatures, event chains, CAS transitions, and state
+projections. Each fixture records schema/profile/algorithm versions and exact hex/base64
+encodings. After Gate 2, Builder implements against these fixed oracles; at Gate 3,
+independent Test regenerates—not snapshots—those values and executes every acceptance ID.
 
 ## Gate 2 ratification inputs — default closed
 
 The following choices remain human decisions. The AI-prepared package must be populated
 and editable, but its proposals are not rulings. No implementation authorization or
 Gate 2 approval exists until the named accountable human and every required qualified
-co-ratifier record `RATIFIED` or `REVISE` against this exact Exam revision.
+co-ratifier record `RATIFIED` against this exact Exam revision. `REVISE` is blocking
+and requires a governed Exam revision followed by fresh ratification of that exact
+revision.
 
 | RAT id | Accountable human | Required qualified human/evidence | Decision that must be recorded | Default while unresolved |
 |---|---|---|---|---|
-| `RAT-SIGN` | Idriss Enayat, Product/Tech owner | Named identity/security owner — **unresolved** | Canonicalization profile, integer/length encoding, signature algorithm, issuer trust root, key service, rotation/revocation and historical-verification policy | No production signer, countersigner, or effective export |
+| `RAT-SIGN` | Idriss Enayat, Product/Tech owner | Named identity/security owner — **unresolved** | Signature algorithm, issuer trust root, key service, rotation/revocation and historical-verification policy; the Exam-fixed canonical grammar is invariant | No production signer, countersigner, or effective export |
 | `RAT-PRIVACY` | Idriss Enayat, Product/data owner | Named privacy/data owner — **unresolved**; approved data inventory | Private/public receipt fields, reason visibility, lawful basis, access, retention, deletion/pseudonymization, backup expiry and audit cadence | Private least-privilege access; no public disclosure |
-| `RAT-ROLES` | Idriss Enayat, Product/Tech owner | Named domain owners — **unresolved** | Gate/RAT owner and co-ratifier matrix, permitted role stacking, countersignature/in-file-note sequence | Missing qualified owner blocks the affected RAT/gate |
+| `RAT-ROLES` | Idriss Enayat, Product/Tech owner | Named domain owners — **unresolved** | Gate/RAT owner and co-ratifier matrix, permitted role stacking, required countersigners, and in-file-note sequence; every required countersigner is effect-authorizing | Missing qualified owner or required signature leaves the affected ruling `PENDING_COUNTERSIGNATURE` and ineffective |
 | `RAT-POLICY` | Idriss Enayat, Product/Tech owner | Independent Test evidence for CORE-10/11 | Supported Gate/RAT types, artifact/body hash rules, session/cooling-off/batch policy and supersession sequence | Existing GATES/SOLO rules govern; STR-027 cannot weaken them |
 | `RAT-AI` | Idriss Enayat, Product owner | Named Test owner plus privacy/security review — **unresolved** | Preparation agent/model/config, evidence allowlist, error/confidence behavior, prompt-injection controls and edit-diff retention | Generation limited to synthetic test data; no silent blank/default |
 | `RAT-EVAL` | Idriss Enayat, Product/experiment owner | Named human Test owner and fixture custodian — **unresolved** | Distinct B01–B12 principals/keys; safe binding mode; fixed-size profile; manifest vectors; exact STR-024 `assertion-set SHA-256` interpretation; access and contamination response | `UNRATIFIED`; no raw assertion digest, valid manifest, score, RAT-EVAL or STR-024 Gate 2 package |
@@ -74,10 +83,10 @@ appoint Idriss as every specialist, or let an agent/Codex fill the gap.
   Path substitution, same-path new commit, body change, history rewrite, inaccessible
   object or new revision fails closed and never inherits an earlier ruling.
 - **STR027-AUTH-005 — Capability separation.** The issuer may sign only a durable exact
-  human intent and cannot create/change intent; a countersigner performs a distinct
-  authenticated human action bound to the effective receipt digest; an in-file recorder
-  has only the separately authorized audit-line capability. No shared token or service
-  capability collapses these authorities.
+  human intent and cannot create/change intent; every required countersigner performs a
+  distinct authenticated human action bound to the pending receipt digest before effect;
+  an in-file recorder has only the separately authorized audit-line capability. No shared
+  token or service capability collapses these authorities.
 - **STR027-AUTH-006 — Gate lineage.** Gate 1 binds the exact approved Brief lineage;
   Gate 2 binds that lineage, this exact Exam, required Test/Critic results and RAT set;
   Gate 3 binds signed Brief/Exam lineage, exact verified build and domain evidence.
@@ -95,11 +104,15 @@ appoint Idriss as every specialist, or let an agent/Codex fill the gap.
   canonicalization profile, purpose/audience and signing time. Unknown, duplicate,
   noncanonical, unprotected security-critical or mismatched fields are rejected.
 - **STR027-SIGN-003 — Exact signed bytes.** For every approved vector, independent Test
-  regenerates exact bytes for `"STEER_GATE_RECEIPT_V1\0" || length(header) || header ||
-  length(payload) || payload` using the `RAT-SIGN` encoding and obtains the frozen
-  digest/signature. Omitted domain separator, ambiguous concatenation, alternate Unicode,
-  number/key ordering, whitespace, duplicate-key, normalization, length or media-type
-  encodings fail verification.
+  regenerates exact bytes for `UTF8("STEER_GATE_RECEIPT_V1") || 0x00 || U64BE(len(header)) ||
+  header || U64BE(len(payload)) || payload`, where `0x00` is one NUL octet, lengths are
+  unsigned 64-bit big-endian octet counts, `header` and `payload` are RFC 8785 JCS UTF-8
+  bytes, duplicate keys and lone surrogates are invalid, and the payload media type is
+  `application/steer.gate-receipt+json;profile=v1`. `RAT-SIGN` selects the signature
+  algorithm/trust policy but cannot alter this grammar. Frozen valid/invalid vectors must
+  cover zero/max-bound lengths, overflow, Unicode/number/key ordering and media type.
+  Omitted domain separator, ambiguous concatenation, alternate normalization, whitespace,
+  duplicate-key, length, overflow or media-type encodings fail verification.
 - **STR027-SIGN-004 — Detached envelope.** `steer.gate-receipt.signature.v1` stores exact
   protected-header bytes, payload digest and signature; the signature is absent from the
   signed bytes. Payload/header/envelope substitution, signature transplant across item,
@@ -126,25 +139,33 @@ appoint Idriss as every specialist, or let an agent/Codex fill the gap.
 ### Atomic and idempotent effective transition
 
 - **STR027-EFF-001 — State machine.** The exhaustive valid path is `no intent` →
-  `PENDING_PROOF` → (`EFFECTIVE` or append-only `PROOF_FAILED` attempts while remaining
-  ineffective). Correction creates a new superseding intent. Direct-to-effective,
+  `PENDING_PROOF` → `PENDING_COUNTERSIGNATURE` → `EFFECTIVE`; proof or countersignature
+  failures append attempts while the ruling remains ineffective. If current ratified
+  policy requires zero additional countersigners, `PENDING_COUNTERSIGNATURE` is still
+  durably entered and the same transaction may satisfy the empty set and advance it.
+  Correction creates a new superseding intent. Direct-to-effective,
   pending-as-approved, mutation/deletion and terminal rewrite are impossible at the
   server/data layer.
 - **STR027-EFF-002 — Pre-commit crash matrix.** Kill after intent commit, payload build,
   signing request, signature generation, envelope receipt and verification but before
-  the effect transaction. Every projection remains ineffective; retry derives the same
-  payload, and no mirror/dependent action represents approval.
+  the effect transaction. Every projection remains ineffective, including after issuer
+  proof while any required countersignature is absent; retry derives the same payload,
+  and no mirror or dependent action represents approval.
 - **STR027-EFF-003 — Atomic effect.** Fault injection at every write proves one durable
-  transaction either appends accepted payload/envelope/verification, CAS-transitions
-  the intent exactly once, updates the Gate/RAT projection and enqueues mirrors, or
-  commits none. No externally observable partial authority state exists.
-- **STR027-EFF-004 — Concurrency and CAS.** At least 100 concurrent signer/retry workers
-  for one unchanged intent may generate proof, but exactly one envelope is accepted,
-  exactly one effective transition/event sequence exists and every successful caller
-  receives the same receipt. Competing changed bytes are rejected and preserved safely.
+  effect transaction, only after all independently authenticated required countersignatures
+  bind the pending receipt and current policy is rechecked, either appends the final
+  accepted proof set, CAS-transitions `PENDING_COUNTERSIGNATURE` to `EFFECTIVE` exactly
+  once, updates the Gate/RAT projection and enqueues mirrors, or commits none. No
+  externally observable partial authority state exists.
+- **STR027-EFF-004 — Concurrency and CAS.** At least 100 concurrent issuer, countersigner,
+  and retry workers for one unchanged intent may generate proofs, but each required human
+  signature is accepted at most once; missing, rejected, revoked, or stale signatures
+  remain ineffective. Exactly one effective transition/event sequence exists and every
+  successful caller receives the same receipt. Competing changed bytes are rejected and
+  preserved safely.
 - **STR027-EFF-005 — Post-commit crash/retry.** Kill after transaction commit and before
   response, then retry with the same idempotency key: the system returns the existing
-  intent/effective receipt and emits no duplicate decision, projection or dependent
+  pending or effective receipt and emits no duplicate decision, projection, or dependent
   action. Reusing the key with changed intent returns conflict, never overwrite.
 - **STR027-EFF-006 — Failure honesty.** Signer/verification/storage/role/revision/sequence
   failures append safe `PROOF_FAILED` attempts with owner, code, next check and retry
@@ -216,8 +237,14 @@ appoint Idriss as every specialist, or let an agent/Codex fill the gap.
 - **STR027-BLIND-005 — One-way delivery.** Fixed-size authenticated evaluator/custodian →
   workload input and workload → evaluator output reveal no oracle/opening/semantic
   secret to the transport/workload. Oracle access occurs only after immutable candidate
-  output/trace commitment. Timing, size, count, error, retry, URL and log side channels
-  stay within the ratified non-semantic allowlist.
+  output/trace commitment.
+  `RAT-EVAL` freezes: the task input that workload may observe; the oracle/assertion
+  secret classes it must not distinguish; principal and observable-metadata model; fixed
+  padding, request count/schedule, retry/error/URL/log equivalence classes; and a leakage
+  test of at least 1,000 balanced samples per secret class whose held-out classifier 95%
+  Wilson upper confidence bound must be no more than random-guess accuracy + 0.02. Timing,
+  size, count, error, retry, URL and log observations outside that allowlist contaminate
+  the run; the evaluator publishes only aggregate statistics and safe evidence.
 - **STR027-BLIND-006 — Contamination.** Premature semantic/opening access, raw/stable
   low-entropy hash, dictionary matchability, cross-case linkability, substitution,
   material reuse or unauthorized principal access marks the affected evaluation
@@ -247,10 +274,10 @@ appoint Idriss as every specialist, or let an agent/Codex fill the gap.
   flooding, table/diff alternatives, 400% zoom/reflow, reduced motion, WCAG contrast and
   no hidden state. Exact target and effect are announced before confirmation.
 - **STR027-UX-004 — Honest latency.** UI immediately acknowledges durable
-  `PENDING_PROOF` but never says approved/ratified until the atomic transaction returns
-  exact receipt, target and event sequence. Refresh, double-submit, offline/online,
-  timeout and back navigation return the durable state without an ambiguous enabled
-  action or lost human edits.
+  `PENDING_PROOF` or `PENDING_COUNTERSIGNATURE` but never says approved/ratified until
+  the atomic transaction returns the exact receipt, target and event sequence. Refresh,
+  double-submit, offline/online, timeout and back navigation return the durable state
+  without an ambiguous enabled action or lost human edits.
 - **STR027-SEC-001 — Secrets.** Secret scanning plus runtime canaries prove private keys,
   credentials, tokens, holdout material and openings never enter prompt/browser/Git/
   Buzz/log/analytics/export/fixture/agent-tool surfaces. Redaction errors fail closed.
@@ -302,21 +329,28 @@ appoint Idriss as every specialist, or let an agent/Codex fill the gap.
 
 ### Outcome and STR-024 dependency
 
-- **STR027-MET-001 — Eligible denominator.** Freeze supported decision types/cohort before
-  Gate 2. Every eligible generated package—including generation failure, rejection,
-  abandoned draft, supersession, inaccessible evidence and missing package—stays in the
-  first-10-or-30-day denominator; no post-outcome exclusion or replacement is possible.
+- **STR027-MET-001 — Eligible denominator.** Before Gate 2, freeze supported decision
+  types and an immutable eligible-unit manifest. Cohort opens at the first eligible
+  request and closes at the earlier of the tenth eligible unit or exactly 30×24 hours;
+  if fewer than ten occur, all manifested units at day 30 are the final denominator.
+  Deduplicate by ratified decision-intent identity. Every eligible unit—including
+  generation failure, rejection, abandoned draft, supersession, inaccessible evidence
+  and missing package—remains; no post-outcome exclusion, late extension or replacement
+  is possible.
 - **STR027-MET-002 — Exact measures.** From append-only events, report eligible/generated/
-  human-ready/submitted/verified/rejected/superseded/failed counts; nonblank human-ready
-  rate; verified submitted rate; AI-draft acceptance/edit distance; active preparation
-  and judgment time; generation/signing/verification latency; signature/revision/role/
-  replay/contamination failures; accessibility outcomes and missingness by exact feature/
-  agent/model/config version. Numerators, denominators and unknown values are explicit.
+  draft-complete/submitted/verified/rejected/superseded/failed counts; qualified-human
+  review-ready and evidence-correct rates under the frozen rubric; verified submitted
+  rate; AI-draft acceptance/edit distance; active preparation and judgment time;
+  generation/signing/verification latency; signature/revision/role/replay/contamination
+  failures; accessibility outcomes and missingness by exact feature/agent/model/config
+  version. Numerators, denominators and unknown values are explicit.
 - **STR027-MET-003 — Falsifiable threshold.** At cohort close, 100% of submitted rulings
   must verify exact target/role/sequence/issuer and at least 90% of eligible packages
-  must become nonblank human-ready, subject to human ratification of those proposed
-  thresholds. Report observed manual-path comparison and median active time without
-  claiming causality or universal STEER superiority.
+  must be independently judged usable and evidence-correct by a qualified human using a
+  frozen blinded rubric; nonblank or draft-complete text alone never qualifies. These
+  thresholds and the rubric must be human-ratified before Gate 2. Report observed
+  manual-path comparison and median active time without claiming causality or universal
+  STEER superiority.
 - **STR027-MET-004 — Zero guardrails.** Any agent/service ruling, unsigned/unverifiable
   effective display, revision mismatch, replay, overwritten ruling, blind disclosure,
   secret exposure or silent auto-submit is a visible zero-tolerance failure and rollout
@@ -337,7 +371,8 @@ appoint Idriss as every specialist, or let an agent/Codex fill the gap.
 
 ## Edge cases and adversarial campaigns
 
-Independent Test must exercise at least these campaigns against the exact build:
+Gate 2 freezes the following campaigns and their expected oracles; independent Test must
+execute them against the exact build for Gate 3:
 
 1. **Protocol mutation:** mutate every field and byte boundary; duplicate keys; alternate
    encodings; Unicode normalization; self-referential signature/verification fields;
@@ -357,16 +392,19 @@ Independent Test must exercise at least these campaigns against the exact build:
    delete/export during outage, focus/AT recovery after every error and 400% reflow of a
    long edited package and cryptographic failure detail.
 
-## Required evidence before a human may decide Gate 2
+## Required frozen evidence before a human may decide Gate 2
 
 - Authenticated Gate 1 receipt and policy-compliant in-file Brief audit-note descendant
   bound to exact substantive Brief revision `b15efdc2355089c90c943eaa374d0b5e290b5343`.
 - Human dispositions for `RAT-SIGN`, `RAT-PRIVACY`, `RAT-ROLES`, `RAT-POLICY`, `RAT-AI`,
   `RAT-EVAL`, `RAT-A11Y` and `RAT-SLO`, with all separately qualified humans named.
-- Frozen canonical/signature/event/CAS/concurrency vectors, B01–B12 safe-binding vectors,
-  signed manifest/custody design and exact public/nonpublic field inventory.
-- Independent Test mapping every acceptance ID to executable positive/negative evidence
-  against this exact Exam revision, plus fresh-context Critic review of Brief + Exam.
+- Frozen human-ratified design/policies; schemas; the exact canonical/signature/event/CAS
+  specifications; implementation-independent fixed vectors; B01–B12 safe-binding and
+  custody design; field inventory; fault/threat models; cohort/rubric/leakage definitions;
+  and a harness specification mapping every acceptance ID to fixed positive/negative
+  oracles. No Builder output or runtime pass is Gate 2 evidence.
+- Independent Test review of the completeness/falsifiability of those frozen oracles and
+  fresh-context Critic review of Brief + Exam. Execution results belong to Gate 3.
 - No unresolved blocker, invented signature/custody evidence, production credential,
   holdout access or retrospective named-agent attestation.
 
