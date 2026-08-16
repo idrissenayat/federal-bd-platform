@@ -27,6 +27,8 @@
 > **Final correction note — 2026-08-16:** Fresh final Critic evidence `b557858fc788a64f20c3f6c1013bd52df5ea33b8` is preserved in ancestry. This revision freezes nested byte encodings, monotonic fresh revocation snapshots, one bounded cohort, and an unsafe-null adjusted leakage decision; it does not change the pre-effect policy or Gate state.
 >
 > **Exact final correction note — 2026-08-16:** Fresh Critic evidence `4f21bfdf18debafa35965b07ab3a23ca96c0a1ae` is preserved in ancestry. This revision freezes literal nested-object schemas and an acyclic revocation-entry preimage, and uses uniform Bonferroni bounds; no human policy or Gate state changes.
+>
+> **Minimal binding correction note — 2026-08-16:** Fresh Critic evidence `1c3abdedcd4f494c9c3cd51bdf4b814e7b1e8597` is preserved in ancestry. This correction binds the v2 signer set to each countersignature and makes snapshot identity authority-complete; no Gate state or human policy changes.
 
 ## Expected outcome and measurement
 
@@ -122,9 +124,7 @@ always accepted, or that the feature has already reduced human time.
    unknown states are ineffective and fail closed. A policy-required in-file audit note is
    separate and cannot substitute for a required countersignature.
 
-   The frozen `required_signer_set/v1` is in the signed payload: `policy_id`,
-   `policy_version`, ordered role slots, `minimum_distinct_humans`, eligible principal IDs,
-   required count, role-slot-to-principal assignment, and forbidden role-pair/set matrix.
+   The frozen complete signer set is the signed `required_signer_set/v2` object defined in item 3; no legacy signer-set schema may be accepted.
    It requires at least two distinct human principals whenever countersignature is required;
    submitter/issuer/service/agent/evaluator/Codex identities cannot fill a human slot; one
    human cannot fill two slots; and submitter and countersigner are always a forbidden pair.
@@ -177,11 +177,11 @@ always accepted, or that the feature has already reduced human time.
    `counter_header/v3` and `counter_body/v3` each require exactly `algorithm` string
    `Ed25519`, `countersigner_idempotency_id` uuidv7, `issuer_envelope_digest` hex64,
    `issuer_envelope_b64` b64(>=2), `policy_version` string, `purpose` string
-   `pre-effect-countersignature`, `receipt_id` uuidv7, `required_set_digest` hex64,
+   `pre-effect-countersignature`, `receipt_id` uuidv7, `required_set_digest` hex64 (defined below),
    `revocation_snapshot` object, `role_slot` string, `schema` string `countersignature/v3`,
    `signed_at` time, `signer_key_id` string, `signer_principal` string,
    `signer_nonce` b64(32), `trust_policy_version` string, and `intent_digest` hex64.
-   Embedded issuer canonical bytes must hash to `issuer_envelope_digest`; repeated members
+   `required_set_preimage/v2` is exact bytes `"STEER_REQUIRED_SET_V2\0" || u64be(len(R)) || R`, where R is the RFC 8785 canonical UTF-8 bytes of the `required_signer_set/v2` object decoded from the issuer-embedded intent. `required_set_digest` is lowercase SHA-256 hex of that preimage. Each countersignature signed header and body must bind that exact digest; verifier recomputes it from the decoded issuer-signed intent and rejects any mismatch before counting a proof or changing state. Embedded issuer canonical bytes must hash to `issuer_envelope_digest`; repeated members
    must equal. Counter signature input is `"STEER_COUNTERSIGNATURE_V3\0" ||
    u64be(len(H)) || H || u64be(len(B)) || B`.
 
@@ -202,13 +202,13 @@ always accepted, or that the feature has already reduced human time.
    itself. Both issuer/counter header/body embed the complete snapshot object **including**
    `entries_digest` and `signature_b64`; their signed header/body must byte-equal it. Verifier
    separately obtains exact entry-preimage bytes and checks entries digest/signature.
-   Snapshot identity is the canonical tuple `(authority_key_id,sequence,entries_digest,issued_at,
-   effective_at,as_of,expiry,trust_policy_version)`; it must byte-equal across issuer,
+   Snapshot identity is the canonical tuple `(authority_id,authority_key_id,sequence,entries_digest,issued_at,
+   effective_at,as_of,expiry,trust_policy_version)`; it must exactly byte-equal across issuer,
    countersignatures, verifier cache, and atomic EFFECTIVE input. Highest sequence wins per
-   `(authority_id,trust_policy_version)`; lower sequence, equal sequence/different identity,
-   expiry, rollback, equivocation, missing entry bytes, or cache divergence rejects. Atomic
-   EFFECTIVE rechecks that exact unexpired identity, signatures, roles, nonces and slots. No
-   object references a later digest.
+   `(authority_id,trust_policy_version)`; lower sequence, equal sequence/different full identity,
+   authority-ID substitution, cache-namespace mismatch, rollback, equivocation, expiry, missing
+   entry bytes, or cache divergence rejects. Atomic EFFECTIVE rechecks that exact unexpired
+   full identity, signatures, roles, nonces and slots. No object references a later digest.
 
 4. **Atomic idempotency, effect, and correction without erasure:** Request identity is
    `(tenant,idempotency_id)` and receipt identity `(tenant,receipt_id)`; byte-identical
