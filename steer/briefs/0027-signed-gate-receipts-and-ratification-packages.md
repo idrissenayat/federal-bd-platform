@@ -25,6 +25,8 @@
 > identity, and non-selectable outcome/leakage rules; it changes no human policy or Gate state.
 >
 > **Final correction note — 2026-08-16:** Fresh final Critic evidence `b557858fc788a64f20c3f6c1013bd52df5ea33b8` is preserved in ancestry. This revision freezes nested byte encodings, monotonic fresh revocation snapshots, one bounded cohort, and an unsafe-null adjusted leakage decision; it does not change the pre-effect policy or Gate state.
+>
+> **Exact final correction note — 2026-08-16:** Fresh Critic evidence `4f21bfdf18debafa35965b07ab3a23ca96c0a1ae` is preserved in ancestry. This revision freezes literal nested-object schemas and an acyclic revocation-entry preimage, and uses uniform Bonferroni bounds; no human policy or Gate state changes.
 
 ## Expected outcome and measurement
 
@@ -127,42 +129,69 @@ always accepted, or that the feature has already reduced human time.
    submitter/issuer/service/agent/evaluator/Codex identities cannot fill a human slot; one
    human cannot fill two slots; and submitter and countersigner are always a forbidden pair.
    Policy may add stricter separations but cannot weaken these rules on retry.
-3. **Acyclic issuer/countersignature bytes and revocation:** RFC 8785 canonical JSON is
-   UTF-8 without BOM. Every binary value in any JSON field is the unpadded RFC 4648 §5
-   base64url text of its octets; no raw bytes, Unicode normalization, alternate base64,
-   duplicate key, or implicit character encoding is accepted. `sha256` fields are lowercase
-   hex of the referenced octets. An envelope is exactly the canonical JSON object
-   `{"body_b64":B,"header_b64":H,"signature_b64":S,"schema":V}`; `H` and `B` decode to
-   canonical JSON objects, while `S` decodes to exactly 64 Ed25519 signature octets. The
-   envelope digest is SHA-256 of canonical JSON containing `schema`, `header_b64`, and
-   `body_b64` only. Thus nested signed bytes are constructible without raw JSON ambiguity.
+3. **Literal acyclic schemas, encodings, and revocation:** All objects are RFC 8785
+   canonical JSON, UTF-8 without BOM. JSON accepts only listed members: no duplicates,
+   unknown members, omitted required member, or non-canonical decoding. `string` is Unicode
+   scalar text; `uuidv7` is lowercase canonical 36-character UUID; `hex64` is 64 lowercase
+   hex characters; `b64` is unpadded RFC4648 §5 base64url whose decoded length is stated;
+   `time` is RFC3339 UTC `YYYY-MM-DDTHH:MM:SSZ`; `u64` is a JSON integer 0..18446744073709551615.
+   Arrays are ordered exactly as stated, cardinalities are enforced, and byte digests are
+   SHA-256 lowercase `hex64` over named canonical UTF-8 bytes.
 
-   Construct `steer.decision.intent.v4` first, with receipt/idempotency IDs, tenant/scope,
-   sequence/predecessor, submitter/decision/target, policy/trust versions and required set;
-   its digest is `intent_digest`. Construct `steer.issuer.envelope.v2` next: both decoded
-   header and body bind schema, Ed25519 issuer principal/key ID, receipt ID, intent digest,
-   policy/trust versions, issued-at, nonce, purpose, and a `revocation_snapshot/v1` object.
-   It signs `"STEER_ISSUER_ENVELOPE_V2\0" || u64be(len(H)) || H || u64be(len(B)) || B`.
-   Each `steer.countersignature.proof.v3` then binds in both decoded header/body its schema,
-   Ed25519 signer/key/role, receipt and intent IDs/digests, issuer-envelope digest, required
-   set/policy/trust versions, signed-at, nonce, countersigner idempotency ID, purpose, and
-   the same `revocation_snapshot/v1`; its body embeds the issuer envelope as `issuer_envelope_b64`
-   (base64url of that envelope's canonical UTF-8 bytes). It signs
-   `"STEER_COUNTERSIGNATURE_V3\0" || u64be(len(H)) || H || u64be(len(B)) || B`.
+   `intent/v4` required members, in lexicographic canonical object order, are:
+   `decision` string, `idempotency_id` uuidv7, `policy_id` string, `policy_version` string,
+   `receipt_id` uuidv7, `required_signer_set` array 0..64, `scope` object, `sequence` u64,
+   `submitted_at` time, `submitter_principal` string, `submitter_role` string, `target` object,
+   `trust_policy_version` string, and `workflow_id` string. `scope` requires `item`,`pod`,
+   `project`,`tenant`; `target` requires `body_sha256`,`commit`,`path`,`repository_uri`;
+   each signer-set element requires `principal_id`,`role_slot` strings and `role_slot` is
+   strictly ascending UTF-8 byte order. Intent has no optional members and its digest is
+   SHA-256 of its canonical bytes.
 
-   `revocation_snapshot/v1` contains authority ID/key ID, monotonically increasing sequence,
-   issued-at, effective-at, as-of and expiry UTC RFC3339 instants, canonical snapshot digest,
-   trust-policy version, and detached authority signature. Header/body bind every field except
-   only that detached signature; its verification input is `"STEER_REVOCATION_SNAPSHOT_V1\0" ||
-   u64be(len(canonical_snapshot_without_signature)) || canonical_snapshot_without_signature`.
-   Offline verification reconstructs intent → issuer envelope → each proof, checks every
-   base64url/canonical form and signature, certificate/role chain, snapshot authority/digest,
-   `effective_at <= signed_at <= expiry`, `as_of >= signed_at`, policy version, nonce/slot
-   uniqueness and all required roles. It retains the highest valid snapshot sequence per
-   `(authority,trust-policy)`; lower sequence, same-sequence different digest, expired/stale
-   snapshot, rollback, equivocation, missing authority proof, or divergent cache is rejected.
-   Atomic effect re-verifies the same signed snapshot and also requires it unexpired at commit;
-   unavailable/freshness-ambiguous state is ineffective. No proof references a later object.
+   Every outer envelope has exactly `body_b64` b64(>=2 bytes), `header_b64` b64(>=2 bytes),
+   `schema` string, and `signature_b64` b64(64 bytes). Decoded header/body are canonical
+   JSON with exactly the member sets below; envelope digest preimage is domain-separated
+   `"STEER_ENVELOPE_DIGEST_V1\0" || u64be(len(schema)) || schema_UTF8 || u64be(len(H)) || H ||
+   u64be(len(B)) || B`, excluding signature, where H/B are decoded canonical bytes.
+   `issuer_header/v2` and `issuer_body/v2` each require exactly `algorithm` string `Ed25519`,
+   `issuer_key_id` string, `issuer_principal` string, `issued_at` time, `issuer_nonce` b64(32),
+   `intent_digest` hex64, `policy_version` string, `purpose` string `issuer-attestation`,
+   `receipt_id` uuidv7, `revocation_snapshot` object, `schema` string `issuer/v2`, and
+   `trust_policy_version` string; issuer body additionally requires `intent_b64` b64(>=2).
+   The decoded intent must equal `intent_digest`; repeated header/body members must equal.
+   Issuer signature input is `"STEER_ISSUER_ENVELOPE_V2\0" || u64be(len(H)) || H ||
+   u64be(len(B)) || B`.
+
+   `counter_header/v3` and `counter_body/v3` each require exactly `algorithm` string
+   `Ed25519`, `countersigner_idempotency_id` uuidv7, `issuer_envelope_digest` hex64,
+   `issuer_envelope_b64` b64(>=2), `policy_version` string, `purpose` string
+   `pre-effect-countersignature`, `receipt_id` uuidv7, `required_set_digest` hex64,
+   `revocation_snapshot` object, `role_slot` string, `schema` string `countersignature/v3`,
+   `signed_at` time, `signer_key_id` string, `signer_principal` string,
+   `signer_nonce` b64(32), `trust_policy_version` string, and `intent_digest` hex64.
+   Embedded issuer canonical bytes must hash to `issuer_envelope_digest`; repeated members
+   must equal. Counter signature input is `"STEER_COUNTERSIGNATURE_V3\0" ||
+   u64be(len(H)) || H || u64be(len(B)) || B`.
+
+   `revocation_entry/v1` has exactly `key_id` string, `principal_id` string, `reason` string,
+   `revoked_at` time, `schema` string `revocation-entry/v1`, and `sequence` u64; entries are
+   strictly ascending tuple `(sequence,key_id,principal_id)` by UTF-8 bytes, unique key IDs,
+   and invalid/duplicate/out-of-order entry rejects the snapshot. Empty `entries` is allowed
+   and is canonical `[]`. `revocation_entries_preimage/v1` is exactly canonical JSON object
+   `{"entries":[...],"schema":"revocation-entries-preimage/v1"}` containing entries only;
+   its digest is SHA-256 of these canonical bytes, and it contains no digest field. A
+   `revocation_snapshot/v1` has exactly `as_of`,`authority_id`,`authority_key_id`,`effective_at`,
+   `entries_digest`,`expiry`,`issued_at` (all ID/time types above), `schema` string
+   `revocation-snapshot/v1`, `sequence` u64, `trust_policy_version` string, and
+   `signature_b64` b64(64). Snapshot signature preimage is domain-separated
+   `"STEER_REVOCATION_SNAPSHOT_V1\0" || u64be(len(snapshot_without_signature)) ||
+   snapshot_without_signature`; it binds every metadata member and `entries_digest` but never
+   itself. Both issuer/counter header/body embed the complete snapshot except signature and
+   its `entries_digest`; verifier separately obtains exact preimage bytes/entries and checks
+   digest/signature. Highest sequence wins per `(authority_id,trust_policy_version)`;
+   lower sequence, equal sequence/different digest, expiry, rollback, equivocation, missing
+   entry bytes, or cache divergence rejects. Atomic EFFECTIVE rechecks the same unexpired
+   snapshot, signatures, roles, nonces and slots. No object references a later digest.
 4. **Atomic idempotency, effect, and correction without erasure:** Request identity is
    `(tenant,idempotency_id)` and receipt identity `(tenant,receipt_id)`; byte-identical
    retries return the stored result and any mismatch conflicts. One durable CAS transaction
@@ -272,31 +301,28 @@ always accepted, or that the feature has already reduced human time.
     privilege are explicit and tested. Unknown/revoked keys, unavailable verification,
     signer outage, principal-type confusion, cross-tenant access, and forged display
     names hold the action rather than falling back to unsigned acceptance.
-13. **One bounded cohort and specified adaptive leakage decision:** This paragraph is the
-    sole outcome cohort rule and supersedes every earlier observation-window wording. Before
-    start, humans freeze `supported_decision_universe/v2`: all in-scope Gate/RAT kinds and
-    tenants, deterministic predicate, UTC `start_at`/`end_at`, finite positive N, log source
-    and version. Each matching request receives its monotonic source sequence and is enrolled
-    before generation; cohort closure is the earlier of `end_at` or the Nth enrollment. It
-    never extends or substitutes a unit. The fixed denominator is every enrolled
-    `eligible_unit` (denial/failure/abandonment/missing output included). Log or reconciliation
-    mismatch, unavailable source, or ambiguous tie ordering is `INCONCLUSIVE`, never pass.
+13. **One bounded cohort and Bonferroni simultaneous leakage decision:** This is the sole
+    outcome cohort rule. `supported_decision_universe/v2` freezes scope, predicate, UTC
+    start/end, finite N and source ordering before enrollment; every matching request is
+    enrolled before generation. Closure is earlier of end or Nth enrollment; every enrolled
+    `eligible_unit` is denominator. Any source/tie/reconciliation/missing-error ambiguity
+    is `INCONCLUSIVE`, never pass.
 
-    `blind-leakage-oracle/v3` freezes features, family-disjoint train/calibration/sealed-test
-    split, attack code/version, deterministic adaptive budget and resampling seed. For each
-    attack a and balanced secret classes S/S', estimand is test advantage
-    A_a=|P(a(X)=S)-P(a(X)=S')|; aggregate A=max_a A_a. The unsafe null is H0: A > delta;
-    safe alternative is H1: A <= delta. Pass only if every attack's Holm-adjusted one-sided
-    95% upper confidence bound U_a is <= delta; otherwise fail/inconclusive. For each attack,
-    draw exactly 10,000 stratified fixture-family bootstrap resamples using frozen seed,
-    calculate advantage, and form the unadjusted one-sided upper percentile bound at level
-    `1-alpha_i`, where Holm allocates alpha_i=.05/(m-i+1) after sorting deterministic
-    attack identifiers by descending observed A_a (ties lexicographic). U_a is the specified
-    percentile of that attack's 10,000 samples; m equals all fixed and budget-admitted adaptive
-    candidates, including failed candidates. Selection uses train/calibration only, then one
-    sealed test run. Power requires >=80% at alpha .05 to reject unsafe H0 when true
-    A=delta-epsilon, with frozen family/sample count; failed bootstrap, exhausted/ambiguous
-    budget, contamination, insufficient power/data, or any U_a>delta fails closed.
+    `blind-leakage-oracle/v4` freezes immutable positive integer `m` (1..1024), comparison
+    IDs in strict ascending UTF-8 byte order, features, family-disjoint strata, attack code,
+    budget, seed, delta, epsilon, sample/power inputs and one sealed test. Exactly those m
+    comparisons run; no rank/order/test-data selection changes m. For attack a, advantage is
+    A_a=|P(a(X)=S)-P(a(X)=S')| and aggregate A=max A_a. Unsafe null is H0: A>delta; safe
+    alternative H1: A<=delta. For every comparison use uniform Bonferroni alpha=.05/m and
+    one-sided confidence level 1-.05/m. Draw exactly 10,000 stratified family bootstrap
+    resamples with the frozen deterministic seed; bootstrap stratum order is comparison ID,
+    then fixture-family UTF-8 order, then source sequence. U_a is the ceiling-index empirical
+    quantile `ceil(10000*(1-.05/m))` of sorted resampled advantages (ties retain all equal
+    values). PASS iff every U_a<=delta, the precommitted >=80% power at alpha .05 for
+    A=delta-epsilon holds, and every quality rule holds. Missing comparison, duplicate ID,
+    seed/resample error, contamination, budget error, insufficient power/data, or any other
+    outcome has precedence `INCONCLUSIVE`/fail closed over PASS. There is no Holm, ranking,
+    adaptive alpha, or test-data-dependent confidence level.
 
     `practical_payload_maxima/v1` separately freezes production byte maxima. The distinct
     `synthetic_u64_parser_edges/v1` corpus tests near-2^64 declared lengths, overflow and
