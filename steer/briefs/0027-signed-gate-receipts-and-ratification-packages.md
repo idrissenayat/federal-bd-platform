@@ -161,18 +161,31 @@ always accepted, or that the feature has already reduced human time.
 
 
    Every outer envelope has exactly `body_b64` b64(>=2 bytes), `header_b64` b64(>=2 bytes),
-   `schema` string, and `signature_b64` b64(64 bytes). Decoded header/body are canonical
-   JSON with exactly the member sets below; envelope digest preimage is domain-separated
-   `"STEER_ENVELOPE_DIGEST_V1\0" || u64be(len(schema)) || schema_UTF8 || u64be(len(H)) || H ||
-   u64be(len(B)) || B`, excluding signature, where H/B are decoded canonical bytes.
+   `schema` string, and `signature_b64` b64(64 bytes). Its `schema` discriminator is exactly
+   either `issuer/v2` or `countersignature/v3`: unknown values reject. After unpadded-base64url
+   decoding and before cryptographic or state processing, outer `issuer/v2` requires both decoded
+   protected header and body `schema` members to equal `issuer/v2`; outer `countersignature/v3`
+   requires both to equal `countersignature/v3`. Any substituted or mismatched discriminator,
+   including on the zero-countersigner path, rejects. Decoded header/body are canonical JSON with
+   exactly the member sets below; envelope digest preimage is domain-separated
+   `"STEER_ENVELOPE_DIGEST_V1\0" || u64be(len(S)) || S || u64be(len(H)) || H ||
+   u64be(len(B)) || B`, excluding signature, where S is exact UTF-8 outer-discriminator bytes
+   and H/B are decoded canonical bytes.
    `issuer_header/v2` and `issuer_body/v2` each require exactly `algorithm` string `Ed25519`,
    `issuer_key_id` string, `issuer_principal` string, `issued_at` time, `issuer_nonce` b64(32),
    `intent_digest` hex64, `policy_version` string, `purpose` string `issuer-attestation`,
    `receipt_id` uuidv7, `revocation_snapshot` object, `schema` string `issuer/v2`, and
    `trust_policy_version` string; issuer body additionally requires `intent_b64` b64(>=2).
-   The decoded intent must equal `intent_digest`; repeated header/body members must equal.
-   Issuer signature input is `"STEER_ISSUER_ENVELOPE_V2\0" || u64be(len(H)) || H ||
-   u64be(len(B)) || B`.
+   `intent_canonical_bytes` are the exact RFC 8785 canonical UTF-8 bytes obtained only after
+   unpadded-base64url decoding `intent_b64` and successful literal `intent/v4` validation;
+   noncanonical decoded bytes, decode failure, or validation failure rejects. `intent_digest` is
+   lowercase SHA-256 hex of those exact bytes. Verifier recomputes it and requires constant-time
+   equality to every signed issuer and countersignature header/body `intent_digest` before
+   signature acceptance, proof counting, or state change; any digest mismatch rejects. Repeated
+   header/body members must equal. Issuer signature input is
+   `"STEER_ISSUER_ENVELOPE_V2\0" || u64be(len(S)) || S || u64be(len(H)) || H ||
+   u64be(len(B)) || B`, where S/H/B are the validated outer discriminator and decoded canonical
+   protected bytes above.
 
    `counter_header/v3` and `counter_body/v3` each require exactly `algorithm` string
    `Ed25519`, `countersigner_idempotency_id` uuidv7, `issuer_envelope_digest` hex64,
@@ -183,7 +196,8 @@ always accepted, or that the feature has already reduced human time.
    `signer_nonce` b64(32), `trust_policy_version` string, and `intent_digest` hex64.
    `required_set_preimage/v2` is exact bytes `"STEER_REQUIRED_SET_V2\0" || u64be(len(R)) || R`, where R is the RFC 8785 canonical UTF-8 bytes of the `required_signer_set/v2` object decoded from the issuer-embedded intent. `required_set_digest` is lowercase SHA-256 hex of that preimage. Each countersignature signed header and body must bind that exact digest; verifier recomputes it from the decoded issuer-signed intent and rejects any mismatch before counting a proof or changing state. Embedded issuer canonical bytes must hash to `issuer_envelope_digest`; repeated members
    must equal. Counter signature input is `"STEER_COUNTERSIGNATURE_V3\0" ||
-   u64be(len(H)) || H || u64be(len(B)) || B`.
+   u64be(len(S)) || S || u64be(len(H)) || H || u64be(len(B)) || B`, where S/H/B are the
+   validated outer discriminator and decoded canonical protected bytes above.
 
    `revocation_entry/v1` has exactly `key_id` string, `principal_id` string, `reason` string,
    `revoked_at` time, `schema` string `revocation-entry/v1`, and `sequence` u64; entries are
