@@ -138,15 +138,27 @@ always accepted, or that the feature has already reduced human time.
    Arrays are ordered exactly as stated, cardinalities are enforced, and byte digests are
    SHA-256 lowercase `hex64` over named canonical UTF-8 bytes.
 
-   `intent/v4` required members, in lexicographic canonical object order, are:
-   `decision` string, `idempotency_id` uuidv7, `policy_id` string, `policy_version` string,
-   `receipt_id` uuidv7, `required_signer_set` array 0..64, `scope` object, `sequence` u64,
-   `submitted_at` time, `submitter_principal` string, `submitter_role` string, `target` object,
-   `trust_policy_version` string, and `workflow_id` string. `scope` requires `item`,`pod`,
-   `project`,`tenant`; `target` requires `body_sha256`,`commit`,`path`,`repository_uri`;
-   each signer-set element requires `principal_id`,`role_slot` strings and `role_slot` is
-   strictly ascending UTF-8 byte order. Intent has no optional members and its digest is
-   SHA-256 of its canonical bytes.
+   `intent/v4` has exactly `decision` string, `idempotency_id` uuidv7, `policy_id` string,
+   `policy_version` string, `receipt_id` uuidv7, `required_signer_set` object, `scope` object,
+   `sequence` u64, `submitted_at` time, `submitter_principal` string, `submitter_role` string,
+   `target` object, `trust_policy_version` string, and `workflow_id` string. `scope` requires
+   `item`,`pod`,`project`,`tenant`; `target` requires `body_sha256`,`commit`,`path`,
+   `repository_uri`. Intent has no optional members and its digest is SHA-256 canonical bytes.
+   `required_signer_set/v2` has exactly `eligible_principal_universe` array 1..64,
+   `forbidden_role_coassignment` array 0..2016, `minimum_distinct_humans` u64 0..64,
+   `required_count` u64 0..64, `schema` string `required-signer-set/v2`, and `slot_assignments`
+   array 0..64. Eligible-universe elements are exactly `principal_id` string and `role_slot`
+   string; their `role_slot` values are strictly ascending UTF-8 bytes, unique, and each
+   principal ID occurs once. Slot-assignment elements are exactly `principal_id` string and
+   `role_slot` string, ordered by role slot, unique by both role slot and principal ID, and
+   each must equal one eligible-universe pair. Forbidden-coassignment elements are exactly
+   `left_role_slot` and `right_role_slot` strings, with left < right UTF-8, sorted lexicographically,
+   unique, and both slots present in the eligible universe. `required_count` equals assignment
+   cardinality; `minimum_distinct_humans <= required_count`; zero count requires zero minimum
+   and zero assignments; nonzero count requires at least two distinct assigned human principals
+   where countersignature is required. No verifier uses unsigned policy data: it derives every
+   eligible principal, required slot, distinct-human rule and forbidden pairing from this object.
+
 
    Every outer envelope has exactly `body_b64` b64(>=2 bytes), `header_b64` b64(>=2 bytes),
    `schema` string, and `signature_b64` b64(64 bytes). Decoded header/body are canonical
@@ -180,18 +192,24 @@ always accepted, or that the feature has already reduced human time.
    and is canonical `[]`. `revocation_entries_preimage/v1` is exactly canonical JSON object
    `{"entries":[...],"schema":"revocation-entries-preimage/v1"}` containing entries only;
    its digest is SHA-256 of these canonical bytes, and it contains no digest field. A
-   `revocation_snapshot/v1` has exactly `as_of`,`authority_id`,`authority_key_id`,`effective_at`,
-   `entries_digest`,`expiry`,`issued_at` (all ID/time types above), `schema` string
-   `revocation-snapshot/v1`, `sequence` u64, `trust_policy_version` string, and
-   `signature_b64` b64(64). Snapshot signature preimage is domain-separated
-   `"STEER_REVOCATION_SNAPSHOT_V1\0" || u64be(len(snapshot_without_signature)) ||
+   `revocation_snapshot/v1` has exactly `as_of` time, `authority_id` string,
+   `authority_key_id` string, `effective_at` time, `entries_digest` hex64, `expiry` time,
+   `issued_at` time, `schema` string `revocation-snapshot/v1`, `sequence` u64,
+   `trust_policy_version` string, and `signature_b64` b64(64). Thus every member has an
+   explicit primitive type/range/format. Snapshot signature preimage is domain-separated
+   `"STEER_REVOCATION_SNAPSHOT_V1\\0" || u64be(len(snapshot_without_signature)) ||
    snapshot_without_signature`; it binds every metadata member and `entries_digest` but never
-   itself. Both issuer/counter header/body embed the complete snapshot except signature and
-   its `entries_digest`; verifier separately obtains exact preimage bytes/entries and checks
-   digest/signature. Highest sequence wins per `(authority_id,trust_policy_version)`;
-   lower sequence, equal sequence/different digest, expiry, rollback, equivocation, missing
-   entry bytes, or cache divergence rejects. Atomic EFFECTIVE rechecks the same unexpired
-   snapshot, signatures, roles, nonces and slots. No object references a later digest.
+   itself. Both issuer/counter header/body embed the complete snapshot object **including**
+   `entries_digest` and `signature_b64`; their signed header/body must byte-equal it. Verifier
+   separately obtains exact entry-preimage bytes and checks entries digest/signature.
+   Snapshot identity is the canonical tuple `(authority_key_id,sequence,entries_digest,issued_at,
+   effective_at,as_of,expiry,trust_policy_version)`; it must byte-equal across issuer,
+   countersignatures, verifier cache, and atomic EFFECTIVE input. Highest sequence wins per
+   `(authority_id,trust_policy_version)`; lower sequence, equal sequence/different identity,
+   expiry, rollback, equivocation, missing entry bytes, or cache divergence rejects. Atomic
+   EFFECTIVE rechecks that exact unexpired identity, signatures, roles, nonces and slots. No
+   object references a later digest.
+
 4. **Atomic idempotency, effect, and correction without erasure:** Request identity is
    `(tenant,idempotency_id)` and receipt identity `(tenant,receipt_id)`; byte-identical
    retries return the stored result and any mismatch conflicts. One durable CAS transaction
@@ -318,8 +336,7 @@ always accepted, or that the feature has already reduced human time.
     resamples with the frozen deterministic seed; bootstrap stratum order is comparison ID,
     then fixture-family UTF-8 order, then source sequence. U_a is the ceiling-index empirical
     quantile `ceil(10000*(1-.05/m))` of sorted resampled advantages (ties retain all equal
-    values). PASS iff every U_a<=delta, the precommitted >=80% power at alpha .05 for
-    A=delta-epsilon holds, and every quality rule holds. Missing comparison, duplicate ID,
+    values). PASS iff every U_a<=delta, the precommitted >=80% power at the actual per-comparison Bonferroni alpha .05/m for **every** comparison at fixed alternative A=delta+epsilon holds, and every quality rule holds. Missing comparison, duplicate ID,
     seed/resample error, contamination, budget error, insufficient power/data, or any other
     outcome has precedence `INCONCLUSIVE`/fail closed over PASS. There is no Holm, ranking,
     adaptive alpha, or test-data-dependent confidence level.
