@@ -23,6 +23,8 @@
 > `a085abebf3f89c95e2f7323ff2f75d328833e3c9` is preserved in this revision's ancestry.
 > This narrow correction freezes acyclic issuer/countersignature objects, audit-descendant
 > identity, and non-selectable outcome/leakage rules; it changes no human policy or Gate state.
+>
+> **Final correction note — 2026-08-16:** Fresh final Critic evidence `b557858fc788a64f20c3f6c1013bd52df5ea33b8` is preserved in ancestry. This revision freezes nested byte encodings, monotonic fresh revocation snapshots, one bounded cohort, and an unsafe-null adjusted leakage decision; it does not change the pre-effect policy or Gate state.
 
 ## Expected outcome and measurement
 
@@ -44,10 +46,7 @@
   of ledger rows, never merely generated or completed packages. STR-024's ten proposed
   `RAT-*` rows are not human-ratified and its B01–B12 custody package is absent.
 
-- **Observation window:** Report at the first 10 eligible Gate or RAT packages or 30
-  calendar days after a controlled release, whichever occurs first; if fewer than 10
-  packages exist at day 30, extend only until 10. Freeze the cohort rule and supported
-  decision types before Gate 2.
+- **Observation window:** The sole bounded cohort contract is `supported_decision_universe/v2` in item 13; it replaces all earlier observation-window text. No measurement window is valid until that frozen UTC/N contract is human-ratified.
 - **Proposed minimum meaningful signal:** 100% of submitted human rulings verify against
   the exact target revision, required role, event sequence, and issuer key; at least 90%
   of eligible packages reach a human-ready state with AI-prepared recommendation and
@@ -128,47 +127,51 @@ always accepted, or that the feature has already reduced human time.
    submitter/issuer/service/agent/evaluator/Codex identities cannot fill a human slot; one
    human cannot fill two slots; and submitter and countersigner are always a forbidden pair.
    Policy may add stricter separations but cannot weaken these rules on retry.
-3. **Acyclic issuer and countersignature proof objects:** All objects are RFC 8785
-   canonical JSON encoded UTF-8 without BOM; SHA-256 means lowercase hex over those bytes.
-   First construct `steer.decision.intent.v3` containing schema, `receipt_id` (UUIDv7),
-   idempotency ID, tenant/scope/workflow/Gate-or-RAT, sequence/predecessor digest,
-   submitter principal/role, decision/reason digest, submitted-at, exact target identity,
-   `policy_id`/version, `trust_profile_id`/version, and complete `required_signer_set/v1`.
-   It contains no issuer proof or countersignature. Its digest is `intent_digest`.
+3. **Acyclic issuer/countersignature bytes and revocation:** RFC 8785 canonical JSON is
+   UTF-8 without BOM. Every binary value in any JSON field is the unpadded RFC 4648 §5
+   base64url text of its octets; no raw bytes, Unicode normalization, alternate base64,
+   duplicate key, or implicit character encoding is accepted. `sha256` fields are lowercase
+   hex of the referenced octets. An envelope is exactly the canonical JSON object
+   `{"body_b64":B,"header_b64":H,"signature_b64":S,"schema":V}`; `H` and `B` decode to
+   canonical JSON objects, while `S` decodes to exactly 64 Ed25519 signature octets. The
+   envelope digest is SHA-256 of canonical JSON containing `schema`, `header_b64`, and
+   `body_b64` only. Thus nested signed bytes are constructible without raw JSON ambiguity.
 
-   Next construct `steer.issuer.envelope.v1`: protected header and body each contain
-   schema, algorithm Ed25519, issuer principal/key ID, `receipt_id`, `intent_digest`,
-   policy/trust versions, issuer-signed-at UTC RFC3339, issuer nonce (32 random base64url
-   bytes), and purpose `issuer-attestation`; body additionally contains the exact intent
-   bytes. The issuer signs `"STEER_ISSUER_ENVELOPE_V1\0" || u64be(len(header)) || header ||
-   u64be(len(body)) || body`. The envelope digest is SHA-256 of canonical envelope fields
-   excluding only its detached signature. Thus neither intent nor issuer envelope refers
-   to a later object.
+   Construct `steer.decision.intent.v4` first, with receipt/idempotency IDs, tenant/scope,
+   sequence/predecessor, submitter/decision/target, policy/trust versions and required set;
+   its digest is `intent_digest`. Construct `steer.issuer.envelope.v2` next: both decoded
+   header and body bind schema, Ed25519 issuer principal/key ID, receipt ID, intent digest,
+   policy/trust versions, issued-at, nonce, purpose, and a `revocation_snapshot/v1` object.
+   It signs `"STEER_ISSUER_ENVELOPE_V2\0" || u64be(len(H)) || H || u64be(len(B)) || B`.
+   Each `steer.countersignature.proof.v3` then binds in both decoded header/body its schema,
+   Ed25519 signer/key/role, receipt and intent IDs/digests, issuer-envelope digest, required
+   set/policy/trust versions, signed-at, nonce, countersigner idempotency ID, purpose, and
+   the same `revocation_snapshot/v1`; its body embeds the issuer envelope as `issuer_envelope_b64`
+   (base64url of that envelope's canonical UTF-8 bytes). It signs
+   `"STEER_COUNTERSIGNATURE_V3\0" || u64be(len(H)) || H || u64be(len(B)) || B`.
 
-   Then construct one `steer.countersignature.proof.v2` per role slot: protected header and
-   signed body both bind schema, Ed25519 key ID, signer principal, assigned role slot,
-   `receipt_id`, `intent_digest`, `issuer_envelope_digest`, policy/trust versions,
-   required-set digest, signed-at UTC RFC3339, nonce (32 random base64url bytes), purpose
-   `pre-effect-countersignature`, and countersigner idempotency ID. The body also contains
-   the exact issuer envelope bytes. The signer signs
-   `"STEER_COUNTERSIGNATURE_V2\0" || u64be(len(header)) || header ||
-   u64be(len(body)) || body`; only detached signature lies outside signed bytes. Reject
-   duplicate JSON keys, mismatched repeated fields, alternate encodings/algorithms,
-   non-canonical input, replayed `(receipt_id, role_slot, nonce)`, or changed policy/set.
-   Offline verification reconstructs intent, issuer envelope, and each proof in that order;
-   validates all signatures, canonical bytes, principal/key/role certificate chain, signed
-   revocation snapshot and sequence, freshness, target/sequence, uniqueness and every
-   required slot. Missing/stale/unknown/revoked trust state fails closed.
+   `revocation_snapshot/v1` contains authority ID/key ID, monotonically increasing sequence,
+   issued-at, effective-at, as-of and expiry UTC RFC3339 instants, canonical snapshot digest,
+   trust-policy version, and detached authority signature. Header/body bind every field except
+   only that detached signature; its verification input is `"STEER_REVOCATION_SNAPSHOT_V1\0" ||
+   u64be(len(canonical_snapshot_without_signature)) || canonical_snapshot_without_signature`.
+   Offline verification reconstructs intent → issuer envelope → each proof, checks every
+   base64url/canonical form and signature, certificate/role chain, snapshot authority/digest,
+   `effective_at <= signed_at <= expiry`, `as_of >= signed_at`, policy version, nonce/slot
+   uniqueness and all required roles. It retains the highest valid snapshot sequence per
+   `(authority,trust-policy)`; lower sequence, same-sequence different digest, expired/stale
+   snapshot, rollback, equivocation, missing authority proof, or divergent cache is rejected.
+   Atomic effect re-verifies the same signed snapshot and also requires it unexpired at commit;
+   unavailable/freshness-ambiguous state is ineffective. No proof references a later object.
 4. **Atomic idempotency, effect, and correction without erasure:** Request identity is
    `(tenant,idempotency_id)` and receipt identity `(tenant,receipt_id)`; byte-identical
    retries return the stored result and any mismatch conflicts. One durable CAS transaction
-   verifies the acyclic issuer envelope and all proof bodies under their signed revocation
-   snapshot and current no-weaker policy, appends immutable accept/reject events, and writes
-   each unique role slot once. It transitions `PENDING_PROOF → PENDING_COUNTERSIGNATURE →
-   EFFECTIVE` exactly once (direct effect only when frozen required count is zero); mirrors
-   and dependent projection updates occur only in that same effective transaction. Crash or
-   replay returns the persisted state and cannot confer effect. Corrections are new linked
-   intents, never edits.
+   verifies the acyclic issuer envelope, monotonic fresh snapshot, and all proof bodies,
+   appends immutable accept/reject events, and writes each unique role slot once. It
+   transitions `PENDING_PROOF → PENDING_COUNTERSIGNATURE → EFFECTIVE` exactly once (direct
+   effect only when frozen required count is zero); mirrors/dependent projections occur only
+   in that effective transaction. Crash/replay returns persisted state and cannot confer
+   effect. Corrections are new linked intents, never edits.
 5. **Policy-compliant Gate 1 exact-revision identity:** Before a human note, the proposed
    Brief is `pre_note_commit`; its substantive body is UTF-8 bytes from the first heading
    through the line before `---`, after normalizing LF line endings and excluding exactly
@@ -269,30 +272,31 @@ always accepted, or that the feature has already reduced human time.
     privilege are explicit and tested. Unknown/revoked keys, unavailable verification,
     signer outage, principal-type confusion, cross-tenant access, and forged display
     names hold the action rather than falling back to unsigned acceptance.
-13. **Non-selectable outcome and mathematically specified adaptive leakage oracle:** Before
-    cohort start, humans freeze `supported_decision_universe/v1`: all Gate/RAT kinds and
-    tenants in scope, a deterministic request predicate, UTC start/end, and a finite
-    `N` enrollment cap. The authoritative request log assigns monotonically increasing
-    sequence; every matching request is enrolled before generation with no operator choice.
-    Cohort closes at `min(end,Nth enrolled request)` and never extends; denominator is all
-    enrolled `eligible_unit` rows, including denial, failure, abandonment and missing output.
-    No later decision type or request exclusion is permitted; log/reconciliation mismatch is
-    `INCONCLUSIVE` and fails closed.
+13. **One bounded cohort and specified adaptive leakage decision:** This paragraph is the
+    sole outcome cohort rule and supersedes every earlier observation-window wording. Before
+    start, humans freeze `supported_decision_universe/v2`: all in-scope Gate/RAT kinds and
+    tenants, deterministic predicate, UTC `start_at`/`end_at`, finite positive N, log source
+    and version. Each matching request receives its monotonic source sequence and is enrolled
+    before generation; cohort closure is the earlier of `end_at` or the Nth enrollment. It
+    never extends or substitutes a unit. The fixed denominator is every enrolled
+    `eligible_unit` (denial/failure/abandonment/missing output included). Log or reconciliation
+    mismatch, unavailable source, or ambiguous tie ordering is `INCONCLUSIVE`, never pass.
 
-    `blind-leakage-oracle/v2` fixes public features, fixture-family-disjoint train/calibrate/
-    test split, attack code/versions/seeds, and adaptive search budget. Estimand is the
-    maximum test-set advantage `max_a |P(a(X)=S)-P(a(X)=S')|` over the fixed attack suite
-    and permitted adaptive candidates, with S/S' balanced secret classes. Null is advantage
-    `<= delta`; pass requires the one-sided 95% simultaneous upper confidence bound for
-    every attack `<= delta`. Each bound is the 97.5th percentile of 10,000 stratified
-    fixture-family bootstrap resamples; Holm adjustment covers all attacks/candidates.
-    Candidate selection may use train plus locked calibration only, then exactly one sealed
-    test evaluation; two specified baselines and any adaptive model must use the frozen
-    feature set/budget. Power freezes minimum test families/samples to provide >=80% power
-    at alpha .05 to reject the null at effect `delta+epsilon`; insufficient data, split
-    contamination, failed resampling, exhausted budget ambiguity, or any bound above delta
-    is `INCONCLUSIVE`/fail closed. Custodian signs all oracle/split/code/threshold/power
-    digests before output.
+    `blind-leakage-oracle/v3` freezes features, family-disjoint train/calibration/sealed-test
+    split, attack code/version, deterministic adaptive budget and resampling seed. For each
+    attack a and balanced secret classes S/S', estimand is test advantage
+    A_a=|P(a(X)=S)-P(a(X)=S')|; aggregate A=max_a A_a. The unsafe null is H0: A > delta;
+    safe alternative is H1: A <= delta. Pass only if every attack's Holm-adjusted one-sided
+    95% upper confidence bound U_a is <= delta; otherwise fail/inconclusive. For each attack,
+    draw exactly 10,000 stratified fixture-family bootstrap resamples using frozen seed,
+    calculate advantage, and form the unadjusted one-sided upper percentile bound at level
+    `1-alpha_i`, where Holm allocates alpha_i=.05/(m-i+1) after sorting deterministic
+    attack identifiers by descending observed A_a (ties lexicographic). U_a is the specified
+    percentile of that attack's 10,000 samples; m equals all fixed and budget-admitted adaptive
+    candidates, including failed candidates. Selection uses train/calibration only, then one
+    sealed test run. Power requires >=80% at alpha .05 to reject unsafe H0 when true
+    A=delta-epsilon, with frozen family/sample count; failed bootstrap, exhausted/ambiguous
+    budget, contamination, insufficient power/data, or any U_a>delta fails closed.
 
     `practical_payload_maxima/v1` separately freezes production byte maxima. The distinct
     `synthetic_u64_parser_edges/v1` corpus tests near-2^64 declared lengths, overflow and
