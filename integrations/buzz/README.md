@@ -66,13 +66,18 @@ and `buzz` binaries at the same pinned Block Buzz commit as the hosted relay. Th
 worker uses Buzz's built-in OpenAI-compatible runtime so it does not depend on an
 interactive Codex or Claude login.
 
-Deploy one Railway service per activated identity from this repository and branch.
+Prefer one Railway service per activated identity. When the Railway account cannot
+provision another service, the same image can supervise multiple separately signed
+identities by setting `STEER_AGENT_ROLES`. Shared-service mode still requires a unique
+private key, prompt, and model variable for every role; `BUZZ_ACP_AGENTS` alone is not
+sufficient because Block Buzz documents that its pool shares one Nostr identity.
+
 Set `RAILWAY_DOCKERFILE_PATH=/integrations/buzz/Dockerfile.worker`, then copy the
-non-secret settings from `railway-worker.env.example`. Add the identity's unique
-`BUZZ_PRIVATE_KEY`, its provider key, and its role-specific
-`BUZZ_AGENT_SYSTEM_PROMPT` only as sealed Railway service variables. Set
-`BUZZ_ACP_AGENT_OWNER` to the human owner's public key when using `owner-only`; without
-that public identity (or a verified `BUZZ_AUTH_TAG`), the harness intentionally drops
+non-secret settings from `railway-worker.env.example`. Add each identity's unique
+private key, its provider key, and its role-specific system prompt only as sealed
+Railway service variables. Set `BUZZ_ACP_AGENT_OWNER` to the human owner's public key
+when using `owner-only`; without that public identity (or a verified `BUZZ_AUTH_TAG`),
+the harness intentionally drops
 every inbound event. Do not reuse a Buzz identity key between services.
 
 Start with one owner-only Builder proof before activating the remaining roles. A

@@ -48,6 +48,7 @@ RUN apt-get update \
         --home-dir /var/lib/buzz-worker --shell /bin/bash buzz-worker
 
 COPY --from=builder /out/ /usr/local/bin/
+COPY --chmod=0755 integrations/buzz/run-steer-agents.sh /usr/local/bin/run-steer-agents
 
 ENV BUZZ_ACP_AGENT_COMMAND=/usr/local/bin/buzz-agent \
     BUZZ_ACP_AGENT_ARGS="" \
@@ -61,4 +62,4 @@ ENV BUZZ_ACP_AGENT_COMMAND=/usr/local/bin/buzz-agent \
 USER buzz-worker:buzz-worker
 WORKDIR /var/lib/buzz-worker
 
-ENTRYPOINT ["/usr/local/bin/buzz-acp"]
+ENTRYPOINT ["/usr/local/bin/run-steer-agents"]
