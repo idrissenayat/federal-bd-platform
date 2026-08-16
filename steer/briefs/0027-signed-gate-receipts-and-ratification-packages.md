@@ -7,6 +7,18 @@
 **Workflow:** STEER (frozen)
 **Assignment:** STEER Scout Agent; Sense-stage Intent Brief and evidence only
 
+> **Revision note — 2026-08-16 (pre-effect countersignature):** This revision implements
+> the authorized human policy that a ruling requiring countersignature remains
+> `PENDING_COUNTERSIGNATURE` and has **no effect** until every required independently
+> authenticated human has signed. It supersedes the earlier contradictory direct
+> `PENDING_PROOF → EFFECTIVE` / post-effect-countersignature description; the prior Brief
+> remains preserved in Git history. It also addresses fresh Critic findings at
+> `4cf5cd7a5ef37c421f4f232f3cc5c41fdc7f1296`: freeze a verifiable countersignature
+> protocol, competent blind-leakage oracle, `eligible_unit` denominator, distinct-human
+> rules, and separate practical payload limits from synthetic U64 parser-edge vectors.
+> Independent Test evidence `5769788c7b97a36a412492e9c6ee2b41dd554038` is preserved in
+> this revision's ancestry. This note is not a Gate 1 receipt or ruling.
+
 ## Expected outcome and measurement
 
 - **Primary outcome:** An authorized human can review and act on one AI-prepared,
@@ -18,13 +30,15 @@
   separate from agent/evaluator evidence, then qualified humans will spend less time
   reconstructing evidence or filling administrative fields without weakening human-only
   authority. This is a hypothesis, not an observed result.
-- **Baseline / denominator:** STR-024 currently has an authenticated Work Management
-  Gate 1 ruling but no independently exportable signed receipt, countersignature, or
-  policy-compliant in-file audit note. Its ten proposed `RAT-*` rows are not yet
-  human-ratified, and its B01–B12 scoring/custody manifest and digests are absent. Before
-  rollout, record every eligible Gate and RAT package generated, including generation
-  failures, rejected signatures, human revisions, abandoned packages, supersessions,
-  and inaccessible evidence. Missing packages stay in the denominator.
+- **Baseline / denominator:** Freeze `eligible_unit/v1` before observation: one immutable
+  enrollment-ledger row per attempted supported Gate/RAT decision package, created before
+  generation and keyed by tenant/work-item/decision-kind/target-revision/idempotency key.
+  A row is eligible only when that policy-defined package is requested during the frozen
+  window; it remains counted through generation failure, denial, inaccessible evidence,
+  abandonment, rejection, supersession, or missing package. The denominator is the count
+  of ledger rows, never merely generated or completed packages. STR-024's ten proposed
+  `RAT-*` rows are not human-ratified and its B01–B12 custody package is absent.
+
 - **Observation window:** Report at the first 10 eligible Gate or RAT packages or 30
   calendar days after a controlled release, whichever occurs first; if fewer than 10
   packages exist at day 30, extend only until 10. Freeze the cohort rule and supported
@@ -90,60 +104,71 @@ always accepted, or that the feature has already reduced human time.
    may prepare, transport, verify, or display permitted evidence but cannot submit,
    countersign, approve, reject, ratify, revise, or widen a ruling. Server/data-layer
    authorization enforces the boundary; disabled UI alone is insufficient.
-2. **Distinct intent, signing, countersigning, and authority:** A deliberate human
-   submission first commits one authenticated append-only `DecisionIntent/v1` in
-   `PENDING_PROOF`; it records decision intent but has no Gate/RAT effect. The Work
-   Management gate-event issuer may then sign proof for that exact intent. The human
-   makes the decision; the issuer only attests the durable intent and cannot create or
-   change it. A required countersignature is a separate authenticated human verification
-   action bound to the effective receipt digest. An agent, Codex, adapter, Builder,
-   evaluator, issuer, or generic service principal cannot decide or countersign for a
-   human. A policy-required in-file audit note is another separately authorized human
-   recording action that changes only the permitted audit/evidence lines.
-3. **Signature-free canonical payload and protected detached envelope:** The exact bytes
-   to be signed are unambiguous and never contain their own signature or a derived
-   verification result. `steer.gate-receipt.payload.v1` canonical bytes contain only:
-   schema/version; intent/idempotency id; organization/POD/project/item, workflow and
-   Gate/RAT id; event id/sequence and previous receipt/event digest; authenticated human
-   actor id/account/type/role; decision, safe reason digest and submitted server time;
-   exact artifact repository/URI, commit, path/blob, file SHA-256 and policy-defined
-   substantive-body SHA-256; authoring/review session ids; cooling-off/batch result; and
-   authorized scope. A deterministic protected header contains the envelope schema,
-   payload media type/SHA-256, issuer principal, key id, algorithm, canonicalization
-   profile, signature purpose/audience and signing time. The issuer signs the exact
-   length-delimited bytes
-   `"STEER_GATE_RECEIPT_V1\0" || protected_header_bytes || payload_bytes`. The detached
-   `steer.gate-receipt.signature.v1` envelope stores the protected header bytes, payload
-   digest and signature; the signature field is not part of the signed bytes.
+2. **Pre-effect countersignature state machine and distinct humans:** A deliberate human
+   submission creates one append-only `DecisionIntent/v2` in `PENDING_PROOF`, which has no
+   Gate/RAT effect. The issuer may attest that exact immutable intent. If the bound policy
+   requires zero countersigners, successful verification transitions it atomically to
+   `EFFECTIVE`; otherwise it transitions only to `PENDING_COUNTERSIGNATURE`. In that state
+   projections, dependent actions, mirrors and exports must say ineffective. Each required
+   independently authenticated human countersigns the same receipt identity; only the last
+   valid required signature can atomically transition the ruling to `EFFECTIVE`.
+   `PROOF_FAILED`, `COUNTERSIGNATURE_FAILED`, stale, revoked, incomplete, conflicting, or
+   unknown states are ineffective and fail closed. A policy-required in-file audit note is
+   separate and cannot substitute for a required countersignature.
 
-   Verifier identity/version, verification time, trust-store/revocation snapshot,
-   resolved public-key state, canonicalization/signature/role/sequence outcomes,
-   warnings/errors and overall verification result are derived **outside** both the
-   canonical payload and protected signed header. They are recorded in a separate
-   append-only `ReceiptVerification/v1` event that binds the intent, payload and envelope
-   digests. A different verifier or later revocation check adds a new event; it never
-   rewrites the signed payload or an earlier verification.
-4. **Atomic, idempotent effect and correction without erasure:** Human submission uses
-   one stable idempotency key and commits only `PENDING_PROOF`; Gate/RAT projections,
-   dependent actions, Git notes and Buzz mirrors cannot present it as effective. The
-   signer derives the same canonical payload for every retry of that unchanged intent.
-   A crash after intent commit or signature generation but before receipt commit leaves
-   no authoritative effect; retry may generate proof again, but compare-and-set permits
-   only one accepted envelope for that payload. One durable transaction verifies the
-   envelope against the current identity/key/role/revision/sequence policy, appends the
-   payload, envelope and `ReceiptVerification/v1` success event, transitions the intent
-   exactly once from `PENDING_PROOF` to `EFFECTIVE`, updates the authoritative Gate/RAT
-   projection and enqueues mirrors—or commits none of them. A crash after that transaction
-   returns the existing effective receipt on retry and cannot duplicate the decision.
-   Signing or verification failure appends a `PROOF_FAILED` attempt with owner, safe
-   code, next check and retry eligibility while the decision remains ineffective.
+   The frozen `required_signer_set/v1` is in the signed payload: `policy_id`,
+   `policy_version`, ordered role slots, `minimum_distinct_humans`, eligible principal IDs,
+   required count, role-slot-to-principal assignment, and forbidden role-pair/set matrix.
+   It requires at least two distinct human principals whenever countersignature is required;
+   submitter/issuer/service/agent/evaluator/Codex identities cannot fill a human slot; one
+   human cannot fill two slots; and submitter and countersigner are always a forbidden pair.
+   Policy may add stricter separations but cannot weaken these rules on retry.
+3. **Frozen countersignature proof schema, signed bytes, and trust profile:** The
+   signature-free `steer.gate-receipt.payload.v2` is RFC 8785 canonical JSON (UTF-8,
+   no BOM) containing exactly schema/version; `receipt_id` (UUIDv7); intent and stable
+   idempotency IDs; tenant/POD/project/item; workflow and Gate/RAT ID; event sequence and
+   previous-event digest; submitter authenticated human principal/role; decision and
+   reason digest; server-submitted time; exact artifact repository URI, commit, path/blob,
+   file SHA-256 and body SHA-256; issuer-proof digest; and the complete
+   `required_signer_set/v1`. `receipt_id` is the event identity and all IDs/digests are
+   lowercase canonical UUID/hex strings. No signature, verification result, display name,
+   mutable lookup, or derived field is signed.
 
-   An issued payload/envelope, intent, effective ruling, verification, signature or
-   failed attempt cannot be edited or deleted. A correction is a newly authenticated
-   superseding intent/event that links the prior receipt, states why it changed, and
-   preserves both. A new artifact revision never inherits an earlier approval. Stale,
-   revoked, replayed, sequence-conflicting, unknown-key or signature-invalid packages
-   fail closed and remain auditable.
+   `steer.countersignature.proof.v1` contains `schema`, `receipt_id`, payload SHA-256,
+   issuer-envelope SHA-256, policy ID/version and required-set digest, signer principal ID,
+   assigned role slot, key ID, algorithm, signed-at UTC RFC3339 time, nonce (32 random
+   bytes base64url), protected-header bytes (base64url), and detached signature (base64url).
+   Its protected header is RFC 8785 canonical JSON with schema, `kid`, `alg`, payload
+   digest, required-set digest, role slot and signature purpose `countersignature`.
+   The exact counter-sign bytes are length-prefixed unsigned 64-bit big-endian fields:
+   `"STEER_COUNTERSIGNATURE_V1\0" || u64be(len(protected_header)) || protected_header ||
+   u64be(len(payload)) || payload || u64be(len(issuer_envelope)) || issuer_envelope`.
+   The signature field is excluded. Freeze `alg` to Ed25519 and reject any alternate,
+   duplicate-key, non-canonical, oversized, truncated, or unknown field encoding.
+
+   The frozen trust profile `steer-human-trust/v1` accepts only a principal-to-public-key
+   certificate issued by the configured organization identity authority, scoped to the
+   tenant and role slot, valid at `signed_at`, and not revoked by a signed revocation list
+   whose sequence/time is included in the verifier record. Offline verification uses the
+   bundled trust-anchor set and revocation snapshot, checks certificate chain, key/role/
+   principal uniqueness, exact canonical bytes, issuer proof, required-set digest,
+   artifact/sequence policy, nonce uniqueness, and every required slot; unavailable or
+   stale trust material fails closed. Revocation after a historical signature does not
+   rewrite history but prevents a new effect unless policy supplies a valid historical
+   verification rule.
+4. **Atomic idempotency, effect, and correction without erasure:** Receipt identity is
+   `(tenant, receipt_id)` and request idempotency is `(tenant, idempotency_id)`. Retries
+   with byte-identical intent return the same receipt; a mismatch conflicts. In one durable
+   compare-and-set transaction the service verifies issuer proof and all currently supplied
+   countersignatures, appends immutable receipt/proof/verification events, records each
+   signer once per `(receipt_id, role_slot)`, and transitions exactly once:
+   `PENDING_PROOF → PENDING_COUNTERSIGNATURE → EFFECTIVE` (or directly to `EFFECTIVE` only
+   when required count is zero). The transaction updates the authoritative projection and
+   queues mirrors only on `EFFECTIVE`, otherwise commits none of those effects. A crash
+   returns the persisted ineffective/effective state; replay cannot add authority. Changes
+   require a new authenticated superseding intent that links, but never edits, its prior
+   records.
+
 5. **Policy-compliant gate evidence:** Gate 1 binds the exact Intent Brief; Gate 2 binds
    the exact approved Brief lineage, Exam revision, required Test/Critic evidence and
    RAT package; Gate 3 binds the signed Brief/Exam lineage, exact verified build and
@@ -166,13 +191,14 @@ always accepted, or that the feature has already reduced human time.
    blocker, incompatible decisions, or a changed target revision holds the affected RAT
    and any dependent gate. Silence, timeout, inherited role, and bulk "approve all"
    cannot ratify.
-8. **RAT role and sequence enforcement:** Each RAT declares the accountable human
-   decision owner, required qualified co-ratifier(s), dependencies, and permitted
-   sequence. A human may hold multiple roles only when policy permits and the record
-   makes that explicit; the system does not infer specialist competence from account
-   ownership. Human RAT rulings record actor/role, exact target revision, decision,
-   edited reasoning, AI-draft digest/version, evidence-set digest, time/session,
-   predecessor/supersession, and signature or authenticated event proof.
+8. **RAT role and sequence enforcement:** Each RAT declares accountable human owner,
+   required qualified co-ratifier(s), frozen `minimum_distinct_humans`, forbidden role
+   stacking, dependencies, and permitted sequence. The record explicitly binds each role
+   slot to one independently authenticated human principal; no inferred competence,
+   account ownership, or policy-default role stacking is allowed. Human RAT rulings record
+   actor/role, exact target revision, decision, edited reasoning, AI-draft digest/version,
+   evidence-set digest, time/session, predecessor/supersession, and proof.
+
 9. **Evaluator-owned B01–B12 manifest:** For STR-024, the package preserves exact
    `str024.scoring-manifest.v1`: Idriss Enayat is the Product/experiment owner; the
    fixture custodian, evaluator, runtime transport, and evaluated workload are distinct
@@ -236,14 +262,37 @@ always accepted, or that the feature has already reduced human time.
     privilege are explicit and tested. Unknown/revoked keys, unavailable verification,
     signer outage, principal-type confusion, cross-tenant access, and forged display
     names hold the action rather than falling back to unsigned acceptance.
-13. **Privacy and minimization:** Receipts and RAT packages contain only the identity,
+13. **Frozen blind-leakage oracle and payload boundaries:** The `blind-leakage-oracle/v1`
+    is a pre-registered, custodian-held protocol: threat model includes an evaluated
+    workload, prompt author, transport, logs/UI, and an attacker with public metadata and
+    unlimited offline computation but no plaintext/openings. It freezes an allowlisted
+    non-semantic feature vector, a fixed attack suite (membership inference, dictionary
+    guessing, linkage, length/timing correlation, substitution/replay, and trained
+    classifier), holdout split by fixture family/case (no family appears in both train and
+    test), tuning only on train, one locked calibration set, and one untouched test set.
+    The competent classifier is a specified regularized logistic baseline plus a specified
+    gradient-boosted model; the reported result is the worse test leakage with 95% bootstrap
+    confidence interval, family-stratified. Multiplicity uses Holm correction across all
+    attacks/features; pass requires every adjusted result below the pre-registered bound.
+    Before execution, power analysis fixes the enrollment count needed to detect the bound
+    with 80% power at alpha .05; fewer units is `INCONCLUSIVE`, never pass. Custodian signs
+    oracle/version/split/feature/attack/calibration/power digests before candidate output.
+
+    `practical_payload_maxima/v1` separately freezes production limits (canonical payload,
+    proof, reason, evidence-list and total receipt byte maxima) chosen by human capacity/
+    accessibility review. `synthetic_u64_parser_edges/v1` is a non-production negative-test
+    corpus containing length-prefix values near 2^64 boundaries and malformed encodings;
+    it is not an accepted practical payload and must be rejected before allocation/read.
+
+14. **Privacy and minimization:**
+ Receipts and RAT packages contain only the identity,
     role, decision, revision, reason/evidence digests, sequence, and audit metadata
     required for governance. Full personal profiles, credentials, prompts, private
     reasoning, restricted data, and holdout semantics are excluded. Access, public
     disclosure, retention, deletion/pseudonymization, backup expiry, legal basis, and
     audit-review cadence are human-ratified before production; exports enforce the same
     field allowlist and scope as the source record.
-14. **Accessible, fast human review:** The Gate/RAT review presents the AI
+15. **Accessible, fast human review:** The Gate/RAT review presents the AI
     recommendation, why, material risks, missing evidence, required role, exact target,
     and proposed editable reasoning before the action controls. It distinguishes AI
     draft, human edit, effective ruling, blocked, superseded, signature-invalid, and
@@ -252,29 +301,30 @@ always accepted, or that the feature has already reduced human time.
     request revision, recover from validation errors, and verify success without lost
     focus. Loading, generation, empty, denied, signing, verification, recovery and error
     states are actionable.
-15. **Reliable submission and honest feedback:** The interface distinguishes
-    `PENDING_PROOF`, `PROOF_FAILED` and `EFFECTIVE`. It acknowledges pending intent
+16. **Reliable submission and honest feedback:** The interface distinguishes
+    `PENDING_PROOF`, `PENDING_COUNTERSIGNATURE`, `PROOF_FAILED`,
+    `COUNTERSIGNATURE_FAILED` and `EFFECTIVE`. It acknowledges pending intent
     without calling it approved/ratified, and shows durable success only after the atomic
     effective transaction returns the exact receipt/event sequence and target. A stable
     idempotency key makes retries return the same intent/effective receipt without
     duplicating or overwriting a decision. Signing, export, evidence, evaluator, or
     issuer failures name the owner, next check, dependency, retry eligibility and safe
     status rather than returning a spinner to an ambiguous action button.
-16. **Rollback and recovery:** A reversible control can stop new AI package generation,
+17. **Rollback and recovery:** A reversible control can stop new AI package generation,
     decision submission, signing, countersigning, export, or evaluator delivery by
     scoped capability without deleting or changing existing rulings, receipts,
     signatures, evidence, holdout custody, or human decisions. Recovery revalidates
     identity, keys, sequence, idempotency, exact revisions, evidence access and derived
     views before resuming. Event-log replay can reconstruct the authoritative view; a
     cache, search index, Buzz mirror, or Git link outage cannot become authority.
-17. **STR-024 unblocking remains human-controlled:** STR-027 may prepare and verify the
+18. **STR-024 unblocking remains human-controlled:** STR-027 may prepare and verify the
     signed Gate 1 evidence package, editable exact-Exam RAT package, and evaluator-owned
     manifest/digest/custody package required by STR-024. It cannot sign for Idriss
     Enayat, appoint qualified owners, ratify a proposal, expose holdouts, update the
     frozen Brief without separate human authorization, or decide Gate 2. STR-024 stays
     blocked until its exact Exam requirements and the final Test/Critic evidence are
     satisfied and an authorized human records the Gate 2 ruling in a separate session.
-18. **Codex-supervisor boundary:** The implementation and operating procedure remain
+19. **Codex-supervisor boundary:** The implementation and operating procedure remain
     equal to or narrower than exact commit
     `bcf4856f4193ce3339cbdc58ea26b7cc6e5cd9de`. Codex may start, observe, safety-stop,
     and read-only troubleshoot a separately authorized named-agent run, and may repair
@@ -284,7 +334,7 @@ always accepted, or that the feature has already reduced human time.
     access blind holdouts, or count its output as agent performance. Emergency activity
     remains a new human-authorized, labeled, time-bounded supervisor run and cannot
     repair the delivery artifact or approve a gate.
-19. **Falsifiable learning:** The release records eligible/generated/human-ready/
+20. **Falsifiable learning:** The release records eligible/generated/human-ready/
     submitted/verified/rejected/superseded/failed packages; AI-draft acceptance and edit
     distance; human preparation and judgment time; generation/signing/verification
     latency; signature/revision/role/replay/contamination failures; accessibility
@@ -314,11 +364,16 @@ human reviews exact target + risks + evidence + proposed reasoning
         ↓
 authenticated intent (`PENDING_PROOF`; no authority effect)
         ↓
-canonical payload + detached protected issuer signature
+canonical payload + verified detached issuer proof
+        ↓
+`PENDING_COUNTERSIGNATURE` when required; still no effect
+        ↓
+every required distinct authenticated human countersigns exact receipt
         ↓
 atomic verification + `EFFECTIVE` transition → authoritative ruling
         ↓
-optional required human countersignature/audit note
+separate policy-required in-file audit note, if any
+
 ```
 
 Show AI text as advisory and visibly separate from human-authored edits and the final
