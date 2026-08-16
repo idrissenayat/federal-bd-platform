@@ -40,6 +40,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         git \
+        openssh-client \
         openssl \
         ripgrep \
     && rm -rf /var/lib/apt/lists/* \

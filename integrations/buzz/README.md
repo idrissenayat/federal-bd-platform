@@ -80,6 +80,12 @@ when using `owner-only`; without that public identity (or a verified `BUZZ_AUTH_
 the harness intentionally drops
 every inbound event. Do not reuse a Buzz identity key between services.
 
+An agent that writes repository artifacts also needs a write-enabled GitHub deploy key
+scoped to this repository. Store the private half only in the role-specific sealed
+Railway variable. Shared-service startup writes it with mode `0600`, exports an SSH
+transport over GitHub's port 443 endpoint, and supplies the established role name/email
+for repository attribution. Do not use a human personal access token for agent writes.
+
 Start with one owner-only Builder proof before activating the remaining roles. A
 successful deployment must connect to the shared relay, discover only its assigned
 channels, respond to an owner mention, reject a non-owner mention, and preserve the
