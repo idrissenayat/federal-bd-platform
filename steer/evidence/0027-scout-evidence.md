@@ -54,6 +54,9 @@ performance or backfilled as native attestation.
 - Final independent Test evidence at
   `41e131d2250d78e0b71685d1decf1c4c9648db4d` and final fresh Critic evidence at
   `223f4adf237a388bd11f6620b32137329894a14e`.
+- STR-027 fresh Critic evidence at exact commit
+  `05c1d7034dc139ff32a2db52ea8881d58cb91263`, incorporated byte-identically into
+  this Scout branch ancestry before rework.
 - GitHub issue #55 as read through the authenticated repository session.
 
 ## Evidence-backed problem statement
@@ -78,10 +81,10 @@ implementation shortcut or automatic approval path.
 | Required STR-027 concern | Brief disposition |
 |---|---|
 | Signing/countersignature authority | Done-and-correct 1–5 separate the human decision, issuer signature, human countersignature, in-file recorder, and denied principals. |
-| Immutable exact-revision receipt | Done-and-correct 3–5 define the minimum `steer.gate-receipt.v1` fields, canonical coverage, append-only sequence and supersession. |
+| Immutable exact-revision receipt | Done-and-correct 2–5 separate pending intent, signature-free canonical payload, protected detached envelope, derived append-only verification, atomic effect, sequence and supersession. |
 | AI-prepared editable RAT decisions | Done-and-correct 6–8 require non-blank advisory reasoning, human edit/diff, explicit submission, exact revision, per-RAT attribution and no bulk/automatic judgment. |
-| Evaluator-owned B01–B12 manifest/oracle digests | Done-and-correct 9 fixes the STR-024 manifest principals, exact denominator/rubric, signatures, digests and non-selectability. |
-| Blind-holdout custody | Done-and-correct 10 prohibits semantic runtime/Codex/UI/Buzz access and defines one-way encryption and contamination handling. |
+| Evaluator-owned B01–B12 manifest/oracle digests | Done-and-correct 9–10 fix the STR-024 principals/denominator/rubric and replace unsafe raw assertion hashes with ratified randomized ciphertext digests or domain-separated high-entropy commitments. |
+| Blind-holdout custody | Done-and-correct 10 prohibits semantic runtime/Codex/UI/Buzz access; defines one-way encryption, custodian-only openings, anti-dictionary/replay/linkability rules and contamination handling; and default-closes the frozen Exam's ambiguous `assertion-set SHA-256`. |
 | Privacy/security | Done-and-correct 11–13 plus the threat model and default-closed decision table address keys, identity, minimization, access, disclosure and retention. |
 | Accessibility/human speed | Done-and-correct 6, 14 and 15 require populated reasoning, clear authority/revision/risk, keyboard/screen-reader operation, idempotent success and actionable failure. |
 | Rollback/recovery | Done-and-correct 16 stops scoped capabilities while preserving immutable rulings/evidence and requires revalidation before resume. |
@@ -106,19 +109,41 @@ implementation shortcut or automatic approval path.
 - Gate 1 on STR-027, if approved by the authorized human, authorizes Exam design only.
   It does not authorize implementation or resolve STR-024 Gate 2.
 
+## Fresh Critic findings and Scout dispositions
+
+The fresh Critic at exact commit
+`05c1d7034dc139ff32a2db52ea8881d58cb91263` reviewed initial Scout commit
+`08888804dcba179dcc66e8d081badd9bd13feaac` and returned two blockers and one
+should-fix. The Critic evidence is preserved byte-identically in branch ancestry; no
+finding was dismissed or rewritten.
+
+| Critic finding | Scout correction in this successor revision |
+|---|---|
+| BLOCKER 1 — receipt signed itself; verification/effect timing was ambiguous | Done-and-correct 2–4 now define an authenticated `DecisionIntent/v1` that remains `PENDING_PROOF` and ineffective, deterministic signature-free `steer.gate-receipt.payload.v1` bytes, a protected detached envelope with explicit length-delimited signing input, and derived `ReceiptVerification/v1` fields outside the signed payload/header. One compare-and-set transaction records proof/verification, changes exactly once to `EFFECTIVE`, updates the projection/outbox, or commits none. Pre-commit signer crashes/retries remain ineffective; post-commit retries return the same receipt; failures append `PROOF_FAILED`. |
+| BLOCKER 2 — raw/unspecified holdout digests disclosed enumerable assertions | Done-and-correct 9–11 require every B01–B12 manifest assertion/oracle binding to use a randomized fixed-size authenticated-ciphertext digest or domain-separated commitment with at least 256-bit fresh custodian-only opening, exact manifest/candidate/case/revision/purpose binding, no reuse, and contamination on dictionary matchability/linkability/opening disclosure. Public B01–B08 fixture content, if ratified, uses a separately named evidence link rather than the assertion binding. The exact STR-024 `assertion-set SHA-256` label is explicitly `UNRATIFIED`: its named humans must ratify B01–B12 ciphertext-hash semantics with vectors or govern an Exam revision; raw assertion hashing and STR-024 Gate 2 remain blocked. |
+| SHOULD-FIX — Scout evidence falsely claimed seven `bcf4856` files were compared | The validation record now states that exact `bcf4856f...` changes two files only, enumerates both paths and exact Git blob/SHA-256 values, and verifies both byte-identically plus ancestry. The original commit remains immutable; this successor evidence owns the correction. |
+
+The requested new Critic recheck should attack the exact signing-byte boundary,
+pre/post-transaction crash and retry races, verification-event derivation, unsafe
+assertion-hash aliases, offline enumeration, commitment reuse/correlation, cross-case
+replay, length/timing/error/log/Buzz/public-export leakage, and every default-closed
+human ownership gap.
+
 ## Independent Critic handoff recommendation
 
-Run a fresh-context Critic against the exact committed Brief and this evidence before a
-human Gate 1 ruling. The Critic should attack, at minimum:
+Run a new fresh-context Critic against the exact corrected commit before a human Gate 1
+ruling. The Critic should attack, at minimum:
 
 1. whether the issuer, human decision-maker, countersigner, repository recorder,
    preparation agent, evaluator/custodian, transport, Codex supervisor, and independent
    verifier can be confused or collapsed into one authority;
-2. whether a changed artifact, replayed event, AI default, missing co-ratifier, signer
-   outage, public export, or UI retry can become an effective ruling without an exact
-   authenticated human action; and
-3. whether B09–B12 semantics, keys, or selection information can leak through package
-   generation, digest metadata, errors, lengths/timing, Buzz, logs, or reviewer access.
+2. whether a changed artifact, replayed event, AI default, missing co-ratifier,
+   `PENDING_PROOF`, pre/post-signature crash, signer outage, public export, or UI retry
+   can become `EFFECTIVE` without the one atomic verified transaction; and
+3. whether raw/low-entropy assertion hashes or B09–B12 semantics, openings, keys or
+   selection information can leak or correlate through package generation, commitments,
+   dictionary guesses, cross-case replay, errors, lengths/timing, Buzz, logs, public
+   export or reviewer access.
 
 The Critic should derive tags independently and issue at most three blocker/should-fix
 findings under the repository role contract. A clean Critic result is advisory; only the
@@ -150,11 +175,31 @@ Validation completed at `2026-08-15T19:53:42-04:00` in the isolated Scout worktr
 | `npm audit --omit=dev` | PASS — zero production vulnerabilities. |
 | Full `npm audit` | QUALIFIED, unchanged dependency posture — zero critical, two high and four moderate dev/build findings. No package or lockfile changed; the time-bounded controls in `docs/security/DEPENDENCY-RISK-2026-08-13.md` remain the governing exception through 2026-08-27 and are not a production certification. |
 | Exact remote source commits | PASS — GitHub returned exact `bcf4856f...`, `254226b...`, `41e131d...`, and `223f4ad...`; all referenced paths exist at those revisions. |
-| Corrected supervisor ancestry/content | PASS — exact `bcf4856f4193ce3339cbdc58ea26b7cc6e5cd9de` is an ancestor of the Scout base and the seven corrected boundary/evidence files are byte-unchanged at Scout `HEAD`. |
+| Corrected supervisor ancestry/content | PASS — exact `bcf4856f4193ce3339cbdc58ea26b7cc6e5cd9de` is an ancestor. That commit changes exactly two files: `docs/steer/OPERATING-MODEL.md` (blob `898aad2fb3331f04834321f28a7dda4c68ef8bc2`, SHA-256 `fad15fbbb705ea3c0e71f08b3ef461bec68647d775ba7aaf9ad9978b2cb9dd6f`) and `steer/evidence/docs-agent-codex-supervision-boundary-2026-08-15.md` (blob `d4e4a6b77bb70493b55784fe3beb9b52dbb010ff`, SHA-256 `35d342765d04b3b1dfed98720142b85abed3b966bae6c9ef165fdf961e7a988f`). Both are byte-identical at Scout `HEAD`. |
 | STR-024 protected evidence integrity | PASS — the frozen Brief, exact Exam, pending Gate 1 receipt template, and Architect evidence are byte-unchanged from `254226bbb99a07844262d609b11d1b0b36281f9f`. |
 | Diff and scope | PASS — `git diff --cached --check` is clean; only the new STR-027 Intent Brief and Scout evidence are staged. No product/platform code, Exam, protected artifact, app data, gate state, or credential changed. |
 
-The exact containing commit and immutable GitHub URLs are supplied in the post-push
-Scout handoff rather than guessed inside this pre-commit evidence. Any unavailable
-credential, native run attestation, external verifier, qualified human signature, or
-holdout evidence remains explicitly unavailable and is not replaced with invented data.
+## Rework validation record
+
+Post-Critic validation completed at `2026-08-15T20:07:45-04:00` in the same isolated
+Scout worktree.
+
+| Check | Result |
+|---|---|
+| Critic ancestry/content | PASS — exact Critic commit `05c1d7034dc139ff32a2db52ea8881d58cb91263` is an ancestor through a no-fast-forward merge, and `steer/reviews/0027-fresh-critic-evidence.md` is byte-identical to that commit. |
+| Self-reference planted negative | PASS — the in-memory validator accepted a clean signature-free payload/protected-header shape and rejected planted `signature`, `verification_result` and mutable `trust_store` fields from the bytes-to-sign objects. |
+| Atomicity planted negative | PASS — only complete `PENDING_PROOF` + current target/CAS + accepted envelope + append-only PASS verification + same-transaction projection/outbox shape could become effective. Missing proof, verification, target/CAS, projection/outbox and duplicate-effect shapes were rejected. |
+| Anti-leak planted negative | PASS — randomized fixed-size authenticated-ciphertext and 256-bit custodian-only commitment shapes were accepted; raw `assertion_set_sha256`, 32-bit/reused openings, missing case binding, non-randomized ciphertext, exported openings and semantic identifiers were rejected. |
+| `./scripts/gauntlet.sh` | PASS in 10.4 seconds — 35 readiness checks passed, one expected missing-SAM-key warning, zero failures; Ruff, mypy and pytest 3/3 passed; gitleaks, `uv.lock` OSV and Semgrep (252 rules / 138 tracked files) were clean. |
+| `./scripts/prove-gauntlet-blocks.sh` | PASS — planted synthetic secret and failing test were blocked. |
+| `npm ci && npm run lint && npm test` in `flight-board/` | PASS — build completed; ESLint clean; rendered-shell test 1/1 and TypeScript tests 27/27 passed. |
+| Dependency checks | PASS/QUALIFIED — production `npm audit --omit=dev` reports zero; full audit remains zero critical, two high and four moderate dev/build findings under the unchanged time-bounded dependency controls. No package or lockfile changed. |
+| Supervisor boundary | PASS — exact `bcf4856f...` ancestry plus byte equality for its two changed files and the exact blobs/SHA-256 values recorded above. |
+| STR-024 protected evidence | PASS — exact `254226b...` ancestry; its frozen Brief, corrected Exam, pending receipt template and Architect evidence are byte-unchanged. Final Test/Critic source commits remain immutable parallel evidence. |
+| Diff/scope | PASS — staged diff has no whitespace errors and changes only the STR-027 Scout Brief and Scout evidence after the byte-identical Critic evidence merge. No platform/product code, Exam, governance file, STR-024 artifact, app data, credential, Flight Board state, gate, PR, deployment, release or closure changed. |
+
+The exact containing correction commit and immutable GitHub URLs are supplied in the
+post-push Scout handoff rather than guessed inside this pre-commit evidence. Any
+unavailable credential, native run attestation, external verifier, qualified human
+signature, or holdout evidence remains explicitly unavailable and is not replaced with
+invented data.
