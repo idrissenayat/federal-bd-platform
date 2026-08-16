@@ -18,6 +18,11 @@
 > rules, and separate practical payload limits from synthetic U64 parser-edge vectors.
 > Independent Test evidence `5769788c7b97a36a412492e9c6ee2b41dd554038` is preserved in
 > this revision's ancestry. This note is not a Gate 1 receipt or ruling.
+>
+> **Correction note — 2026-08-16:** Fresh Critic evidence
+> `a085abebf3f89c95e2f7323ff2f75d328833e3c9` is preserved in this revision's ancestry.
+> This narrow correction freezes acyclic issuer/countersignature objects, audit-descendant
+> identity, and non-selectable outcome/leakage rules; it changes no human policy or Gate state.
 
 ## Expected outcome and measurement
 
@@ -123,58 +128,60 @@ always accepted, or that the feature has already reduced human time.
    submitter/issuer/service/agent/evaluator/Codex identities cannot fill a human slot; one
    human cannot fill two slots; and submitter and countersigner are always a forbidden pair.
    Policy may add stricter separations but cannot weaken these rules on retry.
-3. **Frozen countersignature proof schema, signed bytes, and trust profile:** The
-   signature-free `steer.gate-receipt.payload.v2` is RFC 8785 canonical JSON (UTF-8,
-   no BOM) containing exactly schema/version; `receipt_id` (UUIDv7); intent and stable
-   idempotency IDs; tenant/POD/project/item; workflow and Gate/RAT ID; event sequence and
-   previous-event digest; submitter authenticated human principal/role; decision and
-   reason digest; server-submitted time; exact artifact repository URI, commit, path/blob,
-   file SHA-256 and body SHA-256; issuer-proof digest; and the complete
-   `required_signer_set/v1`. `receipt_id` is the event identity and all IDs/digests are
-   lowercase canonical UUID/hex strings. No signature, verification result, display name,
-   mutable lookup, or derived field is signed.
+3. **Acyclic issuer and countersignature proof objects:** All objects are RFC 8785
+   canonical JSON encoded UTF-8 without BOM; SHA-256 means lowercase hex over those bytes.
+   First construct `steer.decision.intent.v3` containing schema, `receipt_id` (UUIDv7),
+   idempotency ID, tenant/scope/workflow/Gate-or-RAT, sequence/predecessor digest,
+   submitter principal/role, decision/reason digest, submitted-at, exact target identity,
+   `policy_id`/version, `trust_profile_id`/version, and complete `required_signer_set/v1`.
+   It contains no issuer proof or countersignature. Its digest is `intent_digest`.
 
-   `steer.countersignature.proof.v1` contains `schema`, `receipt_id`, payload SHA-256,
-   issuer-envelope SHA-256, policy ID/version and required-set digest, signer principal ID,
-   assigned role slot, key ID, algorithm, signed-at UTC RFC3339 time, nonce (32 random
-   bytes base64url), protected-header bytes (base64url), and detached signature (base64url).
-   Its protected header is RFC 8785 canonical JSON with schema, `kid`, `alg`, payload
-   digest, required-set digest, role slot and signature purpose `countersignature`.
-   The exact counter-sign bytes are length-prefixed unsigned 64-bit big-endian fields:
-   `"STEER_COUNTERSIGNATURE_V1\0" || u64be(len(protected_header)) || protected_header ||
-   u64be(len(payload)) || payload || u64be(len(issuer_envelope)) || issuer_envelope`.
-   The signature field is excluded. Freeze `alg` to Ed25519 and reject any alternate,
-   duplicate-key, non-canonical, oversized, truncated, or unknown field encoding.
+   Next construct `steer.issuer.envelope.v1`: protected header and body each contain
+   schema, algorithm Ed25519, issuer principal/key ID, `receipt_id`, `intent_digest`,
+   policy/trust versions, issuer-signed-at UTC RFC3339, issuer nonce (32 random base64url
+   bytes), and purpose `issuer-attestation`; body additionally contains the exact intent
+   bytes. The issuer signs `"STEER_ISSUER_ENVELOPE_V1\0" || u64be(len(header)) || header ||
+   u64be(len(body)) || body`. The envelope digest is SHA-256 of canonical envelope fields
+   excluding only its detached signature. Thus neither intent nor issuer envelope refers
+   to a later object.
 
-   The frozen trust profile `steer-human-trust/v1` accepts only a principal-to-public-key
-   certificate issued by the configured organization identity authority, scoped to the
-   tenant and role slot, valid at `signed_at`, and not revoked by a signed revocation list
-   whose sequence/time is included in the verifier record. Offline verification uses the
-   bundled trust-anchor set and revocation snapshot, checks certificate chain, key/role/
-   principal uniqueness, exact canonical bytes, issuer proof, required-set digest,
-   artifact/sequence policy, nonce uniqueness, and every required slot; unavailable or
-   stale trust material fails closed. Revocation after a historical signature does not
-   rewrite history but prevents a new effect unless policy supplies a valid historical
-   verification rule.
-4. **Atomic idempotency, effect, and correction without erasure:** Receipt identity is
-   `(tenant, receipt_id)` and request idempotency is `(tenant, idempotency_id)`. Retries
-   with byte-identical intent return the same receipt; a mismatch conflicts. In one durable
-   compare-and-set transaction the service verifies issuer proof and all currently supplied
-   countersignatures, appends immutable receipt/proof/verification events, records each
-   signer once per `(receipt_id, role_slot)`, and transitions exactly once:
-   `PENDING_PROOF → PENDING_COUNTERSIGNATURE → EFFECTIVE` (or directly to `EFFECTIVE` only
-   when required count is zero). The transaction updates the authoritative projection and
-   queues mirrors only on `EFFECTIVE`, otherwise commits none of those effects. A crash
-   returns the persisted ineffective/effective state; replay cannot add authority. Changes
-   require a new authenticated superseding intent that links, but never edits, its prior
-   records.
-
-5. **Policy-compliant gate evidence:** Gate 1 binds the exact Intent Brief; Gate 2 binds
-   the exact approved Brief lineage, Exam revision, required Test/Critic evidence and
-   RAT package; Gate 3 binds the signed Brief/Exam lineage, exact verified build and
-   required domain evidence. A typed timestamp or detached receipt alone is never
-   sufficient where `GATES.md`/`SOLO-MODE.md` also require an in-file audit note,
-   different sessions, cooling-off, co-signers, or independent-reader evidence.
+   Then construct one `steer.countersignature.proof.v2` per role slot: protected header and
+   signed body both bind schema, Ed25519 key ID, signer principal, assigned role slot,
+   `receipt_id`, `intent_digest`, `issuer_envelope_digest`, policy/trust versions,
+   required-set digest, signed-at UTC RFC3339, nonce (32 random base64url bytes), purpose
+   `pre-effect-countersignature`, and countersigner idempotency ID. The body also contains
+   the exact issuer envelope bytes. The signer signs
+   `"STEER_COUNTERSIGNATURE_V2\0" || u64be(len(header)) || header ||
+   u64be(len(body)) || body`; only detached signature lies outside signed bytes. Reject
+   duplicate JSON keys, mismatched repeated fields, alternate encodings/algorithms,
+   non-canonical input, replayed `(receipt_id, role_slot, nonce)`, or changed policy/set.
+   Offline verification reconstructs intent, issuer envelope, and each proof in that order;
+   validates all signatures, canonical bytes, principal/key/role certificate chain, signed
+   revocation snapshot and sequence, freshness, target/sequence, uniqueness and every
+   required slot. Missing/stale/unknown/revoked trust state fails closed.
+4. **Atomic idempotency, effect, and correction without erasure:** Request identity is
+   `(tenant,idempotency_id)` and receipt identity `(tenant,receipt_id)`; byte-identical
+   retries return the stored result and any mismatch conflicts. One durable CAS transaction
+   verifies the acyclic issuer envelope and all proof bodies under their signed revocation
+   snapshot and current no-weaker policy, appends immutable accept/reject events, and writes
+   each unique role slot once. It transitions `PENDING_PROOF → PENDING_COUNTERSIGNATURE →
+   EFFECTIVE` exactly once (direct effect only when frozen required count is zero); mirrors
+   and dependent projection updates occur only in that same effective transaction. Crash or
+   replay returns the persisted state and cannot confer effect. Corrections are new linked
+   intents, never edits.
+5. **Policy-compliant Gate 1 exact-revision identity:** Before a human note, the proposed
+   Brief is `pre_note_commit`; its substantive body is UTF-8 bytes from the first heading
+   through the line before `---`, after normalizing LF line endings and excluding exactly
+   the two terminal `GATE 1:` and `GATE 1 EVIDENCE:` lines. `substantive_sha256` hashes
+   those bytes and is signed in the Gate 1 intent. The only allowed audit-descendant diff
+   is replacement of those two terminal lines with an authenticated human audit note and
+   evidence pointer; no other byte, path, rename, merge parent, or tree entry may differ.
+   `audit_commit` must have `pre_note_commit` as its sole first parent and preserve the same
+   substantive hash. An offline verifier obtains both commits, checks parentage, exact
+   two-line diff, body hash, signed pre-note commit/path/blob/hash and audit commit/hash;
+   any mismatch, added parent, or substantive inheritance fails closed. Gate 2 binds both
+   identities plus the signed receipt; a typed timestamp or detached receipt alone is never
+   sufficient.
 6. **AI-prepared, editable, non-blank RAT package:** For every required `RAT-*` row, an
    authorized preparation agent produces an advisory draft containing the exact target
    Exam revision/blob/SHA-256, RAT id and proposed value, plain-language summary,
@@ -262,27 +269,34 @@ always accepted, or that the feature has already reduced human time.
     privilege are explicit and tested. Unknown/revoked keys, unavailable verification,
     signer outage, principal-type confusion, cross-tenant access, and forged display
     names hold the action rather than falling back to unsigned acceptance.
-13. **Frozen blind-leakage oracle and payload boundaries:** The `blind-leakage-oracle/v1`
-    is a pre-registered, custodian-held protocol: threat model includes an evaluated
-    workload, prompt author, transport, logs/UI, and an attacker with public metadata and
-    unlimited offline computation but no plaintext/openings. It freezes an allowlisted
-    non-semantic feature vector, a fixed attack suite (membership inference, dictionary
-    guessing, linkage, length/timing correlation, substitution/replay, and trained
-    classifier), holdout split by fixture family/case (no family appears in both train and
-    test), tuning only on train, one locked calibration set, and one untouched test set.
-    The competent classifier is a specified regularized logistic baseline plus a specified
-    gradient-boosted model; the reported result is the worse test leakage with 95% bootstrap
-    confidence interval, family-stratified. Multiplicity uses Holm correction across all
-    attacks/features; pass requires every adjusted result below the pre-registered bound.
-    Before execution, power analysis fixes the enrollment count needed to detect the bound
-    with 80% power at alpha .05; fewer units is `INCONCLUSIVE`, never pass. Custodian signs
-    oracle/version/split/feature/attack/calibration/power digests before candidate output.
+13. **Non-selectable outcome and mathematically specified adaptive leakage oracle:** Before
+    cohort start, humans freeze `supported_decision_universe/v1`: all Gate/RAT kinds and
+    tenants in scope, a deterministic request predicate, UTC start/end, and a finite
+    `N` enrollment cap. The authoritative request log assigns monotonically increasing
+    sequence; every matching request is enrolled before generation with no operator choice.
+    Cohort closes at `min(end,Nth enrolled request)` and never extends; denominator is all
+    enrolled `eligible_unit` rows, including denial, failure, abandonment and missing output.
+    No later decision type or request exclusion is permitted; log/reconciliation mismatch is
+    `INCONCLUSIVE` and fails closed.
 
-    `practical_payload_maxima/v1` separately freezes production limits (canonical payload,
-    proof, reason, evidence-list and total receipt byte maxima) chosen by human capacity/
-    accessibility review. `synthetic_u64_parser_edges/v1` is a non-production negative-test
-    corpus containing length-prefix values near 2^64 boundaries and malformed encodings;
-    it is not an accepted practical payload and must be rejected before allocation/read.
+    `blind-leakage-oracle/v2` fixes public features, fixture-family-disjoint train/calibrate/
+    test split, attack code/versions/seeds, and adaptive search budget. Estimand is the
+    maximum test-set advantage `max_a |P(a(X)=S)-P(a(X)=S')|` over the fixed attack suite
+    and permitted adaptive candidates, with S/S' balanced secret classes. Null is advantage
+    `<= delta`; pass requires the one-sided 95% simultaneous upper confidence bound for
+    every attack `<= delta`. Each bound is the 97.5th percentile of 10,000 stratified
+    fixture-family bootstrap resamples; Holm adjustment covers all attacks/candidates.
+    Candidate selection may use train plus locked calibration only, then exactly one sealed
+    test evaluation; two specified baselines and any adaptive model must use the frozen
+    feature set/budget. Power freezes minimum test families/samples to provide >=80% power
+    at alpha .05 to reject the null at effect `delta+epsilon`; insufficient data, split
+    contamination, failed resampling, exhausted budget ambiguity, or any bound above delta
+    is `INCONCLUSIVE`/fail closed. Custodian signs all oracle/split/code/threshold/power
+    digests before output.
+
+    `practical_payload_maxima/v1` separately freezes production byte maxima. The distinct
+    `synthetic_u64_parser_edges/v1` corpus tests near-2^64 declared lengths, overflow and
+    truncation and must be rejected before allocation; it is never a practical payload.
 
 14. **Privacy and minimization:**
  Receipts and RAT packages contain only the identity,
