@@ -19,16 +19,24 @@
   attempted `Next action` edit that appeared in the drawer, reverted after reload,
   and emitted no activity event. This is incident evidence only, not a demand-series
   denominator; broader frequency remains unmeasured.
-- **Observation window:** Proposed Gate-2 validation plus the first 20 representative
-  non-production drawer mutations after implementation, including success, `409`,
-  explicit retry, refresh, out-of-order response, dispatch, routing, keyboard, and
-  screen-reader cases. Missing observations and exclusions remain visible.
-- **Minimum meaningful signal:** 100% of accepted mutations expose the authoritative
-  saved state before completion; 100% of failures expose an inline actionable result;
-  zero stale responses overwrite a newer confirmed state; and zero duplicate durable
-  claims, audit events, or outbox handoffs are created for one authorization revision.
-  These are proposed acceptance thresholds for human Gate 1 review, not observed
-  results.
+- **Observation window and denominator:** Before execution, pre-enroll exactly 20
+  non-production cases: 4 successful Work Economics saves, 4 successful dispatch
+  authorizations, 4 server validation/conflict failures including HTTP `409`, 4
+  delayed or out-of-order bootstrap/reconciliation responses, and 4 replay,
+  concurrent-retry, or partial-dispatch recovery cases. One observation is one
+  pre-registered case ID executed once from its specified seed state. The denominator
+  is all 20 enrolled cases; no post-start exclusions are allowed, and missing or
+  unclassifiable results count as failures. The two production observations remain
+  incident evidence and are excluded from this denominator.
+- **Minimum meaningful signal:** All 8 successful mutations expose authoritative
+  saved state and a success announcement immediately; all 4 failure cases preserve
+  inputs, show actionable inline errors, place or restore keyboard focus correctly,
+  and announce failure; all 4 ordering cases prevent older data from overwriting the
+  confirmed mutation; all 4 dispatch-recovery cases produce exactly one receipt,
+  outbox identity, agent claim, and run; and there are zero duplicate audit events,
+  skipped gates, unauthorized state changes, or unresolved critical recurrences.
+  These are bounded proposed acceptance thresholds for human Gate 1 review, not
+  observed results.
 - **Guardrail measure:** zero unauthorized routing or dispatch, zero human-gate
   transitions by an agent, zero lost user input after failure, zero duplicate activity
   records, no accessibility blocker, and no secret or new personal-data leakage.
@@ -126,6 +134,12 @@ series has been established.
   governed handoff, rejects `#project-federal-bd-pilot` as authority, and requires
   missing or mismatched channel configuration to fail closed while preserving the
   existing claim.
+- The authenticated Tech design decision at [issue comment
+  #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779)
+  freezes the bounded dispatch identity, receipt/outbox lifecycle, acknowledgement
+  authority, partial-dispatch recovery, routing source and precedence, Gate-1 case
+  matrix, and evidence classifications recorded below. It is a design decision, not
+  a Gate 1/2 ruling, Exam, or implementation authorization.
 - A fresh production observation at [issue comment
   #5310415277](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310415277)
   records a signed-in human editing `Next action`: the drawer showed the new text,
@@ -147,6 +161,61 @@ These controls frame the repair candidate; they do not establish demand, recurre
 implementation readiness, or any Gate 1/2/3 approval. A future Exam must convert the
 bounded controls into executable acceptance tests after human Gate 1 review.
 
+## Bounded dispatch, routing, and measurement contract
+
+- **Deterministic identity:** `dispatch_intent_id` is
+  `SHA-256(JCS(steer-dispatch-intent/v1 payload))`. The payload contains the
+  workspace/POD ID, work-item stable ID and key, STEER workflow, assigned agent's
+  stable enrolled member ID and pubkey, authorization revision and immutable human
+  authorization audit-event ID, exact evidence URL plus immutable revision/digest,
+  accepted-forecast audit-event ID, canonical Buzz channel ID, and hash of the
+  authorized Next action. The uniqueness boundary is one claim/run for one intent ID
+  across Work Management, its outbox, Buzz, retries, routing corrections, and the
+  agent runtime. Corrections and retries reuse that identity; a material
+  authorization, evidence, assignee, or scope change creates a new revision and
+  supersedes without deleting the prior receipt.
+- **Atomic receipt/outbox creation:** Before external delivery, one database
+  transaction validates the current authorization revision and routing configuration,
+  reserves the unique intent ID, writes the immutable authorization receipt, and
+  creates exactly one outbox row referencing that receipt. No external message is
+  sent unless the transaction commits, and delivery or retry cannot change item
+  phase, assignee, decision state, gate state, or downstream authorization.
+- **Lifecycle and terminals:** The only allowed transitions are
+  `QUEUED -> DELIVERED -> ACKNOWLEDGED`;
+  `QUEUED|DELIVERED -> RECONCILIATION_REQUIRED` for uncertain delivery;
+  `QUEUED|DELIVERED|RECONCILIATION_REQUIRED -> FAILED_RETRYABLE -> QUEUED` using
+  the same intent ID; and
+  `QUEUED|DELIVERED|RECONCILIATION_REQUIRED|FAILED_RETRYABLE -> FAILED_FINAL`,
+  `SUPERSEDED`, or `CANCELLED`. `ACKNOWLEDGED`, `FAILED_FINAL`, `SUPERSEDED`, and
+  `CANCELLED` are terminal. A retry creates no second receipt, outbox identity,
+  claim, or run.
+- **Acknowledgement and recovery:** Only the exact enrolled assigned-agent pubkey
+  may sign a valid acknowledgement. It must bind the intent ID, authorization
+  revision and evidence digest, canonical channel ID, delivered Buzz event ID,
+  agent claim/run ID, and acknowledgement timestamp. Human messages, channel names,
+  another agent/channel, or a stale revision cannot acknowledge. After a possible send
+  with unknown durable delivery state, the state becomes
+  `RECONCILIATION_REQUIRED`; the canonical channel/relay is queried for the same
+  intent ID and acknowledgement before retry. If found, existing state is backfilled;
+  if absent after the bounded check, resend uses the same intent ID and both Buzz and
+  the runtime deduplicate it. Downstream work stays blocked until one valid
+  acknowledgement exists.
+- **Authoritative routing:** The key is
+  `workspace.routing.steer_agent_handoff.channel_id` in audited Work Management
+  workspace/POD configuration. The Tech Lead owns changes, each version records an
+  immutable version, actor, timestamp, and reason, and the active audited
+  configuration version has precedence with no fallback. Its current value is
+  `10ac2fb4-f7fc-4dbc-bb73-8c545f31a470` (`#steer-team`). Repository prose, UI label,
+  environment default, channel name, or hard-coded constant is never authoritative.
+  A missing key, unknown/deleted channel, name/ID disagreement, relay/workspace
+  mismatch, assigned-agent non-membership, or competing source causes a fail-closed
+  conflict: no new receipt/outbox row, send, item/gate/phase/assignee/decision
+  change, or change to an existing claim. The UI exposes the exact mismatch and
+  current config version beside the dispatch action.
+- **Measurement rule:** The 20-case enrollment and required results above are fixed
+  before execution. The production observations remain incident evidence only;
+  recurrence frequency remains unmeasured.
+
 ## What "done and correct" means
 
 - A successful mutation renders the authoritative server response in the initiating
@@ -157,16 +226,19 @@ bounded controls into executable acceptance tests after human Gate 1 review.
 - A `409`, validation error, transport failure, or blocked authorization is rendered
   beside the initiating control with an actionable explanation; the user's input is
   preserved and retry is explicit rather than automatic.
-- Authorized dispatch emits one durable, agent-readable receipt bound to the work-item
-  key, workflow/state, assigned role identity, allowed/prohibited scope, exact evidence
-  revision, accepted forecast, human authorization identity/timestamp, canonical
-  channel name and immutable channel ID, authorization revision, and idempotency key.
+- Authorized dispatch emits exactly one durable, agent-readable receipt and outbox row
+  for the versioned `dispatch_intent_id`; the receipt binds the full payload,
+  authorization revision, canonical channel ID, evidence digest, and assigned-agent
+  acknowledgement identity. A material revision supersedes rather than reuses the
+  prior identity.
 - A missing, stale, forged, replayed, or mismatched channel/authorization revision
   fails closed before dispatch or state change. A routing correction resumes the
-  existing claim; it never creates a second run.
-- The outbox exposes and reconciles `queued`, `delivered`, `acknowledged`, `failed`,
-  and `retry` states with Buzz and GitHub evidence, including acknowledgement identity
-  and durable receipt reference. Activity and audit history contain no duplicate event.
+  existing claim; it never creates a second run. Uncertain delivery reconciles before
+  retry and reuses the same intent ID.
+- The outbox follows only the bounded lifecycle above, exposes terminal state, and
+  reconciles with Buzz and GitHub evidence. Activity and audit history contain no
+  duplicate event; downstream work remains blocked until a valid signed
+  acknowledgement exists.
 - Keyboard focus remains on or returns to the initiating control after completion;
   success and failure are announced through named status/error regions, including on
   narrow screens and for screen-reader users. Global banners are supplementary, not
@@ -210,19 +282,23 @@ model is: an attacker or faulty integration may forge or replay a receipt, route
 authorized handoff to the wrong channel, forge an acknowledgement, reuse a stale
 authorization revision, create duplicate work across retries, or bypass a human gate.
 The bounded response is to bind every receipt and outbox transition to the exact
-work-item/role/authorization/evidence revision and immutable channel ID, resolve the
-channel from authoritative configuration, fail closed on absence or mismatch, reject
-replay and stale revisions, keep gate mutations human-only, and retain actor/time/audit
-references. Verification failure must never degrade into a guessed route or optimistic
-success. No secret or new personal-data field is introduced by this brief; any future
-receipt retention or identity expansion requires its own recorded ruling.
+work-item/role/authorization/evidence revision, deterministic intent ID, signed
+acknowledgement bindings, and immutable channel ID; resolve the channel from the
+active audited configuration version with no fallback; fail closed on absence or
+mismatch; reconcile before retry; reject replay and stale revisions; keep gate
+mutations human-only; and retain actor/time/audit references. Verification failure
+must never degrade into a guessed route or optimistic success. No secret or new
+personal-data field is introduced by this brief; any future receipt retention or
+identity expansion requires its own recorded ruling.
 
 ## Chosen approach
 
 At the Intent level, choose authoritative-response reconciliation plus action-local
-status and focus, with configuration-backed routing and a durable receipt/outbox
-contract. This accepts a visible pending or fail-closed result when authority is
-unavailable in exchange for avoiding false success, duplicate work, and hidden errors.
+status and focus, with the versioned deterministic identity, atomic receipt/outbox,
+signed acknowledgement, reconciliation-before-retry, and audited configuration-backed
+routing contract above. This accepts a visible pending or fail-closed result when
+authority is unavailable in exchange for avoiding false success, duplicate work, and
+hidden errors.
 The rejected alternatives are a global banner plus eventual reload, client-only
 optimistic text, a hard-coded channel, or timestamp-based deduplication; each is
 inconsistent with the incident evidence and the human routing decision.
@@ -235,8 +311,9 @@ inconsistent with the incident evidence and the human routing decision.
 | `Next action` appears saved, reverts after reload, no activity event | Production observation | [Comment #5310415277](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310415277) | Observed; not a repair pass |
 | Unguarded post-write `load()`, page-level error, fixed drawer overlay | Source inspection | [page.tsx at d9dcb53](https://github.com/idrissenayat/federal-bd-platform/blob/d9dcb53398da166aea972eb678e3cfff058a10c6/flight-board/app/page.tsx#L517-L561) and [globals.css](https://github.com/idrissenayat/federal-bd-platform/blob/d9dcb53398da166aea972eb678e3cfff058a10c6/flight-board/app/globals.css#L110) | Confirmed in source |
 | Hard-coded wrong channel, generic outbox channel, timestamp dedupe, free-text activity | Source inspection | [Comment #5310332219](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310332219), [authorization.ts](https://github.com/idrissenayat/federal-bd-platform/blob/d9dcb53398da166aea972eb678e3cfff058a10c6/flight-board/worker/authorization.ts#L104-L120), [api.ts](https://github.com/idrissenayat/federal-bd-platform/blob/d9dcb53398da166aea972eb678e3cfff058a10c6/flight-board/worker/api.ts#L492-L523) | Confirmed in source |
-| `#steer-team` canonical route and fail-closed mismatch policy | Source inspection (authenticated human decision) | [Comment #5310397551](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310397551) | Decision recorded; implementation absent |
-| Gate-1-ready brief scope expansion | Source inspection (authenticated human decision) | [Comment #5310403354](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310403354) | Decision recorded; Gate 1 pending |
+| `#steer-team` canonical route and fail-closed mismatch policy | Authenticated decision evidence | [Comment #5310397551](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310397551) | Decision recorded; implementation absent |
+| Gate-1-ready brief scope expansion | Authenticated decision evidence | [Comment #5310403354](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310403354) | Decision recorded; Gate 1 pending |
+| Deterministic dispatch identity, atomic receipt/outbox, signed acknowledgement, routing precedence, 20-case measurement | Authenticated decision evidence | [Comment #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779) | Contract recorded; execution not run |
 | Local replay, concurrency, outbox delivery, partial-dispatch recovery | Not run | This Scout handoff did not execute live repair or integration paths | No pass/fail claim |
 | Local reproduction of stale `Next action`/hidden `409` | Not run | Production observations above; no local live run claimed | No pass/fail claim |
 | Independent repeated-signal frequency | Not run | `steer/signals/README.md`; `steer/operating-system/METRICS.md` | Unmeasured |
