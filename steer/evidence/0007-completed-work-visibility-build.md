@@ -8,8 +8,10 @@
 
 ## Result
 
-The implementation is complete on the draft branch and has not been merged, deployed,
-released, closed, or submitted for Gate 3. It keeps the seven STEER lanes, derives
+The implementation is complete on the draft branch and has not been merged, deployed to
+the production Flight Board, released, closed, or submitted for Gate 3. With the Product
+Lead's explicit approval after Gate 2, the same product revision was published to a
+separate owner-only staging project for Evaluate verification. It keeps the seven STEER lanes, derives
 recent completed history without changing D1, separates active and completed counts,
 removes movement/edit controls from completed records, preserves the server dispatch
 barrier, adds an evidence-based phase timeline, and makes the final-lane exit criteria
@@ -46,17 +48,42 @@ explicit.
   warning, Ruff, mypy, pytest, gitleaks, OSV-Scanner, and Semgrep all green.
 - Semgrep ran 252 rules across 111 tracked files with zero findings.
 
-## Remaining Evaluate evidence
+## Staging Evaluate evidence
 
-The in-app browser can open the unauthenticated local production server, but the board
-API correctly refuses to return workspace data. A local authentication-injecting preview
-was then blocked by the browser URL policy. No alternate browser or policy workaround was
-used. Therefore desktop/narrow visual inspection, keyboard traversal, and automated
-accessibility inspection against populated cards remain pending before Gate 3.
+The Product Lead explicitly approved a non-production test environment after Gate 2. An
+owner-only staging site was created at
+https://steer-flight-board-staging.idriss-enayat.chatgpt.site with its own D1 binding and
+synthetic seed records. The production Flight Board remained on its existing Sites
+project and version. Staging version 1 was built from implementation/evidence revision
+`c8faf4d97cad7aae2f79b747ae86d6414d6ecff6` plus a staging-only hosting/package commit;
+no product source changed between the approved implementation and staging build.
 
-The hosted board is unchanged because Gate 2 explicitly prohibited deployment. These
-remaining checks require either a sanctioned authenticated preview or the later protected
-deployment/release workflow; they must be completed and evidenced before Gate 3 approval.
+Authenticated in-app-browser checks on 2026-08-17 produced these results:
+
+- Desktop at 1098 × 964: pass. All seven lanes, separate active/completed counts, final
+  lane exit cues, the completed card, drawer timeline, and locked-record treatment were
+  readable. No document-level horizontal overflow or console errors were observed.
+- Narrow screen at 390 × 844: pass. The board uses an intentional horizontal lane
+  scroller, cards remain readable, the drawer becomes a full-width audit surface, and no
+  document-level horizontal overflow was observed.
+- Completed history: pass. The default hides the seed record whose completion time is
+  absent; `Show completed` reveals it in Learn with `1 completed`, does not inflate the
+  `0 active` count, shows `Completion time not recorded`, and changes the empty state to
+  `No active work · completed history below`.
+- Search: pass. Searching `STR-012` retained the matching completed record while removing
+  unrelated active cards; whitespace restored the complete board.
+- Completed-state controls: pass. The completed card has no movement controls. Its drawer
+  shows `Movement and dispatch controls are locked`, exposes evidence/activity for audit,
+  renders the authorization action disabled, and states that completed execution is
+  blocked. The server-side completed dispatch regression also remains green.
+- Accessibility structure: pass. The page exposes main/navigation/complementary
+  landmarks, labelled search and completed-history controls, a labelled ordered phase
+  timeline, named native buttons, no duplicate IDs, no broken `aria-labelledby`
+  references, no missing image alternatives, and a visible 3px keyboard focus outline.
+- Keyboard execution: environment-limited. The in-app automation focused the native
+  completed-card button and verified its visible focus treatment, but its Tab/Enter/Space
+  commands did not dispatch to the page. Native-button semantics and lint/source checks
+  pass, but one real keyboard traversal and activation remains required before Gate 3.
 
 ## Rollback
 
@@ -66,5 +93,5 @@ site version remains the deployment rollback target.
 
 ---
 
-EVALUATE: AUTOMATED PASS / MANUAL UI EVIDENCE PENDING
+EVALUATE: AUTOMATED + VISUAL + STRUCTURAL A11Y PASS / REAL KEYBOARD ACTIVATION PENDING
 GATE 3: NOT REQUESTED
