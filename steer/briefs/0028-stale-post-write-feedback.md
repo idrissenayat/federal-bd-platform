@@ -150,6 +150,20 @@ series has been established.
   90-day terminal retention, deletion/hold handling, inventory, no-PII-in-logs, and
   default-closed behavior. It is authenticated decision evidence only, not a Gate 1/2/3
   ruling, Exam, implementation authorization, merge, deployment, or release.
+- The supervisory Tech decision at [issue comment
+  #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748)
+  supersedes only conflicting wording in the prior design decisions and freezes the
+  immutable receipt plus append-only lifecycle/acknowledgement ledger, versioned
+  compare-and-set and replay rules, `dispatch_claim_lineage_id` supersession model,
+  stale-configuration fail-closed behavior, exact 20-case manifest, and external
+  revision-binding provenance below. It is authenticated design decision evidence only,
+  not a Gate 1/2/3 ruling, Exam, implementation authorization, merge, deployment, or
+  release.
+- The same ruling freezes revision provenance: a Git-tracked file cannot contain the
+  hash of the commit that contains itself, so Scout evidence records the authorized
+  parent and identifies the review target as the immutable commit named in the external
+  Buzz Critic request/result. Those external events bind the exact commit and artifact
+  URLs; no self-referential follow-up commit is created merely to write its own hash.
 - A fresh production observation at [issue comment
   #5310415277](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310415277)
   records a signed-in human editing `Next action`: the drawer showed the new text,
@@ -181,33 +195,68 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   accepted-forecast audit-event ID, canonical Buzz channel ID, and hash of the
   authorized Next action. The uniqueness boundary is one claim/run for one intent ID
   across Work Management, its outbox, Buzz, retries, routing corrections, and the
-  agent runtime. Corrections and retries reuse that identity; a material
-  authorization, evidence, assignee, or scope change creates a new revision and
+  agent runtime. Same-intent transport repair and retry reuse that identity only when
+  the immutable receipt bindings remain exact. A material authorization, evidence,
+  assignee, scope, channel, configuration, workspace/relay, or membership-authority
+  change creates a new revision and new intent under the lineage contract below; it
   supersedes without deleting the prior receipt.
+- **Claim lineage and routing correction:** A separate deterministic
+  `dispatch_claim_lineage_id` is bound to workspace/POD, work-item stable ID/key,
+  STEER workflow, assigned role, enrolled member ID, and the root human-authorization
+  lineage. Every authorized routing/evidence/scope revision in one supersession chain
+  references that lineage, with at most one agent claim/run per lineage. Same-intent
+  retry or transport repair is legal only when the active audited routing-configuration
+  version, canonical channel ID, workspace/relay binding, and assigned-agent
+  membership exactly equal the immutable receipt values; it reuses the intent, receipt,
+  outbox identity, lineage, claim, and run. A changed channel, routing version,
+  workspace/relay binding, membership authority, evidence, assignee, or authorized
+  scope is a material revision: explicit human reauthorization creates a new intent
+  referencing the same lineage and `supersedes_intent_id`, and atomically supersedes
+  the old intent without creating or restarting the runtime claim/run. Delivery and
+  retry compare every active binding to the receipt and fail closed before any side
+  effect on mismatch; no automatic rewrite occurs. If prior delivery is uncertain,
+  reconcile the old intent/channel first; a valid acknowledgement ends the lineage,
+  and a late acknowledgement for a superseded intent cannot authorize downstream work.
 - **Atomic receipt/outbox creation:** Before external delivery, one database
   transaction validates the current authorization revision and routing configuration,
   reserves the unique intent ID, writes the immutable authorization receipt, and
   creates exactly one outbox row referencing that receipt. No external message is
   sent unless the transaction commits, and delivery or retry cannot change item
   phase, assignee, decision state, gate state, or downstream authorization.
-- **Self-contained receipt and audit resolution:** The immutable receipt is a
-  versioned, agent-readable snapshot containing the receipt schema version, receipt ID,
-  `dispatch_intent_id`, workspace/POD ID, work-item stable ID/key, authorization
-  revision and receipt-created timestamp; STEER workflow and authoritative item state
-  at human authorization; assigned role, enrolled agent member ID, enrolled key
-  ID/version, and public-key fingerprint; structured `allowed_scope` and
-  `prohibited_scope`; exact evidence URL plus immutable revision/digest; accepted-
-  forecast timestamp and immutable audit-event ID; human-authorization timestamp,
-  stable actor ID, and immutable audit-event ID; canonical Buzz channel ID and
-  authoritative routing-configuration version; authorized Next-action hash; and
-  acknowledgement state plus the signed acknowledgement bindings in the prior Tech
-  decision. Audit-event IDs are corroborating pointers, not the only readable source:
-  their material authorization fields remain in the receipt, and each pointer resolves
+- **Immutable receipt and append-only operational history:** The immutable receipt is
+  a versioned, agent-readable authorization snapshot containing the receipt schema
+  version, receipt ID, `dispatch_intent_id`, workspace/POD ID, work-item stable ID/key,
+  authorization revision and receipt-created timestamp; STEER workflow and
+  authoritative item state at human authorization; assigned role, enrolled agent
+  member ID, enrolled key ID/version, and public-key fingerprint; structured
+  `allowed_scope` and `prohibited_scope`; exact evidence URL plus immutable
+  revision/digest; accepted-forecast timestamp and immutable audit-event ID;
+  human-authorization timestamp, stable actor ID, and immutable audit-event ID;
+  canonical Buzz channel ID and authoritative routing-configuration version;
+  authorized Next-action hash; and acknowledgement policy/required-binding fields.
+  It does not contain mutable current acknowledgement state or a future signature.
+  Audit-event IDs are corroborating pointers, not the only readable source: their
+  material authorization fields remain in the receipt, and each pointer resolves
   through a durable, append-only, non-interactive, agent-readable audit API using the
   enrolled agent service identity. Unavailable, missing, stale, or mismatched
   resolution fails closed with no delivery, acknowledgement, retry-created identity,
   downstream work, or item/gate/phase/assignee/decision mutation; the existing claim
   identity is preserved.
+- **Append-only lifecycle and acknowledgement ledger:** In the same initial
+  transaction, create the unique receipt, exactly one outbox identity, and lifecycle
+  event `v0: QUEUED`. The authoritative operational history is an append-only
+  `dispatch_event` ledger keyed by `dispatch_intent_id`, with monotonic
+  `event_version`, event type/state, timestamp, actor/service identity, prior-event
+  hash, payload digest, and signature where applicable. The agent-readable status
+  envelope is immutable receipt plus ordered event ledger plus current projection; the
+  projection is rebuildable and is not independent evidence. Every transition appends
+  exactly one event and updates the projection in one transaction using compare-and-set
+  on `expected_event_version`. Enforce unique
+  `(dispatch_intent_id,event_version)`, one outbox identity per intent, and at most one
+  accepted `ACKNOWLEDGED` event per intent. A stale expected version fails without a
+  second event or side effect. The privacy retention/deletion policy applies to the
+  receipt, ledger, projection, outbox, signatures/key references, indexes, and
+  replicas together.
 - **Lifecycle and terminals:** The only allowed transitions are
   `QUEUED -> DELIVERED -> ACKNOWLEDGED`;
   `QUEUED|DELIVERED -> RECONCILIATION_REQUIRED` for uncertain delivery;
@@ -226,7 +275,13 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   `RECONCILIATION_REQUIRED`; the canonical channel/relay is queried for the same
   intent ID and acknowledgement before retry. If found, existing state is backfilled;
   if absent after the bounded check, resend uses the same intent ID and both Buzz and
-  the runtime deduplicate it. Downstream work stays blocked until one valid
+  the runtime deduplicate it. An acknowledgement submission is keyed by the digest
+  of its required signed bindings. An exact replay returns the existing accepted event
+  idempotently. A different, stale, forged, wrong-key, wrong-channel, wrong-evidence,
+  wrong-run, or second acknowledgement is rejected and recorded as a typed
+  security/reconciliation event without PII; it cannot advance state or start work.
+  Delivery, retry, and reconciliation side effects occur only after the event and
+  projection transaction commits. Downstream work stays blocked until one valid
   acknowledgement exists.
 - **Authoritative routing:** The key is
   `workspace.routing.steer_agent_handoff.channel_id` in audited Work Management
@@ -239,10 +294,46 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   mismatch, assigned-agent non-membership, or competing source causes a fail-closed
   conflict: no new receipt/outbox row, send, item/gate/phase/assignee/decision
   change, or change to an existing claim. The UI exposes the exact mismatch and
-  current config version beside the dispatch action.
-- **Measurement rule:** The 20-case enrollment and required results above are fixed
-  before execution. The production observations remain incident evidence only;
-  recurrence frequency remains unmeasured.
+  current config version beside the dispatch action. “Routing correction resumes the
+  existing claim” means unchanged binding gets same-intent transport repair; changed
+  binding requires an explicitly authorized superseding intent on the same unique
+  lineage and never starts a duplicate run.
+
+### Authoritative 20-case pre-enrollment manifest
+
+The Intent Brief itself is the authoritative pre-enrollment manifest. Each ID executes
+once from the named seed; all 20 remain in the denominator and missing or
+unclassifiable results fail.
+
+| ID | Seed / mutation |
+|---|---|
+| SAVE-01 | revision r1, empty optional economics fields → valid populated Work Economics save |
+| SAVE-02 | revision r1, existing economics values → valid replacement save |
+| SAVE-03 | revision r1, valid lower-bound numeric values → save |
+| SAVE-04 | revision r1, valid upper-bound/long permitted values at narrow viewport → save |
+| DISP-01 | authorized r1, matching route v1, no prior receipt → deliver + valid ack |
+| DISP-02 | authorized r1, matching route v1, receipt visible after reload → no duplicate dispatch |
+| DISP-03 | authorized r1, matching route v1, agent service reads without human UI → deliver + valid ack |
+| DISP-04 | authorized r1, matching route v1, assistive-tech/narrow UI → exactly one dispatch and local status |
+| FAIL-01 | stale mutation revision r0 against server r1 → HTTP 409 |
+| FAIL-02 | invalid Work Economics field set at r1 → validation failure |
+| FAIL-03 | authorized r1 with missing canonical routing key → fail closed |
+| FAIL-04 | authorized r1 with noncanonical/mismatched channel, relay, or membership → fail closed |
+| ORDER-01 | old bootstrap response arrives after successful save response |
+| ORDER-02 | two explicit saves; older response arrives after newer confirmed response |
+| ORDER-03 | stale activity/receipt projection arrives after newer lifecycle event |
+| ORDER-04 | delayed old failure arrives after a later authoritative success |
+| REC-01 | exact authorization replay after receipt creation |
+| REC-02 | two concurrent dispatch submissions with the same authorization/expected version |
+| REC-03 | external send may have succeeded but response is lost; reconciliation finds existing delivery/ack |
+| REC-04 | receipt/outbox committed but no durable Buzz delivery; reconcile absent, then same-intent retry |
+
+For each case, record seed revision/config, action identity, expected authoritative
+state and local UI/focus/announcement result, actual receipt/outbox/event/claim/run
+IDs, HTTP/error result, and pass/fail. No case substitution or seed change is allowed
+after execution starts; a required amendment creates a new manifest revision and
+requires renewed Gate 1 consideration. The production observations remain incident
+evidence only; recurrence frequency remains unmeasured.
 
 ## What "done and correct" means
 
@@ -258,17 +349,21 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   for the versioned `dispatch_intent_id`; the receipt is a self-contained versioned
   snapshot with the complete fields above, including structured allowed/prohibited
   scope, authoritative item state, evidence revision/digest, both authorization
-  timestamps and audit references, routing-config version, and assigned-agent signed
-  acknowledgement bindings. A material revision supersedes rather than reuses the
-  prior identity.
+  timestamps and audit references, routing-config version, and acknowledgement
+  policy/required-binding fields. Current acknowledgement truth is the ordered
+  append-only event ledger plus rebuildable projection, not a mutation of the receipt;
+  at most one accepted acknowledgement event exists per intent.
 - A missing, stale, forged, replayed, or mismatched channel/authorization revision
   fails closed before dispatch or state change. A routing correction resumes the
-  existing claim; it never creates a second run. Uncertain delivery reconciles before
-  retry and reuses the same intent ID.
-- The outbox follows only the bounded lifecycle above, exposes terminal state, and
-  reconciles with Buzz and GitHub evidence. Activity and audit history contain no
-  duplicate event; downstream work remains blocked until a valid signed
-  acknowledgement exists.
+  existing claim only when the receipt bindings remain exact and repair is same-intent;
+  a changed binding requires an explicitly authorized superseding intent on the same
+  `dispatch_claim_lineage_id`, and never creates a second run. Uncertain delivery
+  reconciles before retry and reuses the same intent ID when bindings match.
+- The outbox and append-only event ledger follow only the bounded lifecycle above,
+  expose terminal state, and reconcile with Buzz and GitHub evidence. Compare-and-set
+  and uniqueness rules reject stale transitions, duplicate events, and acknowledgement
+  replays; activity and audit history contain no duplicate accepted event; downstream
+  work remains blocked until a valid signed acknowledgement exists.
 - Keyboard focus remains on or returns to the initiating control after completion;
   success and failure are announced through named status/error regions, including on
   narrow screens and for screen-reader users. Global banners are supplementary, not
@@ -348,11 +443,12 @@ and dispatch while preserving the existing claim identity.
 ## Chosen approach
 
 At the Intent level, choose authoritative-response reconciliation plus action-local
-status and focus, with the versioned deterministic identity, atomic receipt/outbox,
-signed acknowledgement, reconciliation-before-retry, and audited configuration-backed
-routing contract above. This accepts a visible pending or fail-closed result when
-authority is unavailable in exchange for avoiding false success, duplicate work, and
-hidden errors.
+status and focus, with the versioned deterministic identity, immutable authorization
+receipt, append-only lifecycle/acknowledgement ledger, compare-and-set transitions,
+lineage-bound routing supersession, reconciliation-before-retry, and audited
+configuration-backed routing contract above. This accepts a visible pending or
+fail-closed result when authority is unavailable in exchange for avoiding false
+success, duplicate work, and hidden errors.
 The rejected alternatives are a global banner plus eventual reload, client-only
 optimistic text, a hard-coded channel, or timestamp-based deduplication; each is
 inconsistent with the incident evidence and the human routing decision.
@@ -369,6 +465,7 @@ inconsistent with the incident evidence and the human routing decision.
 | Gate-1-ready brief scope expansion | Authenticated decision evidence | [Comment #5310403354](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310403354) | Decision recorded; Gate 1 pending |
 | Deterministic dispatch identity, atomic receipt/outbox, signed acknowledgement, routing precedence, 20-case measurement | Authenticated decision evidence | [Comment #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779) | Contract recorded; execution not run |
 | Self-contained receipt schema, durable audit resolution, pseudonymous personal-data classification, privacy lifecycle/default-closed controls | Authenticated decision evidence | [Comment #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334) | Contract recorded; implementation not authorized |
+| Immutable receipt, append-only lifecycle/ack ledger, CAS and replay rules, claim lineage/routing supersession, exact 20-case manifest, external revision provenance | Authenticated decision evidence | [Comment #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748) | Contract recorded; implementation not authorized |
 | Local replay, concurrency, outbox delivery, partial-dispatch recovery | Not run | This Scout handoff did not execute live repair or integration paths | No pass/fail claim |
 | Local reproduction of stale `Next action`/hidden `409` | Not run | Production observations above; no local live run claimed | No pass/fail claim |
 | Independent repeated-signal frequency | Not run | `steer/signals/README.md`; `steer/operating-system/METRICS.md` | Unmeasured |
