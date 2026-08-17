@@ -1,21 +1,47 @@
-# Scout seventh-rework evidence — STR-028 Intent Brief 0028
+# Scout eighth-governance-rework evidence — STR-028 Intent Brief 0028
 
 **Work item:** [STR-028 / issue #56](https://github.com/idrissenayat/federal-bd-platform/issues/56)
 **Branch:** `scout/str-028-intent-brief`
-**Parent revision:** `5dd1bfc17a7578875663056384e2c3d534647df7`
-**Review role:** Scout evidence for the seventh authorized Intent Brief rework; this
-is not a Critic review, human gate ruling, Exam, implementation evidence, or release
-decision
-**Controlling decisions:** [Tech design decision #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779), [supervisory Tech decision #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334), [supervisory Tech decision #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748), [supervisory Tech decision #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687), [supervisory Tech decision #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932), and [supervisory Tech decision #5316881629](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316881629)
+**Parent revision:** `4056a385278fba6859da1ff03fa0ed436c9cac2f`
+**Review role:** Scout evidence for the eighth authorized Intent Brief governance
+rework; this is not a Critic review, human gate ruling, Exam, implementation evidence,
+or release decision
+**Controlling decisions:** [Tech design decision #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779), [supervisory Tech decision #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334), [supervisory Tech decision #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748), [supervisory Tech decision #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687), [supervisory Tech decision #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932), [supervisory Tech decision #5316881629](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316881629), and [supervisory governance decision #5316966355](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316966355)
 
 ## Authorized change
 
-The authenticated Tech decision #5316881629 freezes the contracts that the previous
-independent Critic found missing. This rework changes only the Intent Brief, this
-Scout evidence file, and the project Decision Log, preserving the same claim and
-branch from parent revision `5dd1bfc17a7578875663056384e2c3d534647df7`. It does not
-draft an Exam, change application or worker code, approve a gate, merge, deploy, or
-release.
+The authenticated governance decision #5316966355 freezes the review-assignment
+contracts that the previous Critic authorization check found missing. This rework
+changes only the Intent Brief, this Scout evidence file, the project Decision Log,
+TEAM-COMMUNICATION, and agent-roles, preserving the same primary claim and branch
+from parent revision `4056a385278fba6859da1ff03fa0ed436c9cac2f`. It does not draft an
+Exam, change application or worker code, approve a gate, merge, deploy, or release.
+
+## Review assignment, receipt, and stage contract
+
+- The STR-028 Work Management item has one primary execution claim/run owned by the
+  assigned Scout. Rework revisions preserve that claim, lineage, and idempotency
+  boundary; non-owning reviewers do not acquire, replace, or duplicate it.
+- Each review assignment is bound to the work-item key/link, STEER workflow, primary
+  claim reference, review stage, exact artifact revision, reviewer role and enrolled
+  member identity, and source request event. It grants review authority only and
+  cannot change primary ownership, scope, gate state, or implementation authority.
+- Work Management records immutable request and result receipts carrying the exact
+  revision, stage, reviewer, source request, and disposition. Repeating the same
+  assignment tuple reuses the receipt idempotently; it cannot create a second review
+  run or primary claim. A changed revision, stage, reviewer, or source request creates
+  a new non-owning receipt only.
+- Critic inputs are stage-specific:
+
+  | Review stage | Required inputs | Boundary |
+  |---|---|---|
+  | `PRE_GATE_1_BRIEF` | Exact Brief revision, Scout evidence, Decision Log, governing gates/guardrails, signals/metrics limits, and Work Management assignment/receipts | No Exam prerequisite; the Exam is downstream of human Gate 1. This is review evidence only, not a Gate 1 ruling or execution authorization. |
+  | `GATE_2_EXAM` | Exact human-approved Brief revision, exact Exam revision, applicable guardrails, and assigned Exam/Test evidence | Requires the Exam; it cannot be substituted by a pre-gate Brief review. |
+  | `GATE_3_BUILD` | Exact Brief and frozen Exam revisions, implementation diff, test/CI evidence, and prior review receipts/results | Build review only; no merge, deployment, release, or human gate signature. |
+
+- The seventh-rework Critic request was therefore a non-owning
+  `PRE_GATE_1_BRIEF` review of the exact Brief revision, not a request to create or
+  require an Exam. The same primary Scout claim/run remains in force.
 
 ## Contract incorporated
 
@@ -170,7 +196,7 @@ release.
 
 ## Revision provenance
 
-The authorized parent is `5dd1bfc17a7578875663056384e2c3d534647df7`. A Git-tracked file
+The authorized parent is `4056a385278fba6859da1ff03fa0ed436c9cac2f`. A Git-tracked file
 cannot contain the hash of the commit that contains itself, so this evidence records
 the parent and binds the review target to the immutable commit named in the external
 Buzz Critic request/result and its exact artifact URLs. No self-referential follow-up
@@ -179,7 +205,7 @@ commit is created merely to write its own hash.
 ## Evidence classification
 
 The evidence matrix now classifies the authenticated owner/Tech issue comments,
-including the receipt-schema/privacy ruling at [comment #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334), the immutable-event/routing/manifest ruling at [comment #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748), the lineage/event-authority/security-case ruling at [comment #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687), the executable-sequence/cryptographic-profile ruling at [comment #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932), and the send-fencing/publisher-trust/fixed-case ruling at [comment #5316881629](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316881629),
+including the receipt-schema/privacy ruling at [comment #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334), the immutable-event/routing/manifest ruling at [comment #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748), the lineage/event-authority/security-case ruling at [comment #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687), the executable-sequence/cryptographic-profile ruling at [comment #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932), the send-fencing/publisher-trust/fixed-case ruling at [comment #5316881629](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316881629), and the review-assignment/stage-input ruling at [comment #5316966355](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316966355),
 as **authenticated decision evidence**, separate from production observations, source
 inspection, local/non-production execution, and not-run proof obligations.
 
@@ -192,5 +218,8 @@ inspection, local/non-production execution, and not-run proof obligations.
   implementation.
 - The exact review target is intentionally supplied by the external Buzz Critic
   request/result rather than written self-referentially into this file.
+- No Exam was created or required for this `PRE_GATE_1_BRIEF` review; the Exam is a
+  downstream artifact after human Gate 1. The Critic request/result must bind the
+  exact Brief revision and the non-owning review receipts.
 - Gate 1 remains pending; a fresh independent Critic review must inspect the exact
   resulting revision before any named human Gate 1 decision.

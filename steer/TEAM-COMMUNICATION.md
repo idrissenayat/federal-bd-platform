@@ -13,8 +13,13 @@ all of the following in STEER Work Management:
 2. a frozen workflow assignment;
 3. one explicitly assigned agent;
 4. an active execution state and executable next action;
-5. the controlling brief, exam, or approved setup evidence; and
-6. no pending human gate or returned-change hold.
+5. the controlling stage artifact and exact revision: `PRE_GATE_1_BRIEF` uses the
+   exact Brief plus its evidence/controls and has no Exam prerequisite because the
+   Exam is downstream of human Gate 1; later Exam/build stages require their matching
+   exact artifacts; and
+6. no returned-change hold for that stage. A pending human Gate 1 is expected for a
+   non-owning `PRE_GATE_1_BRIEF` review, but blocks implementation, gate approval, and
+   downstream execution.
 
 The authorized human uses the work item's **Authorize & copy Buzz handoff** control and
 posts the generated message in the applicable project thread. A Buzz mention is a
@@ -51,3 +56,23 @@ If an agent receives an unauthorized Buzz request, it responds: “I can discuss
 clarify this request, but I cannot begin execution until it has an authorized STEER Work
 Management item assigned to me.” The requester then creates or corrects the Flight Board
 item instead of negotiating authorization in chat.
+
+## Stage-scoped review handoffs
+
+The Flight Board maintains one primary execution claim/run for a work item. A reviewer
+receives a separate, non-owning assignment that cannot acquire or duplicate the primary
+claim, change its owner, change scope, approve a gate, or authorize implementation.
+Every review assignment is bound to the work-item key/link, workflow, primary claim
+reference, review stage, exact artifact revision, reviewer role/member, and source
+request event. Work Management records immutable request and result receipts with those
+bindings and the disposition. Repeating the same assignment tuple reuses the receipt
+idempotently; a changed revision, stage, reviewer, or source request creates a new
+review receipt only, never a new primary run.
+
+Critic inputs are stage-specific:
+
+| Review stage | Required inputs | Boundary |
+|---|---|---|
+| `PRE_GATE_1_BRIEF` | Exact Brief revision, Scout evidence, Decision Log, governing gates/guardrails, signals/metrics limits, and Work Management assignment/receipts | No Exam prerequisite; the Exam is downstream of human Gate 1. The result is review evidence, not a Gate 1 ruling or execution authority. |
+| `GATE_2_EXAM` | Exact human-approved Brief revision, exact Exam revision, applicable guardrails, and assigned Exam/Test evidence | Requires the Exam; a pre-gate Brief review is not a substitute. |
+| `GATE_3_BUILD` | Exact Brief and frozen Exam revisions, implementation diff, test/CI evidence, and prior review receipts/results | Build review only; no merge, deployment, release, or human gate signature. |

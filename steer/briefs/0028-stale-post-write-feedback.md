@@ -7,6 +7,33 @@
 **Workflow:** STEER
 **Assignment:** STEER Scout; complete Gate-1-ready Intent Brief preparation only
 
+## Review and claim governance
+
+- **Single primary execution claim:** The STR-028 Work Management item has one
+  primary execution claim/run, owned by the assigned `STEER Scout` under the frozen
+  workflow and root authorization. Rework revisions preserve that claim, its lineage,
+  and its idempotency boundary; a reviewer never acquires, replaces, or duplicates
+  the primary claim/run.
+- **Non-owning exact-revision review assignment:** A review handoff is a separate,
+  stage-scoped Work Management assignment bound to the work-item key/link, workflow,
+  primary claim reference, review stage, exact artifact revision, reviewer role and
+  enrolled member identity, and source request event. It grants review authority only;
+  it cannot change the primary owner, scope, gate state, or implementation authority.
+- **Request/result receipts and idempotency:** Work Management records an immutable
+  request receipt and result receipt for each review assignment, including the exact
+  revision, stage, reviewer identity, source request event, and review disposition.
+  Repeating the same assignment tuple is idempotent and reuses the existing receipt;
+  it cannot create a second review run or primary claim. A changed exact revision,
+  stage, reviewer, or source request is a new non-owning review receipt and still
+  cannot create a new primary execution run.
+- **Stage-specific Critic inputs:**
+
+  | Review stage | Required Critic inputs | Boundary |
+  |---|---|---|
+  | `PRE_GATE_1_BRIEF` | Exact Intent Brief revision, Scout evidence, Decision Log, governing gates/guardrails, signals/metrics limits, and the Work Management review assignment/receipts | No Exam prerequisite; the Exam is downstream of human Gate 1. Review evidence is not a Gate 1 ruling, implementation authorization, or primary claim. |
+  | `GATE_2_EXAM` | Exact human-approved Brief revision, exact Exam revision, applicable guardrails, and the assigned Exam/Test evidence | Do not substitute a pre-gate Brief review for Exam review; no implementation or release authority. |
+  | `GATE_3_BUILD` | Exact Brief and frozen Exam revisions, implementation diff, test/CI evidence, and prior stage receipts/results | Review the verified build only; no merge, deployment, release, or human gate signature by the Critic. |
+
 ## Expected outcome and measurement
 
 - **Primary outcome:** An authenticated operator never has to infer whether a drawer
@@ -653,6 +680,7 @@ inconsistent with the incident evidence and the human routing decision.
 | Canonical root lineage formula/lifetime, signed event schema and authority matrix, exact replay/wrong-key/second-ack/stale-config/supersession mappings | Authenticated decision evidence | [Comment #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687) | Contract recorded; implementation not authorized |
 | Executable queued/send-reservation/delivery order, uncertain-send reconciliation, signed requeue authority, retry-attempt uniqueness, and v1 cryptographic/key-trust profile | Authenticated decision evidence | [Comment #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932) | Contract recorded; implementation not authorized |
 | Reservation fencing and serialized pre-call start, terminalization ordering, monotonic delivery/reconciliation, NIP-01 publisher trust, and fixed REC-02/REC-03/FAIL-03/FAIL-04 mappings | Authenticated decision evidence | [Comment #5316881629](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316881629) | Contract recorded; implementation not authorized |
+| Exact-revision non-owning review assignments/receipts/idempotency, single primary claim separation, and stage-specific Critic inputs including the `PRE_GATE_1_BRIEF` no-Exam prerequisite | Authenticated decision evidence | [Comment #5316966355](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316966355) | Contract recorded; review only; Gate 1 pending |
 | Local replay, concurrency, outbox delivery, partial-dispatch recovery | Not run | This Scout handoff did not execute live repair or integration paths | No pass/fail claim |
 | Local reproduction of stale `Next action`/hidden `409` | Not run | Production observations above; no local live run claimed | No pass/fail claim |
 | Independent repeated-signal frequency | Not run | `steer/signals/README.md`; `steer/operating-system/METRICS.md` | Unmeasured |
