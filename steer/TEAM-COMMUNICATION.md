@@ -22,7 +22,9 @@ all of the following in STEER Work Management:
    downstream execution.
 
 The authorized human uses the work item's **Authorize & copy Buzz handoff** control and
-posts the generated message in the applicable project thread. A Buzz mention is a
+posts the generated message in the configured canonical `#steer-team`
+(`10ac2fb4-f7fc-4dbc-bb73-8c545f31a470`) channel. A project channel may carry
+discussion only and cannot override the configured route. A Buzz mention is a
 notification, not permission to start. If any requirement is missing, the agent may
 discuss or clarify the request but must not execute it, reprioritize it, change its
 scope, assign another agent, or approve a gate.
@@ -30,7 +32,7 @@ scope, assign another agent, or approve a gate.
 | Communication | Destination | Response expectation | Durable outcome |
 |---|---|---|---|
 | Daily asynchronous huddle | One parent thread in Block Buzz `#steer-team` | By the team's working-day midpoint | Each active human/agent posts status, blocker/input, evidence link, next handoff, and boundary; decisions move to the durable record |
-| Authorized agent handoff | Work-item thread in `#project-<short-name>` using the Flight Board-generated message | Agent acknowledges in the same working thread | Assignment, scope, state, and authorization remain in the Flight Board; implementation evidence remains in GitHub |
+| Authorized agent handoff | Configured canonical Block Buzz `#steer-team` (`10ac2fb4-f7fc-4dbc-bb73-8c545f31a470`) using the Flight Board-generated message | Agent acknowledges in the same canonical thread | Assignment, scope, state, and authorization remain in the Flight Board; implementation evidence remains in GitHub; project channels cannot override or fall back |
 | Signal or observation | Block Buzz `#signals` or signal issue form | Triage within two working days | Digest in `steer/signals/`; candidate if evidence warrants |
 | Agent ambiguity/escalation | Block Buzz `#agent-ops` plus linked escalation issue | Same working day for in-flight work | Ruling in issue and decision log when reusable |
 | Upcoming human gate | Block Buzz `#gate-review` plus Flight Board decision inbox | Same working day when work is ready | Authenticated ruling bound to the exact evidence |
@@ -62,17 +64,34 @@ item instead of negotiating authorization in chat.
 The Flight Board maintains one primary execution claim/run for a work item. A reviewer
 receives a separate, non-owning assignment that cannot acquire or duplicate the primary
 claim, change its owner, change scope, approve a gate, or authorize implementation.
-Every review assignment is bound to the work-item key/link, workflow, primary claim
-reference, review stage, exact artifact revision, reviewer role/member, and source
-request event. Work Management records immutable request and result receipts with those
-bindings and the disposition. Repeating the same assignment tuple reuses the receipt
-idempotently; a changed revision, stage, reviewer, or source request creates a new
-review receipt only, never a new primary run.
+The canonical assignment payload binds the active work-item stable ID/key, workflow,
+unchanged primary claim lineage/owner/member, review stage, exact target commit SHA-256,
+exact artifact URLs, prior evidence/decision bindings, reviewer role/member, explicit
+output/prohibitions, and authenticated authorizing actor/event. Its ID is
+`review_assignment_id = SHA-256(UTF8(RFC8785(steer-review-assignment/v1 payload)))`;
+JCS is RFC 8785 UTF-8 without BOM with recorded array ordering.
+
+Work Management alone appends the signed assignment after checking those bindings and
+the active configured canonical route. Only the enrolled reviewer appends signed
+acknowledgement and result records, each binding the assignment ID, exact target,
+reviewer, source request, and predecessor receipt. No unsigned review record is valid.
+The idempotency key is
+`review_idempotency_key = SHA-256(UTF8(RFC8785({schema:"steer-review-idempotency/v1", review_assignment_id})))`.
+Exact replay returns the existing append-only request/ack/result receipts; changed or
+missing fields, stale owner/workflow/lineage, wrong reviewer/authorizer, target
+mismatch, or duplicate mismatch rejects before append/side effect and cannot mint a
+fallback key. Until `review_assignments[]` exists, one authenticated approved-setup
+bootstrap may seed the complete payload and receipt; it is audited and then closed,
+with no bootstrap writes afterward. No route override or fallback is accepted unless
+the configured canonical route or a frozen decision explicitly allows it. Review
+assignment/ack/result/bootstrap records follow the same pseudonymous-data inventory,
+no-PII logging, 90-day terminal retention, hold, and auditable deletion controls as
+other identity-linked records.
 
 Critic inputs are stage-specific:
 
 | Review stage | Required inputs | Boundary |
 |---|---|---|
-| `PRE_GATE_1_BRIEF` | Exact Brief revision, Scout evidence, Decision Log, governing gates/guardrails, signals/metrics limits, and Work Management assignment/receipts | No Exam prerequisite; the Exam is downstream of human Gate 1. The result is review evidence, not a Gate 1 ruling or execution authority. |
+| `PRE_GATE_1_BRIEF` | Exact Brief revision, Scout evidence, Decision Log, governing gates/guardrails, signals/metrics limits, and authenticated Work Management assignment/acknowledgement/result receipts | No Exam prerequisite; the Exam is downstream of human Gate 1. The result is review evidence, not a Gate 1 ruling or execution authority. |
 | `GATE_2_EXAM` | Exact human-approved Brief revision, exact Exam revision, applicable guardrails, and assigned Exam/Test evidence | Requires the Exam; a pre-gate Brief review is not a substitute. |
 | `GATE_3_BUILD` | Exact Brief and frozen Exam revisions, implementation diff, test/CI evidence, and prior review receipts/results | Build review only; no merge, deployment, release, or human gate signature. |

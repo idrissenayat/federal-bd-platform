@@ -18,7 +18,8 @@ Every role gets this preamble:
 > You are part of a STEER team. The written contract governs your work. Read the
 > controlling artifact for the assigned stage and exact revision before acting.
 > For `PRE_GATE_1_BRIEF`, read the exact Brief plus its Scout evidence, Decision Log,
-> governing gates/guardrails, and Work Management review assignment/receipts; no Exam
+> governing gates/guardrails, and Work Management review assignment/acknowledgement/
+> result receipts; no Exam
 > prerequisite applies because the Exam is downstream of human Gate 1. For
 > `GATE_2_EXAM`, read the exact human-approved Brief and matching Exam. For
 > `GATE_3_BUILD`, read the exact Brief, frozen Exam, implementation diff, and test/CI
@@ -28,12 +29,29 @@ Every role gets this preamble:
 > with a specific question — never guess on scope, data handling, money, auth, or
 > anything tagged default-closed.
 
-Every review assignment is non-owning and exact-revision bound. Work Management records
-the reviewer role/member, stage, exact artifact revision, source request event, and
-immutable request/result receipts. Repeating the same assignment tuple is idempotent
-and cannot create a second review run or primary execution claim. The primary owner
-keeps the one execution claim/run; a reviewer cannot change primary ownership, scope,
-gate state, or implementation authority.
+Every review assignment is non-owning and exact-revision bound. Its canonical payload
+binds the active work-item stable ID/key, workflow, unchanged primary claim
+lineage/owner/member, stage, exact target commit SHA-256 and artifact URLs, prior
+evidence/decision bindings, reviewer role/member, explicit output/prohibitions, and
+authenticated authorizing actor/event. Work Management computes
+`review_assignment_id = SHA-256(UTF8(RFC8785(steer-review-assignment/v1 payload)))`
+using RFC 8785 JCS UTF-8 without BOM and recorded array ordering, then appends the
+signed assignment after verifying the active configured canonical `#steer-team` route.
+Only the enrolled reviewer appends signed acknowledgement/result records bound to the
+assignment and predecessor receipt; no unsigned record is valid.
+
+The idempotency key is
+`review_idempotency_key = SHA-256(UTF8(RFC8785({schema:"steer-review-idempotency/v1", review_assignment_id})))`.
+Exact replay returns the existing append-only request/ack/result receipts. Changed or
+missing fields, stale owner/workflow/lineage, wrong reviewer/authorizer, target mismatch,
+or duplicate mismatch rejects before append or side effect. Until `review_assignments[]`
+exists, one authenticated approved-setup bootstrap may seed the complete assignment and
+receipt, after which bootstrap writes are rejected. No route override or project-channel
+fallback is allowed unless the configured canonical route or a frozen decision permits
+it. Review records receive the same identity inventory, no-PII logging, 90-day terminal
+retention, hold, and auditable deletion treatment as other pseudonymous records. The
+primary owner keeps the one execution claim/run; a reviewer cannot change primary
+ownership, scope, gate state, or implementation authority.
 
 ## Scout
 
@@ -69,7 +87,8 @@ gate state, or implementation authority.
 > Work Management review receipt:
 >
 > - `PRE_GATE_1_BRIEF`: exact Brief, Scout evidence, Decision Log, governing
->   gates/guardrails, signals/metrics limits, and assignment/receipts. No Exam is
+>   gates/guardrails, signals/metrics limits, and assignment/acknowledgement/result
+>   receipts. No Exam is
 >   required; the Exam is downstream of human Gate 1. Review the Brief for spec
 >   ambiguity, security holes, scope drift, privacy leaks, missing states, evidence
 >   limits, and undeclared domain tags. Do not issue a Gate 1 ruling or implementation

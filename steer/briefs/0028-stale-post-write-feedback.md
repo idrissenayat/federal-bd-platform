@@ -14,23 +14,57 @@
   workflow and root authorization. Rework revisions preserve that claim, its lineage,
   and its idempotency boundary; a reviewer never acquires, replaces, or duplicates
   the primary claim/run.
-- **Non-owning exact-revision review assignment:** A review handoff is a separate,
-  stage-scoped Work Management assignment bound to the work-item key/link, workflow,
-  primary claim reference, review stage, exact artifact revision, reviewer role and
-  enrolled member identity, and source request event. It grants review authority only;
-  it cannot change the primary owner, scope, gate state, or implementation authority.
-- **Request/result receipts and idempotency:** Work Management records an immutable
-  request receipt and result receipt for each review assignment, including the exact
-  revision, stage, reviewer identity, source request event, and review disposition.
-  Repeating the same assignment tuple is idempotent and reuses the existing receipt;
-  it cannot create a second review run or primary claim. A changed exact revision,
-  stage, reviewer, or source request is a new non-owning review receipt and still
-  cannot create a new primary execution run.
+- **Canonical non-owning review assignment:** A review handoff is a separate,
+  stage-scoped Work Management assignment bound to the active
+  `work_item_stable_id`/work-item key, `workflow`, unchanged `primary_claim_lineage_id`,
+  unchanged primary owner role and enrolled member ID, `review_stage`, exact target
+  commit SHA-256, exact artifact URLs, prior evidence/decision binding digests,
+  reviewer role and enrolled member ID, explicit output contract and prohibitions, and
+  authenticated `authorizing_actor_id`/`authorizing_event_id`. It grants review
+  authority only; it cannot change the primary owner, workflow, lineage, scope, gate
+  state, or implementation authority.
+- **Append-only assignment, acknowledgement, and result:**
+  `review_assignment_id = SHA-256(UTF8(RFC8785(steer-review-assignment/v1 payload)))`,
+  using RFC 8785 JCS UTF-8 without BOM and the exact fields above, with artifact URLs
+  and binding-digest arrays in their recorded canonical order. The Work Management
+  authorization service alone appends the signed `REVIEW_ASSIGNED` record after
+  authenticating the authorizing actor/event and checking the active item, unchanged
+  primary owner/workflow/lineage, enrolled reviewer/stage authority, exact target and
+  prior bindings, output/prohibitions, and configured canonical route. Only the
+  enrolled reviewer identity appends signed `REVIEW_ACKNOWLEDGED` and
+  `REVIEW_RESULT_RECORDED`, each binding the assignment ID, exact target, reviewer,
+  source request, and predecessor receipt; no unsigned record is allowed.
+- **JCS-SHA-256 idempotency and mismatch handling:**
+  `review_idempotency_key = SHA-256(UTF8(RFC8785({schema:"steer-review-idempotency/v1", review_assignment_id})))`.
+  Work Management stores immutable request, acknowledgement, and result receipts with
+  the assignment ID, idempotency key, exact revision/URLs, stage, identities,
+  authorizing actor/event, prior bindings, output/prohibitions, timestamps, and
+  disposition. An exact replay returns the existing receipt/result without a new
+  append, review run, or primary claim. Any duplicate with a changed field, missing
+  binding, wrong reviewer, wrong authorizer, stale item/workflow/lineage, or mismatched
+  target is rejected before append or side effect and cannot fall back to a new key.
+- **Temporary approved-setup bootstrap:** Until the authoritative Work Management
+  `review_assignments[]` store exists, one externally authenticated approved-setup
+  event may seed the complete assignment payload above. The bootstrap receipt records
+  the authorizing actor/event, exact target/URLs, primary owner/workflow/lineage,
+  reviewer, stage, output/prohibitions, and idempotency key, and is independently
+  auditable. It is a temporary compatibility path only; once `review_assignments[]`
+  exists, bootstrap writes are rejected. No override, project-channel fallback, or
+  alternate authorizer is accepted unless the configured canonical route or a frozen
+  decision explicitly allows it.
+- **Review-record privacy:** Review assignment, acknowledgement, result, bootstrap,
+  authorizer, reviewer, and receipt references are pseudonymous personal data. Apply
+  `PRIV-01`, `PRIV-02`, and `PRIV-03`, purpose limitation/minimization, no identity or
+  PII in logs, inventory before implementation, 90-day terminal retention, auditable
+  deletion and scoped time-bounded holds, and deletion across receipts, indexes,
+  replicas, and backups. Missing inventory, retention, deletion, or logging controls
+  blocks review assignment/acknowledgement/result creation while preserving the
+  primary claim identity.
 - **Stage-specific Critic inputs:**
 
   | Review stage | Required Critic inputs | Boundary |
   |---|---|---|
-  | `PRE_GATE_1_BRIEF` | Exact Intent Brief revision, Scout evidence, Decision Log, governing gates/guardrails, signals/metrics limits, and the Work Management review assignment/receipts | No Exam prerequisite; the Exam is downstream of human Gate 1. Review evidence is not a Gate 1 ruling, implementation authorization, or primary claim. |
+  | `PRE_GATE_1_BRIEF` | Exact Intent Brief revision, Scout evidence, Decision Log, governing gates/guardrails, signals/metrics limits, and the authenticated Work Management review assignment/ack/result receipts | No Exam prerequisite; the Exam is downstream of human Gate 1. Review evidence is not a Gate 1 ruling, implementation authorization, or primary claim. |
   | `GATE_2_EXAM` | Exact human-approved Brief revision, exact Exam revision, applicable guardrails, and the assigned Exam/Test evidence | Do not substitute a pre-gate Brief review for Exam review; no implementation or release authority. |
   | `GATE_3_BUILD` | Exact Brief and frozen Exam revisions, implementation diff, test/CI evidence, and prior stage receipts/results | Review the verified build only; no merge, deployment, release, or human gate signature by the Critic. |
 
@@ -521,17 +555,23 @@ substituted:
   `DELIVERED` is an idempotent no-op, and that no retry occurs before requeue and a
   new send-attempt reservation.
 - `REC-04`: after receipt commit under route/config v1 but before send, activate v2 or
-  a mismatched binding; append only `DELIVERY_BLOCKED_CONFIG_STALE`, send nothing, then
-  require explicit human reauthorization. When immutable lineage inputs, role, and
-  assignee are unchanged, create one successor intent on the same lineage, atomically
-  supersede the old intent, and permit only the existing/sole claim-run path.
+  a mismatched binding; first append signed non-state
+  `TERMINALIZATION_REQUESTED` and invalidate the reservation fence in the serialized
+  terminalization domain, then append the typed diagnostic
+  `DELIVERY_BLOCKED_CONFIG_STALE`. These are allowed non-state/audit records; “no
+  lifecycle event” means no state-transition event and no current-state projection
+  change. Send nothing and require explicit human reauthorization. When immutable
+  lineage inputs, role, and assignee are unchanged, create one successor intent on the
+  same lineage, atomically supersede the old intent, and permit only the existing/sole
+  claim-run path.
 - `FAIL-03` and `FAIL-04`: retain missing/noncanonical route failures and additionally
-  assert signed `TERMINALIZATION_REQUESTED`/fence invalidation for the stale or
-  mismatched route, no lifecycle event beyond the typed diagnostic, projection change,
-  external send, claim, or run is produced by the rejected authority, and no
-  failure/requeue occurs while a lease or unresolved reconciliation remains. Include
-  rejection of an untrusted/retired/revoked relay publisher or registry mismatch
-  before `DELIVERED`.
+  assert signed non-state `TERMINALIZATION_REQUESTED` and reservation-fence
+  invalidation precede the typed diagnostic for the stale or mismatched route. Those
+  audit records are permitted; “no lifecycle event” means no state-transition event or
+  current-state projection change. Assert no external send, claim, or run is produced
+  by the rejected authority, and no failure/requeue occurs while a lease or unresolved
+  reconciliation remains. Include rejection of an untrusted/retired/revoked relay
+  publisher or registry mismatch before `DELIVERED`.
 - `DISP-01`: assert the initial signed `QUEUED`/outbox commit, one committed
   `SEND_ATTEMPT_RESERVED`, exactly one relay send, relay verification, and only then
   the signed `DELIVERED` event before the valid acknowledgement.
@@ -635,21 +675,24 @@ single-run/idempotency control, delivery reconciliation, and bounded security/au
 investigation. Store only stable internal references and minimum cryptographic
 verification material; do not copy display names, email addresses, message bodies,
 secrets, unrelated PII, or free-form scope beyond the authorized structured scope.
-Receipt/outbox logs and telemetry contain only intent/receipt IDs, lifecycle state,
-timestamps, and typed error codes—not actor/member IDs, key material, authorization
+Receipt/outbox/review-assignment logs and telemetry contain only intent/receipt IDs,
+review-assignment/ack/result IDs, lifecycle state, timestamps, and typed error
+codes—not actor/member IDs, key material, authorization
 text, or scope text. Before implementation, the data inventory must record each
 identity-linked field, purpose, source, controller/workspace, 90-day terminal
 retention, deletion owner/path, and any explicit hold. Retain identity-linked
-receipt/outbox/acknowledgement records while nonterminal and for 90 days after
+receipt/outbox/acknowledgement/review-assignment/review-result records while nonterminal
+and for 90 days after
 `ACKNOWLEDGED`, `FAILED_FINAL`, `SUPERSEDED`, or `CANCELLED`, with no silent extension;
 any legal/security hold must be explicit, scoped, time-bounded, and audited. At expiry
 or eligible workspace/work-item deletion, delete receipts, outbox rows,
-acknowledgements, identity mappings, indexes, and replicas/backups under the normal
+acknowledgements, review assignments/acknowledgements/results, identity mappings,
+indexes, and replicas/backups under the normal
 deletion schedule, retaining only non-identifying aggregate counts; a subject request
 removes the subject-directory linkage and eligible records through the same auditable
 cascade. Missing privacy inventory, missing or version-mismatched retention policy,
-unavailable deletion path, or attempted PII logging blocks receipt/outbox creation
-and dispatch while preserving the existing claim identity.
+unavailable deletion path, or attempted PII logging blocks receipt/outbox/review-record
+creation and dispatch while preserving the existing claim identity.
 
 ## Chosen approach
 
@@ -681,6 +724,7 @@ inconsistent with the incident evidence and the human routing decision.
 | Executable queued/send-reservation/delivery order, uncertain-send reconciliation, signed requeue authority, retry-attempt uniqueness, and v1 cryptographic/key-trust profile | Authenticated decision evidence | [Comment #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932) | Contract recorded; implementation not authorized |
 | Reservation fencing and serialized pre-call start, terminalization ordering, monotonic delivery/reconciliation, NIP-01 publisher trust, and fixed REC-02/REC-03/FAIL-03/FAIL-04 mappings | Authenticated decision evidence | [Comment #5316881629](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316881629) | Contract recorded; implementation not authorized |
 | Exact-revision non-owning review assignments/receipts/idempotency, single primary claim separation, and stage-specific Critic inputs including the `PRE_GATE_1_BRIEF` no-Exam prerequisite | Authenticated decision evidence | [Comment #5316966355](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316966355) | Contract recorded; review only; Gate 1 pending |
+| Complete append-only review assignment/acknowledgement/result receipts, RFC 8785 JCS-SHA-256 idempotency, authenticated append authority and bootstrap, canonical `#steer-team` route with no project fallback, privacy coverage, and aligned REC-04/FAIL-03/FAIL-04 terminalization assertions | Authenticated decision evidence | [Comment #5317059006](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317059006) | Contract recorded; review only; Gate 1 pending |
 | Local replay, concurrency, outbox delivery, partial-dispatch recovery | Not run | This Scout handoff did not execute live repair or integration paths | No pass/fail claim |
 | Local reproduction of stale `Next action`/hidden `409` | Not run | Production observations above; no local live run claimed | No pass/fail claim |
 | Independent repeated-signal frequency | Not run | `steer/signals/README.md`; `steer/operating-system/METRICS.md` | Unmeasured |
