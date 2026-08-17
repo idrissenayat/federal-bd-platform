@@ -78,6 +78,12 @@ series has been established.
   reconciliation; routing correction that resumes the existing claim; and coverage
   for wrong-channel configuration, inaccessible authorization UI, replay, concurrent
   retries, delayed or out-of-order acknowledgements, and partial-dispatch recovery.
+- No live replay, concurrency, outbox-delivery, or partial-dispatch recovery run was
+  executed for this Scout handoff. The evidence supports a bounded repair candidate
+  and its required proof obligations, not a claim that those controls already work.
+- Gate state remains **Gate 1 pending**. The current artifacts contain no authenticated
+  human Gate 1 ruling, and this brief does not approve Gate 1, Gate 2, implementation,
+  deployment, merge, or release.
 - Related [issue #57](https://github.com/idrissenayat/federal-bd-platform/issues/57)
   describes a claimed stale-action-feedback hotfix and validation, but it remains
   open and is treated as corroborating engineering context rather than a separate
