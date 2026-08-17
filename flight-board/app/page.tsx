@@ -1,11 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { buildApprovalReasoningDraft, recommendGateDecision } from "./decision-reasoning";
 import { WORK_TYPES } from "../lib/work-economics";
 import { buildForecastProposal } from "../lib/forecast-proposal";
 import { buildValueHypothesisProposal } from "../lib/value-hypothesis-proposal";
 import { acceptedValueHypothesisReady } from "../lib/work-economics-validation";
+import { applyAuthoritativeSnapshot, mergeBootstrapPreservingNewerItems, type AuthoritativeItemSnapshot } from "../lib/post-write";
 import type {
   ActualEconomics,
   AiAdvisory,
@@ -184,6 +185,11 @@ type Bootstrap = {
   service_level_distributions: ServiceLevelDistribution[];
 };
 
+type ItemMutationSnapshot = AuthoritativeItemSnapshot<WorkItem, Activity, WorkEconomicsEvent>;
+type ItemMutationResult = { ok: true; snapshot: ItemMutationSnapshot; message?: string };
+type ActionScope = "controls" | "economics" | "dispatch" | "next-action";
+type ActionFeedback = { id: number; scope: ActionScope; state: "pending" | "success" | "error"; message: string };
+
 type BuzzStatus = {
   online: boolean;
   relay: string;
@@ -330,6 +336,40 @@ function Avatar({ name, kind = "human", accent = "aqua" }: { name: string | null
 
 function Empty({ title, copy }: { title: string; copy: string }) {
   return <div className="empty-panel"><span>✓</span><h3>{title}</h3><p>{copy}</p></div>;
+}
+
+function InlineActionFeedback({ feedback }: { feedback: ActionFeedback | null }) {
+  const region = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (feedback?.state === "error") region.current?.focus();
+  }, [feedback?.id, feedback?.state]);
+  if (!feedback) return null;
+  const title = feedback.state === "pending" ? "Saving…" : feedback.state === "success" ? "Saved" : "Action not completed";
+  return <div
+    ref={region}
+    className={`inline-action-feedback inline-action-${feedback.state}`}
+    role={feedback.state === "error" ? "alert" : "status"}
+    aria-live={feedback.state === "error" ? "assertive" : "polite"}
+    tabIndex={feedback.state === "error" ? -1 : undefined}
+  ><strong>{title}</strong><span>{feedback.message}</span></div>;
+}
+
+function NextActionEditor({ item, saving, feedback, onSave }: {
+  item: WorkItem;
+  saving: boolean;
+  feedback: ActionFeedback | null;
+  onSave: (value: string) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(item.next_action);
+  async function save() {
+    const value = draft.trim();
+    if (value !== item.next_action) await onSave(value);
+  }
+  return <section className="detail-section next-section">
+    <div><h3>Next action</h3><span>Keep this executable and unambiguous.</span></div>
+    <textarea value={draft} disabled={saving} onChange={(event) => setDraft(event.target.value)} onBlur={() => void save()} aria-describedby={`next-action-feedback-${item.id}`} />
+    <div id={`next-action-feedback-${item.id}`}><InlineActionFeedback feedback={feedback} /></div>
+  </section>;
 }
 
 function datetimeLocal(value: string | null | undefined) {
@@ -698,32 +738,41 @@ export default function Home() {
   const [codeAction, setCodeAction] = useState<"ACCEPT" | "REQUEST_CHANGES" | "MERGE">("ACCEPT");
   const [codeReasoning, setCodeReasoning] = useState("");
   const [mergeConfirmation, setMergeConfirmation] = useState("");
+  const [itemFeedback, setItemFeedback] = useState<Record<number, ActionFeedback>>({});
+  const loadSequence = useRef(0);
+  const mutationSequence = useRef(0);
+  const latestMutation = useRef(new Map<number, number>());
 
-  async function load() {
+  async function load(options: { quiet?: boolean } = {}) {
+    const sequence = ++loadSequence.current;
     try {
       const payload = await api("/api/bootstrap") as Bootstrap;
-      setData(payload);
-      setError(null);
+      if (sequence !== loadSequence.current) return false;
+      setData((current) => current ? mergeBootstrapPreservingNewerItems(current, payload) : payload);
+      if (!options.quiet) setError(null);
+      return true;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The workspace could not be loaded.");
+      if (sequence === loadSequence.current && !options.quiet) setError(caught instanceof Error ? caught.message : "The workspace could not be loaded.");
+      return false;
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
   }
 
   useEffect(() => {
     let active = true;
+    const sequence = ++loadSequence.current;
     api("/api/bootstrap")
       .then((payload) => {
-        if (!active) return;
-        setData(payload as Bootstrap);
+        if (!active || sequence !== loadSequence.current) return;
+        setData((current) => current ? mergeBootstrapPreservingNewerItems(current, payload as Bootstrap) : payload as Bootstrap);
         setError(null);
       })
       .catch((caught: unknown) => {
-        if (active) setError(caught instanceof Error ? caught.message : "The workspace could not be loaded.");
+        if (active && sequence === loadSequence.current) setError(caught instanceof Error ? caught.message : "The workspace could not be loaded.");
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active && sequence === loadSequence.current) setLoading(false);
       });
     return () => { active = false; };
   }, []);
@@ -749,32 +798,56 @@ export default function Home() {
   const blockedItems = data?.items.filter((item) => item.state === "blocked") ?? [];
   const activeItems = data?.items.filter((item) => item.state === "active") ?? [];
 
-  async function updateItem(id: number, changes: Record<string, unknown>) {
+  function beginItemAction(id: number, scope: ActionScope, message: string) {
+    const actionId = ++mutationSequence.current;
+    latestMutation.current.set(id, actionId);
+    setItemFeedback((current) => ({ ...current, [id]: { id: actionId, scope, state: "pending", message } }));
+    setError(null);
+    return actionId;
+  }
+
+  function finishItemAction(id: number, actionId: number, scope: ActionScope, state: "success" | "error", message: string) {
+    if (latestMutation.current.get(id) !== actionId) return false;
+    setItemFeedback((current) => ({ ...current, [id]: { id: actionId, scope, state, message } }));
+    return true;
+  }
+
+  function applySnapshot(snapshot: ItemMutationSnapshot) {
+    setData((current) => current ? applyAuthoritativeSnapshot(current, snapshot) : current);
+  }
+
+  async function updateItem(id: number, changes: Record<string, unknown>, scope: ActionScope = "controls", successMessage = "The authoritative work item was saved.") {
+    const actionId = beginItemAction(id, scope, "Waiting for the authoritative server response.");
     setSaving(true);
     try {
-      await api(`/api/items/${id}`, { method: "PATCH", body: JSON.stringify(changes) });
-      await load();
+      const result = await api(`/api/items/${id}`, { method: "PATCH", body: JSON.stringify(changes) }) as ItemMutationResult;
+      if (latestMutation.current.get(id) !== actionId) return;
+      applySnapshot(result.snapshot);
+      finishItemAction(id, actionId, scope, "success", successMessage);
+      void load({ quiet: true });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The item could not be updated.");
+      finishItemAction(id, actionId, scope, "error", caught instanceof Error ? caught.message : "The item could not be updated. Your input is preserved for correction or retry.");
     } finally {
-      setSaving(false);
+      if (latestMutation.current.get(id) === actionId) setSaving(false);
     }
   }
 
   async function updateWorkEconomics(id: number, section: EconomicsSection, value: Record<string, unknown>, reason: string) {
+    const actionId = beginItemAction(id, "economics", "Saving the governed record.");
     setSaving(true);
-    setError(null);
     setNotice(null);
     try {
-      await api(`/api/items/${id}/work-economics`, { method: "PATCH", body: JSON.stringify({ section, value, reason }) });
-      await load();
-      setNotice(section === "valueHypothesis"
-        ? "Value hypothesis accepted and the work item was refreshed. Gate 1 can now be reviewed."
-        : "The governed record was saved and the work item was refreshed.");
+      const result = await api(`/api/items/${id}/work-economics`, { method: "PATCH", body: JSON.stringify({ section, value, reason }) }) as ItemMutationResult;
+      if (latestMutation.current.get(id) !== actionId) return;
+      applySnapshot(result.snapshot);
+      finishItemAction(id, actionId, "economics", "success", section === "valueHypothesis"
+        ? "Value hypothesis accepted from the authoritative response. Gate 1 can now be reviewed."
+        : "The governed record was saved from the authoritative response.");
+      void load({ quiet: true });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The Work Economics record could not be updated.");
+      finishItemAction(id, actionId, "economics", "error", caught instanceof Error ? caught.message : "The Work Economics record could not be updated. Your input is preserved.");
     } finally {
-      setSaving(false);
+      if (latestMutation.current.get(id) === actionId) setSaving(false);
     }
   }
 
@@ -805,13 +878,14 @@ export default function Home() {
     setError(null);
     setNotice(null);
     try {
-      await api(`/api/items/${selected.id}/decisions`, {
+      const result = await api(`/api/items/${selected.id}/decisions`, {
         method: "POST",
         body: JSON.stringify(Object.fromEntries(form.entries())),
-      });
-      await load();
+      }) as ItemMutationResult;
+      applySnapshot(result.snapshot);
       closeDecisionWorkspace();
-      setNotice(`${selected.gate} ruling recorded. The decision inbox and work item are now refreshed.`);
+      setNotice(`${selected.gate} ruling recorded from the authoritative response. The work item is refreshed.`);
+      void load({ quiet: true });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The ruling could not be recorded.");
     } finally {
@@ -990,15 +1064,25 @@ export default function Home() {
   }
 
   async function authorizeBuzzHandoff(item: WorkItem) {
+    const actionId = beginItemAction(item.id, "dispatch", "Authorizing one durable handoff.");
     setDispatchingId(item.id);
     try {
-      const result = await api(`/api/items/${item.id}/dispatch`, { method: "POST", body: "{}" }) as { message?: string };
+      const result = await api(`/api/items/${item.id}/dispatch`, { method: "POST", body: "{}" }) as ItemMutationResult;
       if (!result.message) throw new Error("The authorized handoff message was not returned.");
-      await navigator.clipboard.writeText(result.message);
+      if (latestMutation.current.get(item.id) !== actionId) return;
+      applySnapshot(result.snapshot);
+      try {
+        await navigator.clipboard.writeText(result.message);
+      } catch {
+        finishItemAction(item.id, actionId, "dispatch", "error", "The handoff was authorized once, but the message could not be copied. Do not authorize it again; use the recorded activity and outbox entry.");
+        void load({ quiet: true });
+        return;
+      }
       setCopiedHandoffId(item.id);
-      await load();
+      finishItemAction(item.id, actionId, "dispatch", "success", "One handoff was authorized and copied. The drawer now shows the authoritative state.");
+      void load({ quiet: true });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The agent handoff could not be authorized.");
+      finishItemAction(item.id, actionId, "dispatch", "error", caught instanceof Error ? caught.message : "The agent handoff could not be authorized. No retry was started.");
     } finally {
       setDispatchingId(null);
     }
@@ -1152,6 +1236,7 @@ export default function Home() {
                   <label className="span-two">Evidence URL<input key={`evidence-${selected.id}`} defaultValue={selected.evidence_url ?? ""} disabled={saving} placeholder="https://github.com/organization/repository/blob/revision/path.md" onBlur={(event) => { const value = event.target.value.trim(); if (value !== (selected.evidence_url ?? "")) void updateItem(selected.id, { evidenceUrl: value || null }); }} /></label>
                   <label className="span-two">Engineering record<input key={`github-${selected.id}`} defaultValue={selected.github_url ?? ""} disabled={saving} placeholder="https://github.com/idrissenayat/federal-bd-platform/issues/31" onBlur={(event) => { const value = event.target.value.trim(); if (value !== (selected.github_url ?? "")) void updateItem(selected.id, { githubUrl: value || null }); }} /></label>
                 </div>
+                <InlineActionFeedback feedback={itemFeedback[selected.id]?.scope === "controls" ? itemFeedback[selected.id] : null} />
               </section>
 
               <WorkEconomicsPanel
@@ -1163,13 +1248,18 @@ export default function Home() {
                 saving={saving}
                 onSave={(section, value, reason) => updateWorkEconomics(selected.id, section, value, reason)}
               />
+              <InlineActionFeedback feedback={itemFeedback[selected.id]?.scope === "economics" ? itemFeedback[selected.id] : null} />
 
               <AgentDispatchControl item={selected} dispatching={dispatchingId === selected.id} copied={copiedHandoffId === selected.id} onDispatch={() => void authorizeBuzzHandoff(selected)} />
+              <InlineActionFeedback feedback={itemFeedback[selected.id]?.scope === "dispatch" ? itemFeedback[selected.id] : null} />
 
-              <section className="detail-section next-section">
-                <div><h3>Next action</h3><span>Keep this executable and unambiguous.</span></div>
-                <textarea defaultValue={selected.next_action} onBlur={(event) => { if (event.target.value !== selected.next_action) void updateItem(selected.id, { nextAction: event.target.value }); }} />
-              </section>
+              <NextActionEditor
+                key={`${selected.id}-${selected.updated_at}`}
+                item={selected}
+                saving={saving}
+                feedback={itemFeedback[selected.id]?.scope === "next-action" ? itemFeedback[selected.id] : null}
+                onSave={(value) => updateItem(selected.id, { nextAction: value }, "next-action", "Next action saved from the authoritative response.")}
+              />
 
               <section className="detail-section">
                 <h3>Evidence & engineering record</h3>

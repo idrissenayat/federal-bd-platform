@@ -144,6 +144,47 @@ function safeEconomicsEvent(event: Record<string, unknown>) {
   return { ...event, previous_json: sanitize(event.previous_json), replacement_json: sanitize(event.replacement_json) };
 }
 
+async function authoritativeItemSnapshot(db: Database, user: User, itemId: number) {
+  const generatedAt = new Date().toISOString();
+  const [item, activity, economicsEvents] = await Promise.all([
+    db.prepare(
+      `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind,
+         (SELECT a.created_at FROM activity a
+          WHERE a.item_id = w.id AND a.action = 'updated' AND a.detail = 'state → complete'
+          ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS closed_at
+       FROM work_items w
+       JOIN members actor ON actor.id = ? AND actor.pod_id = w.pod_id
+       LEFT JOIN members m ON m.id = w.assignee_id
+       WHERE w.id = ?`,
+    ).bind(user.id, itemId).first<Record<string, unknown>>(),
+    db.prepare(
+      `SELECT a.*, w.key AS item_key, w.title AS item_title, m.display_name AS actor_name
+       FROM activity a JOIN work_items w ON w.id = a.item_id
+       LEFT JOIN members m ON m.id = a.actor_id
+       WHERE a.item_id = ? AND w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
+       ORDER BY a.created_at DESC, a.id DESC LIMIT 20`,
+    ).bind(itemId, user.id).all<Record<string, unknown>>(),
+    db.prepare(
+      `SELECT e.*, w.key AS item_key, w.title AS item_title, m.display_name AS actor_name
+       FROM work_economics_events e JOIN work_items w ON w.id = e.item_id
+       LEFT JOIN members m ON m.id = e.actor_id
+       WHERE e.item_id = ? AND w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
+       ORDER BY e.created_at DESC, e.id DESC LIMIT 20`,
+    ).bind(itemId, user.id).all<Record<string, unknown>>(),
+  ]);
+  if (!item) return null;
+  return {
+    generated_at: generatedAt,
+    item: {
+      ...item,
+      work_economics: safeEconomicsFromRow(item, generatedAt),
+      dispatch_authorization: evaluateAgentDispatch(item),
+    },
+    activity: activity.results ?? [],
+    work_economics_events: (economicsEvents.results ?? []).map((event) => safeEconomicsEvent(event)),
+  };
+}
+
 export function normalizeEngineeringRecordUrl(input: unknown) {
   const raw = String(input ?? "").trim();
   if (!raw) return null;
@@ -696,7 +737,7 @@ async function authorizeAgentDispatch(db: Database, user: User, itemId: number) 
       now,
     ),
   ]);
-  return json({ ok: true, authorization, message: authorization.handoff_message });
+  return json({ ok: true, authorization, message: authorization.handoff_message, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
 }
 
 async function createItem(request: Request, db: Database, user: User) {
@@ -857,7 +898,7 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
       // Legacy actuals remain visible as unavailable until corrected through the governed editor.
     }
   }
-  return json({ ok: true });
+  return json({ ok: true, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
 }
 
 const economicsColumns: Record<WorkEconomicsSection, string> = {
@@ -1077,7 +1118,7 @@ async function updateWorkEconomics(request: Request, db: Database, user: User, i
     ...ownerStatements,
     ...normalizedEconomicsStatements(db, itemId, section, value, now),
   ]);
-  return json({ ok: true });
+  return json({ ok: true, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
 }
 
 function deriveTags(text: string) {
@@ -1409,7 +1450,7 @@ async function decide(request: Request, db: Database, user: User, itemId: number
       recipient?.role ?? "Evidence owner", `${String(current.key)} returned for changes`, reasoning, now,
     ).run();
   }
-  return json({ ok: true });
+  return json({ ok: true, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
 }
 
 async function transitionItem(request: Request, db: Database, user: User, itemId: number) {
