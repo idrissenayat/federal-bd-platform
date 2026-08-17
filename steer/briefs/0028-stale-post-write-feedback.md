@@ -1,7 +1,7 @@
 # Intent Brief — 0028 Stale post-write feedback and action visibility
 
 **Status:** draft
-**Tags:** #security #a11y #reliability #design-system
+**Tags:** #security #privacy #a11y #reliability #design-system
 **Date opened:** 2026-08-16
 **Work item:** [STR-028 / issue #56](https://github.com/idrissenayat/federal-bd-platform/issues/56)
 **Workflow:** STEER
@@ -39,7 +39,8 @@
   observed results.
 - **Guardrail measure:** zero unauthorized routing or dispatch, zero human-gate
   transitions by an agent, zero lost user input after failure, zero duplicate activity
-  records, no accessibility blocker, and no secret or new personal-data leakage.
+  records, no accessibility blocker, and no secret or unauthorized leakage of
+  pseudonymous personal data.
 
 ## Who this is for
 
@@ -140,6 +141,15 @@ series has been established.
   authority, partial-dispatch recovery, routing source and precedence, Gate-1 case
   matrix, and evidence classifications recorded below. It is a design decision, not
   a Gate 1/2 ruling, Exam, or implementation authorization.
+- The supervisory Tech decision at [issue comment
+  #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334)
+  freezes the self-contained versioned receipt schema and durable, non-interactive
+  audit-reference resolution contract. It classifies the stable member, agent-key,
+  acknowledgement-signer, and human-actor references as pseudonymous personal data,
+  requires `#privacy` treatment under PRIV-01/02/03, and fixes purpose/minimization,
+  90-day terminal retention, deletion/hold handling, inventory, no-PII-in-logs, and
+  default-closed behavior. It is authenticated decision evidence only, not a Gate 1/2/3
+  ruling, Exam, implementation authorization, merge, deployment, or release.
 - A fresh production observation at [issue comment
   #5310415277](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310415277)
   records a signed-in human editing `Next action`: the drawer showed the new text,
@@ -180,6 +190,24 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   creates exactly one outbox row referencing that receipt. No external message is
   sent unless the transaction commits, and delivery or retry cannot change item
   phase, assignee, decision state, gate state, or downstream authorization.
+- **Self-contained receipt and audit resolution:** The immutable receipt is a
+  versioned, agent-readable snapshot containing the receipt schema version, receipt ID,
+  `dispatch_intent_id`, workspace/POD ID, work-item stable ID/key, authorization
+  revision and receipt-created timestamp; STEER workflow and authoritative item state
+  at human authorization; assigned role, enrolled agent member ID, enrolled key
+  ID/version, and public-key fingerprint; structured `allowed_scope` and
+  `prohibited_scope`; exact evidence URL plus immutable revision/digest; accepted-
+  forecast timestamp and immutable audit-event ID; human-authorization timestamp,
+  stable actor ID, and immutable audit-event ID; canonical Buzz channel ID and
+  authoritative routing-configuration version; authorized Next-action hash; and
+  acknowledgement state plus the signed acknowledgement bindings in the prior Tech
+  decision. Audit-event IDs are corroborating pointers, not the only readable source:
+  their material authorization fields remain in the receipt, and each pointer resolves
+  through a durable, append-only, non-interactive, agent-readable audit API using the
+  enrolled agent service identity. Unavailable, missing, stale, or mismatched
+  resolution fails closed with no delivery, acknowledgement, retry-created identity,
+  downstream work, or item/gate/phase/assignee/decision mutation; the existing claim
+  identity is preserved.
 - **Lifecycle and terminals:** The only allowed transitions are
   `QUEUED -> DELIVERED -> ACKNOWLEDGED`;
   `QUEUED|DELIVERED -> RECONCILIATION_REQUIRED` for uncertain delivery;
@@ -227,9 +255,11 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   beside the initiating control with an actionable explanation; the user's input is
   preserved and retry is explicit rather than automatic.
 - Authorized dispatch emits exactly one durable, agent-readable receipt and outbox row
-  for the versioned `dispatch_intent_id`; the receipt binds the full payload,
-  authorization revision, canonical channel ID, evidence digest, and assigned-agent
-  acknowledgement identity. A material revision supersedes rather than reuses the
+  for the versioned `dispatch_intent_id`; the receipt is a self-contained versioned
+  snapshot with the complete fields above, including structured allowed/prohibited
+  scope, authoritative item state, evidence revision/digest, both authorization
+  timestamps and audit references, routing-config version, and assigned-agent signed
+  acknowledgement bindings. A material revision supersedes rather than reuses the
   prior identity.
 - A missing, stale, forged, replayed, or mismatched channel/authorization revision
   fails closed before dispatch or state change. A routing correction resumes the
@@ -277,19 +307,43 @@ drawer remains usable at its existing narrow-screen width.
 
 This item is tagged `#security` because it touches authorization, agent dispatch,
 cross-channel routing, durable receipts, acknowledgements, and replay/idempotency. It
-is also tagged for accessibility, reliability, and design-system review. The threat
-model is: an attacker or faulty integration may forge or replay a receipt, route an
-authorized handoff to the wrong channel, forge an acknowledgement, reuse a stale
-authorization revision, create duplicate work across retries, or bypass a human gate.
-The bounded response is to bind every receipt and outbox transition to the exact
-work-item/role/authorization/evidence revision, deterministic intent ID, signed
+is tagged `#privacy` because the required stable member/agent-key/fingerprint,
+acknowledgement-signer, and human-authorization actor references are pseudonymous
+personal data under the supervisory Tech ruling; `PRIV-01`, `PRIV-02`, and `PRIV-03`
+apply. It is also tagged for accessibility, reliability, and design-system review. The
+threat model is: an attacker or faulty integration may forge or replay a receipt,
+route an authorized handoff to the wrong channel, forge an acknowledgement, reuse a
+stale authorization revision, create duplicate work across retries, bypass a human
+gate, or expose identity-linked authorization data through logs or an unresolved audit
+pointer. The bounded response is to bind every receipt and outbox transition to the
+exact work-item/role/authorization/evidence revision, deterministic intent ID, signed
 acknowledgement bindings, and immutable channel ID; resolve the channel from the
 active audited configuration version with no fallback; fail closed on absence or
 mismatch; reconcile before retry; reject replay and stale revisions; keep gate
-mutations human-only; and retain actor/time/audit references. Verification failure
-must never degrade into a guessed route or optimistic success. No secret or new
-personal-data field is introduced by this brief; any future receipt retention or
-identity expansion requires its own recorded ruling.
+mutations human-only; and resolve audit pointers through the durable agent-readable
+API. Verification failure must never degrade into a guessed route or optimistic
+success.
+
+The privacy contract is purpose-limited to authorization enforcement, provenance,
+single-run/idempotency control, delivery reconciliation, and bounded security/audit
+investigation. Store only stable internal references and minimum cryptographic
+verification material; do not copy display names, email addresses, message bodies,
+secrets, unrelated PII, or free-form scope beyond the authorized structured scope.
+Receipt/outbox logs and telemetry contain only intent/receipt IDs, lifecycle state,
+timestamps, and typed error codes—not actor/member IDs, key material, authorization
+text, or scope text. Before implementation, the data inventory must record each
+identity-linked field, purpose, source, controller/workspace, 90-day terminal
+retention, deletion owner/path, and any explicit hold. Retain identity-linked
+receipt/outbox/acknowledgement records while nonterminal and for 90 days after
+`ACKNOWLEDGED`, `FAILED_FINAL`, `SUPERSEDED`, or `CANCELLED`, with no silent extension;
+any legal/security hold must be explicit, scoped, time-bounded, and audited. At expiry
+or eligible workspace/work-item deletion, delete receipts, outbox rows,
+acknowledgements, identity mappings, indexes, and replicas/backups under the normal
+deletion schedule, retaining only non-identifying aggregate counts; a subject request
+removes the subject-directory linkage and eligible records through the same auditable
+cascade. Missing privacy inventory, missing or version-mismatched retention policy,
+unavailable deletion path, or attempted PII logging blocks receipt/outbox creation
+and dispatch while preserving the existing claim identity.
 
 ## Chosen approach
 
@@ -314,6 +368,7 @@ inconsistent with the incident evidence and the human routing decision.
 | `#steer-team` canonical route and fail-closed mismatch policy | Authenticated decision evidence | [Comment #5310397551](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310397551) | Decision recorded; implementation absent |
 | Gate-1-ready brief scope expansion | Authenticated decision evidence | [Comment #5310403354](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310403354) | Decision recorded; Gate 1 pending |
 | Deterministic dispatch identity, atomic receipt/outbox, signed acknowledgement, routing precedence, 20-case measurement | Authenticated decision evidence | [Comment #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779) | Contract recorded; execution not run |
+| Self-contained receipt schema, durable audit resolution, pseudonymous personal-data classification, privacy lifecycle/default-closed controls | Authenticated decision evidence | [Comment #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334) | Contract recorded; implementation not authorized |
 | Local replay, concurrency, outbox delivery, partial-dispatch recovery | Not run | This Scout handoff did not execute live repair or integration paths | No pass/fail claim |
 | Local reproduction of stale `Next action`/hidden `409` | Not run | Production observations above; no local live run claimed | No pass/fail claim |
 | Independent repeated-signal frequency | Not run | `steer/signals/README.md`; `steer/operating-system/METRICS.md` | Unmeasured |

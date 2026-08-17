@@ -2,19 +2,19 @@
 
 **Work item:** [STR-028 / issue #56](https://github.com/idrissenayat/federal-bd-platform/issues/56)
 **Branch:** `scout/str-028-intent-brief`
-**Parent revision:** `d9a2a0cc1855407ec9fb8f1a036177258bd987c6`
-**Review role:** Scout evidence for the second authorized Intent Brief rework; this
+**Parent revision:** `5881f77ed5be8fff4bea028ac7c993e8fb7a3f00`
+**Review role:** Scout evidence for the third authorized Intent Brief rework; this
 is not a Critic review, human gate ruling, Exam, implementation evidence, or release
 decision
-**Controlling decision:** [Tech design decision #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779)
+**Controlling decisions:** [Tech design decision #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779) and [supervisory Tech decision #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334)
 
 ## Authorized change
 
-The authenticated Tech decision freezes the contracts that the previous independent
-Critic found missing. This rework changes only the Intent Brief and this Scout
-evidence file, preserving the same claim and branch from the parent revision. It does
-not draft an Exam, change application or worker code, approve a gate, merge, deploy,
-or release.
+The authenticated Tech decisions freeze the contracts that the previous independent
+Critic found missing. This rework changes only the Intent Brief, this Scout evidence
+file, and the project Decision Log, preserving the same claim and branch from the
+parent revision. It does not draft an Exam, change application or worker code, approve
+a gate, merge, deploy, or release.
 
 ## Contract incorporated
 
@@ -40,6 +40,22 @@ or release.
   Buzz event ID, agent claim/run ID, and acknowledgement timestamp. Uncertain
   delivery reconciles against the canonical channel/relay before same-intent retry;
   downstream work remains blocked without one valid acknowledgement.
+- The immutable receipt is a self-contained versioned, agent-readable snapshot with
+  receipt and intent identifiers, workspace/POD and work-item identity, authorization
+  revision and timestamp, workflow/state, assigned role, enrolled member/key
+  ID/version and public-key fingerprint, structured allowed/prohibited scope, exact
+  evidence URL/revision/digest, accepted-forecast and human-authorization timestamps
+  plus audit-event IDs, canonical channel and routing-config version, Next-action
+  hash, acknowledgement state, and signed acknowledgement bindings. Audit-event IDs
+  resolve through a durable append-only agent-readable audit API using the enrolled
+  service identity; missing, stale, unavailable, or mismatched resolution fails closed
+  and preserves the existing claim identity.
+- Stable member/agent-key/fingerprint, acknowledgement-signer, and human-actor
+  references are pseudonymous personal data. The privacy contract is purpose-limited,
+  minimizes stored identity and cryptographic material, prohibits PII in logs,
+  requires inventory before implementation, retains identity-linked records for 90
+  days after terminal state, defines auditable deletion and scoped time-bounded holds,
+  and fails closed if inventory, retention, deletion, or logging controls are absent.
 - Routing is sourced from audited Work Management workspace/POD key
   `workspace.routing.steer_agent_handoff.channel_id`, with the active audited
   configuration version as sole precedence and no fallback. Its current value is
@@ -55,13 +71,17 @@ or release.
 
 ## Evidence classification
 
-The evidence matrix now classifies the authenticated owner/Tech issue comments as
-**authenticated decision evidence**, separate from production observations, source
+The evidence matrix now classifies the authenticated owner/Tech issue comments,
+including the receipt-schema/privacy ruling at [comment #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334),
+as **authenticated decision evidence**, separate from production observations, source
 inspection, local/non-production execution, and not-run proof obligations.
 
 ## Validation boundary
 
 - No live replay, concurrency, outbox-delivery, or partial-dispatch run was executed.
 - No claim is made that the implementation already satisfies these contracts.
+- This documentation revision adds no receipt records or identity-linked runtime data;
+  it records the required pseudonymous-personal-data treatment for future governed
+  implementation.
 - Gate 1 remains pending; a fresh independent Critic review must inspect the exact
   resulting revision before any named human Gate 1 decision.
