@@ -48,6 +48,15 @@ To verify a development environment:
 ./scripts/gauntlet.sh
 ```
 
+Run the offline SAM.gov source-health tracer without network access or credentials:
+
+```bash
+uv run python -m federal_bd.source_health --mode fixture --format json
+```
+
+See [`docs/sources/SOURCE-HEALTH.md`](docs/sources/SOURCE-HEALTH.md) for the explicit
+live probe, result contract, security boundary, and rollback procedure.
+
 The reference Work Management application has its own setup instructions in
 [`flight-board/README.md`](flight-board/README.md).
 
