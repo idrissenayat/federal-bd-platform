@@ -1,19 +1,19 @@
-# Scout sixth-rework evidence — STR-028 Intent Brief 0028
+# Scout seventh-rework evidence — STR-028 Intent Brief 0028
 
 **Work item:** [STR-028 / issue #56](https://github.com/idrissenayat/federal-bd-platform/issues/56)
 **Branch:** `scout/str-028-intent-brief`
-**Parent revision:** `5943b2d5055bf4df7ec14735aaf4a74527acc31d`
-**Review role:** Scout evidence for the sixth authorized Intent Brief rework; this
+**Parent revision:** `5dd1bfc17a7578875663056384e2c3d534647df7`
+**Review role:** Scout evidence for the seventh authorized Intent Brief rework; this
 is not a Critic review, human gate ruling, Exam, implementation evidence, or release
 decision
-**Controlling decisions:** [Tech design decision #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779), [supervisory Tech decision #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334), [supervisory Tech decision #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748), [supervisory Tech decision #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687), and [supervisory Tech decision #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932)
+**Controlling decisions:** [Tech design decision #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779), [supervisory Tech decision #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334), [supervisory Tech decision #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748), [supervisory Tech decision #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687), [supervisory Tech decision #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932), and [supervisory Tech decision #5316881629](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316881629)
 
 ## Authorized change
 
-The authenticated Tech decision #5316789932 freezes the contracts that the previous
+The authenticated Tech decision #5316881629 freezes the contracts that the previous
 independent Critic found missing. This rework changes only the Intent Brief, this
 Scout evidence file, and the project Decision Log, preserving the same claim and
-branch from parent revision `5943b2d5055bf4df7ec14735aaf4a74527acc31d`. It does not
+branch from parent revision `5dd1bfc17a7578875663056384e2c3d534647df7`. It does not
 draft an Exam, change application or worker code, approve a gate, merge, deploy, or
 release.
 
@@ -59,24 +59,40 @@ release.
   canonical-relay verification; outbox/reconciliation appends
   `RECONCILIATION_REQUIRED`; reconciliation appends `FAILED_RETRYABLE`/`FAILED_FINAL`;
   the outbox delivery service alone appends non-state `SEND_ATTEMPT_RESERVED` after
-  CAS lease acquisition, and reconciliation alone appends signed `REQUEUED` from
-  `FAILED_RETRYABLE` to `QUEUED` under the versioned retry policy;
+  CAS lease acquisition and serialized `SEND_ATTEMPT_STARTED` immediately before
+  one external send using the reservation fence; the terminalization coordinator
+  appends signed `TERMINALIZATION_REQUESTED` for authenticated cancellation,
+  supersession, or audited configuration invalidation in the same ordering domain;
+  reconciliation alone appends signed `REQUEUED` from `FAILED_RETRYABLE` to `QUEUED`
+  under the versioned retry policy;
   authorization/reconciliation append diagnostic-only `ACK_REJECTED`/
   `DELIVERY_BLOCKED_CONFIG_STALE`. No unsigned event is allowed.
 - The executable delivery sequence is fixed: commit the immutable receipt, unique
   outbox row, and signed `v0:QUEUED`; commit one leased signed non-state
-  `SEND_ATTEMPT_RESERVED` with unique intent/attempt and canonical relay bindings;
-  perform exactly one external send; verify the durable relay event; then append
-  signed `DELIVERED`. Timeout, unknown result, or crash without proof appends
-  `RECONCILIATION_REQUIRED`; the same intent/attempt is queried before retry, and an
-  absent delivery becomes `FAILED_RETRYABLE`. A retry requires signed `REQUEUED` by
+  `SEND_ATTEMPT_RESERVED` with unique intent/attempt, `reservation_fence`, and
+  canonical relay bindings; immediately before the call, serialize a CAS
+  `SEND_ATTEMPT_STARTED` against that fence and revalidate non-terminal state, active
+  lease, current configuration, and no winning `TERMINALIZATION_REQUESTED`; perform
+  exactly one external send only after that commit; verify the durable NIP-01
+  publisher-signed relay event against the Tech-owned `relay_event_signers` registry;
+  then append signed `DELIVERED`. A terminalization request that wins first
+  invalidates the fence and forbids the send; a pre-call start that wins first makes
+  terminalization wait for attempt resolution. Timeout, unknown result, or crash
+  without proof appends `RECONCILIATION_REQUIRED`; the same intent/attempt is queried
+  before retry, and an absent delivery becomes `FAILED_RETRYABLE` only after the lease
+  is released and reconciliation is resolved. A verified `DELIVERED` is monotonic;
+  stale reconciliation is an idempotent no-op. A retry requires signed `REQUEUED` by
   the reconciliation service under the versioned retry policy, then a new unique
-  `SEND_ATTEMPT_RESERVED`; attempt numbers never repeat and stale leases, overlap,
-  exhausted policy, or binding mismatch fail closed.
+  `SEND_ATTEMPT_RESERVED`; no failure or requeue occurs while a lease is active or
+  reconciliation is unresolved; attempt numbers never repeat and binding mismatch
+  fails closed.
 - The allowed lifecycle is frozen as `QUEUED -> DELIVERED -> ACKNOWLEDGED` only after
-  reservation and verified send, with `RECONCILIATION_REQUIRED` for uncertain
-  delivery, retry through `FAILED_RETRYABLE -> REQUEUED -> QUEUED` using the same
-  intent, and terminal `FAILED_FINAL`, `SUPERSEDED`, or `CANCELLED` states.
+  reservation, serialized pre-call start, and verified send, with
+  `RECONCILIATION_REQUIRED` only from a non-`DELIVERED` state for uncertain delivery,
+  retry through `FAILED_RETRYABLE -> REQUEUED -> QUEUED` using the same intent, and
+  terminal `FAILED_FINAL`, `SUPERSEDED`, or `CANCELLED` states. `DELIVERED` is
+  monotonic; stale reconciliation cannot regress it, and no failure/requeue may
+  occur while an active lease or unresolved reconciliation remains.
   `SUPERSEDED` is pre-ack only with an explicitly linked successor;
   `ACKNOWLEDGED`, `FAILED_FINAL`, and `CANCELLED` close the lineage. Retries create no
   second receipt, outbox identity, claim, or run.
@@ -91,6 +107,14 @@ release.
   historical retired signatures may verify, but retired/revoked keys cannot sign new
   events, effective revocations fail closed, and registry rotation never rewrites
   history.
+- Relay delivery proof is the NIP-01 publisher-signed event itself: verify canonical
+  event ID, publisher key/signature, kind/tags/content, channel, intent/attempt, and
+  payload digest. Trust is resolved through the Tech-owned
+  `workspace.security.relay_event_signers` registry with key version, validity
+  interval, and `ACTIVE|RETIRED|REVOKED` status; missing/mismatched registry,
+  invalid serialization/signature, unauthorized or retired/revoked new publisher,
+  or binding mismatch rejects delivery before `DELIVERED` or side effect, with
+  audited rotation/revocation and historical preservation.
 - Only the exact enrolled assigned-agent pubkey may sign an acknowledgement binding
   intent ID, authorization revision/evidence digest, canonical channel ID, delivered
   Buzz event ID, agent claim/run ID, and acknowledgement timestamp. Uncertain
@@ -134,15 +158,19 @@ release.
   `DISP-03` wrong-key rejection before one valid acknowledgement; `DISP-04` second
   acknowledgement rejection after valid ack; `REC-01` exact authorization and ack
   replay; `REC-02` concurrent dispatch and acknowledgement CAS plus unique active
-  attempt reservation; `REC-03` hash/signature verification before uncertain-send
-  backfill and no retry before requeue/reservation; `REC-04` v2 stale-config diagnostic,
-  no send, explicit reauthorization, and same-lineage successor only when immutable
-  inputs/role/assignee match; and `FAIL-03`/`FAIL-04` no event/projection/send/claim/run
-  on rejected authority.
+  attempt reservation, reservation-fence/pre-call-start serialization, total ordering
+  against terminalization, and no stale send/failure/requeue; `REC-03` NIP-01 relay
+  publisher proof and `relay_event_signers` verification before uncertain-send
+  backfill, stale reconciliation no-op after `DELIVERED`, and no retry before
+  requeue/reservation; `REC-04` v2 stale-config diagnostic, signed terminalization
+  request, no send, explicit reauthorization, and same-lineage successor only when
+  immutable inputs/role/assignee match; and `FAIL-03`/`FAIL-04` no unsigned or
+  rejected lifecycle event, projection/send/claim/run on rejected authority,
+  including untrusted/retired/revoked relay publisher or registry mismatch.
 
 ## Revision provenance
 
-The authorized parent is `5943b2d5055bf4df7ec14735aaf4a74527acc31d`. A Git-tracked file
+The authorized parent is `5dd1bfc17a7578875663056384e2c3d534647df7`. A Git-tracked file
 cannot contain the hash of the commit that contains itself, so this evidence records
 the parent and binds the review target to the immutable commit named in the external
 Buzz Critic request/result and its exact artifact URLs. No self-referential follow-up
@@ -151,7 +179,7 @@ commit is created merely to write its own hash.
 ## Evidence classification
 
 The evidence matrix now classifies the authenticated owner/Tech issue comments,
-including the receipt-schema/privacy ruling at [comment #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334), the immutable-event/routing/manifest ruling at [comment #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748), the lineage/event-authority/security-case ruling at [comment #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687), and the executable-sequence/cryptographic-profile ruling at [comment #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932),
+including the receipt-schema/privacy ruling at [comment #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334), the immutable-event/routing/manifest ruling at [comment #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748), the lineage/event-authority/security-case ruling at [comment #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687), the executable-sequence/cryptographic-profile ruling at [comment #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932), and the send-fencing/publisher-trust/fixed-case ruling at [comment #5316881629](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316881629),
 as **authenticated decision evidence**, separate from production observations, source
 inspection, local/non-production execution, and not-run proof obligations.
 

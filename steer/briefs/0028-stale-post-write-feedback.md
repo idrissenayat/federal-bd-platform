@@ -274,19 +274,33 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   `v0: QUEUED`. Before any external call, the outbox delivery service acquires one
   leased attempt with CAS on the current event version and commits a signed,
   non-state `SEND_ATTEMPT_RESERVED` event containing the intent ID, attempt number,
-  lease ID/expiry, canonical channel/configuration bindings, and relay idempotency key
-  equal to `dispatch_intent_id`. Enforce unique
+  lease ID/expiry, `reservation_fence`, canonical channel/configuration bindings, and
+  relay idempotency key equal to `dispatch_intent_id`. Enforce unique
   `(dispatch_intent_id,attempt_number)` and one active lease; no external call occurs
-  before this reservation commits. The service performs exactly one external send for
-  that reservation with the same intent/attempt/idempotency bindings. When the
-  canonical relay returns a durable event ID, verify its channel, sender/service
-  identity, intent ID, attempt ID, payload digest, and relay signature, then CAS-append
-  signed state event `DELIVERED` and update the projection in one transaction. If the
-  send times out, is unknown, or the worker crashes before durable delivery can be
-  proven, CAS-append `RECONCILIATION_REQUIRED` and query the canonical relay for the
-  same intent/attempt before retry; append `DELIVERED` only after a verified match, or
-  append `FAILED_RETRYABLE` after the bounded check finds no delivery. Downstream
-  authorization remains blocked until committed `ACKNOWLEDGED`.
+  before this reservation commits. Immediately before the relay call, the service
+  must serialize a CAS `SEND_ATTEMPT_STARTED` append against the same current event
+  version and `reservation_fence`, rechecking that the lease is active, the intent is
+  non-terminal, no signed `TERMINALIZATION_REQUESTED` has won the ordering, the
+  routing/configuration bindings still match, and no unresolved reconciliation exists.
+  A failed or stale pre-call CAS permits no send. The service performs exactly one
+  external send only after `SEND_ATTEMPT_STARTED` commits, with the same
+  intent/attempt/idempotency bindings. Cancellation, supersession, and configuration
+  invalidation use the same serialization domain and a signed
+  `TERMINALIZATION_REQUESTED`: if that request wins before `SEND_ATTEMPT_STARTED`,
+  the reservation fence is invalidated and no send occurs; if `SEND_ATTEMPT_STARTED`
+  wins first, terminalization waits for the attempt to resolve. When the canonical
+  relay returns a durable event ID, verify its channel, publisher, intent ID, attempt
+  ID, payload digest, and NIP-01 publisher signature, then CAS-append signed state
+  event `DELIVERED` and update the projection in one transaction. `DELIVERED` is
+  monotonic: a stale reconciliation observed after a verified `DELIVERED` is an
+  idempotent no-op and cannot regress state. If the send times out, is unknown, or the
+  worker crashes before durable delivery can be proven, append
+  `RECONCILIATION_REQUIRED` and query the canonical relay for the same intent/attempt
+  before retry; append `DELIVERED` only after a verified match, or append
+  `FAILED_RETRYABLE` only after the bounded check finds no delivery, the lease is
+  released, and reconciliation is resolved. No failure or requeue is permitted while
+  an active lease or unresolved reconciliation remains. Downstream authorization
+  remains blocked until committed `ACKNOWLEDGED`.
 
   The authoritative operational history is an append-only `dispatch_event` ledger
   keyed by `dispatch_intent_id`, with the exact `steer-dispatch-event/v1` payload:
@@ -332,12 +346,26 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   events and records actor, reason, timestamp, old/new key versions, effective
   interval, and any incident/hold reference.
 
+  The durable relay proof is the NIP-01 publisher-signed event itself: verify the
+  canonical event ID, publisher public key, signature, kind/tags/content, channel,
+  intent/attempt bindings, and payload digest. Publisher trust is resolved through
+  the versioned, Tech-owned `workspace.security.relay_event_signers` registry, which
+  records publisher key ID/version, validity interval, and
+  `ACTIVE|RETIRED|REVOKED` status. Missing or mismatched registry/version, unknown or
+  unauthorized publisher, invalid NIP-01 serialization/signature, retired/revoked
+  new signer, or binding mismatch is rejected before `DELIVERED`, projection, or any
+  downstream side effect. Registry rotation/revocation records the actor, reason,
+  timestamp, old/new key versions, and effective interval; historical events remain
+  preserved and are verified under the registry's effective-time rules, while a
+  retired or revoked key cannot publish a new event.
+
 - **Event append authority:**
 
   | Event | Sole append authority |
   |---|---|
   | `QUEUED` | Work Management authorization service, inside receipt/outbox transaction |
   | non-state `SEND_ATTEMPT_RESERVED` | Outbox delivery service after CAS lease acquisition |
+  | non-state `SEND_ATTEMPT_STARTED` | Outbox delivery service immediately before one external send, using serialized CAS on the active reservation fence |
   | `DELIVERED` | Outbox delivery service after one send and durable canonical-relay event ID is verified |
   | `RECONCILIATION_REQUIRED` | Outbox delivery or reconciliation service after typed uncertain-delivery condition |
   | `FAILED_RETRYABLE`, `FAILED_FINAL` | Reconciliation service under the versioned retry/error policy |
@@ -345,17 +373,20 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   | `ACKNOWLEDGED` | Work Management authorization service after exact assigned-agent signature verification |
   | `SUPERSEDED` | Work Management authorization service inside explicit human-reauthorization transaction |
   | `CANCELLED` | Work Management authorization service from an authenticated human cancellation/reassignment ruling |
+  | non-state `TERMINALIZATION_REQUESTED` | Work Management terminalization coordinator after authenticated cancellation/supersession or audited configuration invalidation, serialized with `SEND_ATTEMPT_STARTED` |
   | non-state `ACK_REJECTED`, `DELIVERY_BLOCKED_CONFIG_STALE` | Authorization/reconciliation service respectively; diagnostic only and cannot advance state |
 
   External delivery/retry occurs only after committed `QUEUED` or `REQUEUED` plus
-  `SEND_ATTEMPT_RESERVED`; no `DELIVERED` event is pre-created. Accepted
-  acknowledgement remains unique per intent while claim/run remains unique per
-  lineage.
+  `SEND_ATTEMPT_RESERVED` and the serialized pre-call `SEND_ATTEMPT_STARTED`; no
+  `DELIVERED` event is pre-created. Terminalization requests and pre-call starts have
+  one total order on the intent fence. No failure or requeue may append while a lease
+  is active or reconciliation is unresolved. Accepted acknowledgement remains unique
+  per intent while claim/run remains unique per lineage.
 - **Lifecycle and terminals:** The only allowed transitions are
   `QUEUED -> DELIVERED -> ACKNOWLEDGED` only after a committed
-  `SEND_ATTEMPT_RESERVED` and verified external send;
-  `QUEUED|DELIVERED -> RECONCILIATION_REQUIRED` for uncertain delivery;
-  `QUEUED|DELIVERED|RECONCILIATION_REQUIRED -> FAILED_RETRYABLE -> REQUEUED ->
+  `SEND_ATTEMPT_RESERVED`, serialized `SEND_ATTEMPT_STARTED`, and verified external
+  send; `QUEUED -> RECONCILIATION_REQUIRED` for uncertain delivery;
+  `QUEUED|RECONCILIATION_REQUIRED -> FAILED_RETRYABLE -> REQUEUED ->
   QUEUED` using the same intent ID; and
   `QUEUED|DELIVERED|RECONCILIATION_REQUIRED|FAILED_RETRYABLE -> FAILED_FINAL`,
   `SUPERSEDED`, or `CANCELLED`. `ACKNOWLEDGED`, `FAILED_FINAL`, `SUPERSEDED`, and
@@ -364,20 +395,26 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   or lineage reopening is permitted. `ACKNOWLEDGED`, `FAILED_FINAL`, and `CANCELLED`
   close the lineage. A retry requires signed `REQUEUED` under the versioned retry
   policy and a new `SEND_ATTEMPT_RESERVED`; its attempt number is prior maximum plus
-  one and never repeats. Stale leases, overlapping reservations, exhausted retry
+  one and never repeats. `DELIVERED` cannot regress; a reconciliation or delivery
+  result older than the committed `DELIVERED` is an idempotent no-op. Stale leases,
+  overlapping reservations, active leases, unresolved reconciliation, exhausted retry
   policy, binding/configuration mismatch, or discovered delivery fail closed without
-  another send; exhausted policy appends `FAILED_FINAL`. A retry creates no second
-  receipt, outbox identity, claim, or run.
+  another send; exhausted policy appends `FAILED_FINAL` only after no active lease or
+  unresolved reconciliation remains. A retry creates no second receipt, outbox
+  identity, claim, or run.
 - **Acknowledgement and recovery:** Only the exact enrolled assigned-agent pubkey
   may sign a valid acknowledgement. It must bind the intent ID, authorization
   revision and evidence digest, canonical channel ID, delivered Buzz event ID,
   agent claim/run ID, and acknowledgement timestamp. Human messages, channel names,
   another agent/channel, or a stale revision cannot acknowledge. After a possible send
   with unknown durable delivery state, the state becomes
-  `RECONCILIATION_REQUIRED`; the canonical channel/relay is queried for the same
-  intent ID and attempt before retry. If found and verified, existing state is
-  backfilled with `DELIVERED`; if absent after the bounded check, append
-  `FAILED_RETRYABLE`. Only a signed `REQUEUED` followed by a new
+  `RECONCILIATION_REQUIRED` only while the current state is not already
+  `DELIVERED`; the canonical channel/relay is queried for the same intent ID and
+  attempt before retry. If found and verified, existing state is backfilled with
+  `DELIVERED`; if the state is already `DELIVERED`, the reconciliation is a stale
+  idempotent no-op; if absent after the bounded check, append `FAILED_RETRYABLE` only
+  after the lease is released and reconciliation is resolved. Only a signed
+  `REQUEUED` followed by a new
   `SEND_ATTEMPT_RESERVED` permits a same-intent resend, and both Buzz and the runtime
   deduplicate it. An acknowledgement submission is keyed by the digest
   of its required signed bindings. An exact replay returns the existing accepted event
@@ -445,24 +482,35 @@ substituted:
   resolve idempotently to the original receipt/events.
 - `REC-02`: submit two concurrent dispatch requests and two concurrent valid
   acknowledgement submissions with the same expected version; CAS permits one
-  accepted transition/event and one run.
+  accepted transition/event and one run. Race cancellation, supersession, or config
+  invalidation against the reservation and serialized pre-call
+  `SEND_ATTEMPT_STARTED`; assert one total order on `reservation_fence`, no stale
+  send after `TERMINALIZATION_REQUESTED`, and no failure/requeue while a lease is
+  active or reconciliation is unresolved.
 - `REC-03`: preserve the uncertain-send reconciliation case and verify discovered
-  delivery/ack event hashes and signatures before backfill; assert the relay query is
-  for the same intent and attempt, and that no retry occurs before requeue and a new
-  send-attempt reservation.
+  delivery/ack event hashes and signatures before backfill, including the NIP-01
+  publisher proof against the Tech-owned `relay_event_signers` registry; assert the
+  relay query is for the same intent and attempt, that a stale reconciliation after
+  `DELIVERED` is an idempotent no-op, and that no retry occurs before requeue and a
+  new send-attempt reservation.
 - `REC-04`: after receipt commit under route/config v1 but before send, activate v2 or
   a mismatched binding; append only `DELIVERY_BLOCKED_CONFIG_STALE`, send nothing, then
   require explicit human reauthorization. When immutable lineage inputs, role, and
   assignee are unchanged, create one successor intent on the same lineage, atomically
   supersede the old intent, and permit only the existing/sole claim-run path.
 - `FAIL-03` and `FAIL-04`: retain missing/noncanonical route failures and additionally
-  assert no lifecycle event, projection change, external send, claim, or run is
-  produced by the rejected authority.
+  assert signed `TERMINALIZATION_REQUESTED`/fence invalidation for the stale or
+  mismatched route, no lifecycle event beyond the typed diagnostic, projection change,
+  external send, claim, or run is produced by the rejected authority, and no
+  failure/requeue occurs while a lease or unresolved reconciliation remains. Include
+  rejection of an untrusted/retired/revoked relay publisher or registry mismatch
+  before `DELIVERED`.
 - `DISP-01`: assert the initial signed `QUEUED`/outbox commit, one committed
   `SEND_ATTEMPT_RESERVED`, exactly one relay send, relay verification, and only then
   the signed `DELIVERED` event before the valid acknowledgement.
 - `REC-02`: include the active-lease and unique-attempt constraints so concurrent
-  submissions cannot reserve or send the same intent/attempt twice.
+  submissions cannot reserve or send the same intent/attempt twice; include the
+  reservation fence and serialized pre-call start ordering.
 
 For each case, record seed revision/config, action identity, expected authoritative
 state and local UI/focus/announcement result, actual receipt/outbox/event/claim/run
@@ -604,6 +652,7 @@ inconsistent with the incident evidence and the human routing decision.
 | Immutable receipt, append-only lifecycle/ack ledger, CAS and replay rules, claim lineage/routing supersession, exact 20-case manifest, external revision provenance | Authenticated decision evidence | [Comment #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748) | Contract recorded; implementation not authorized |
 | Canonical root lineage formula/lifetime, signed event schema and authority matrix, exact replay/wrong-key/second-ack/stale-config/supersession mappings | Authenticated decision evidence | [Comment #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687) | Contract recorded; implementation not authorized |
 | Executable queued/send-reservation/delivery order, uncertain-send reconciliation, signed requeue authority, retry-attempt uniqueness, and v1 cryptographic/key-trust profile | Authenticated decision evidence | [Comment #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932) | Contract recorded; implementation not authorized |
+| Reservation fencing and serialized pre-call start, terminalization ordering, monotonic delivery/reconciliation, NIP-01 publisher trust, and fixed REC-02/REC-03/FAIL-03/FAIL-04 mappings | Authenticated decision evidence | [Comment #5316881629](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316881629) | Contract recorded; implementation not authorized |
 | Local replay, concurrency, outbox delivery, partial-dispatch recovery | Not run | This Scout handoff did not execute live repair or integration paths | No pass/fail claim |
 | Local reproduction of stale `Next action`/hidden `409` | Not run | Production observations above; no local live run claimed | No pass/fail claim |
 | Independent repeated-signal frequency | Not run | `steer/signals/README.md`; `steer/operating-system/METRICS.md` | Unmeasured |
