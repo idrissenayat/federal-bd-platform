@@ -17,12 +17,37 @@
 - **Canonical non-owning review assignment:** A review handoff is a separate,
   stage-scoped Work Management assignment bound to the active
   `work_item_stable_id`/work-item key, `workflow`, unchanged `primary_claim_lineage_id`,
-  unchanged primary owner role and enrolled member ID, `review_stage`, exact target
-  commit SHA-256, exact artifact URLs, prior evidence/decision binding digests,
-  reviewer role and enrolled member ID, explicit output contract and prohibitions, and
-  authenticated `authorizing_actor_id`/`authorizing_event_id`. It grants review
-  authority only; it cannot change the primary owner, workflow, lineage, scope, gate
-  state, or implementation authority.
+  unchanged primary owner role and enrolled member ID, `review_stage`, the canonical
+  target-binding tuple defined below, exact artifact URLs, prior evidence/decision
+  binding digests, reviewer role and enrolled member ID, explicit output contract and
+  prohibitions, and authenticated `authorizing_actor_id`/`authorizing_event_id`. It
+  grants review authority only; it cannot change the primary owner, workflow, lineage,
+  scope, gate state, or implementation authority.
+- **Canonical target binding and digest contract:** Each assignment records
+  `target_git_object_format` (`sha1` or `sha256`), `target_git_commit_oid` (the
+  repository's lowercase Git commit OID, 40 or 64 hex characters as required by that
+  object format), `target_commit_object_sha256`, and `target_artifacts[]`. The commit
+  digest is `SHA-256(object_bytes)`, where `commit_bytes` are the exact raw bytes from
+  `git cat-file commit <target_git_commit_oid>` and
+  `object_bytes = UTF8("commit " + DECIMAL(len(commit_bytes)) + "\0") || commit_bytes`;
+  no line-ending or text normalization is permitted. `target_artifacts[]` contains
+  exactly the five allowed documentation paths, sorted by the UTF-8 byte order of
+  `path`: `steer/TEAM-COMMUNICATION.md`, `steer/agents/agent-roles.md`,
+  `steer/briefs/0028-stale-post-write-feedback.md`,
+  `steer/operating-system/DECISION-LOG.md`, and
+  `steer/reviews/0028-scout-second-rework-evidence.md`. Each entry is
+  `{path, url, size_bytes, sha256}`, with `sha256` computed over the exact raw bytes
+  at that path. `target_artifact_manifest_sha256` is
+  `SHA-256(UTF8(RFC8785({schema:"steer-review-artifact-manifest/v1",
+  target_git_object_format:target_git_object_format,
+  target_git_commit_oid:target_git_commit_oid, artifacts:target_artifacts})))`.
+  RFC 8785 output is UTF-8 without a BOM. The Scout verifies the target OID exists as
+  a commit, recomputes both commit/object and artifact digests, confirms the five URLs
+  resolve to that same immutable revision, and records every field before
+  `REVIEW_TARGET_READY`; Work Management compares the full tuple for exact replay and
+  rejects a missing or mismatched field before append or side effect. This separates a
+  Git SHA-1 OID, when that is the repository format, from the independently reproducible
+  SHA-256 digests.
 - **Append-only assignment, acknowledgement, and result:**
   `review_assignment_id = SHA-256(UTF8(RFC8785(steer-review-assignment/v1 payload)))`,
   using RFC 8785 JCS UTF-8 without BOM and the exact fields above, with artifact URLs
@@ -528,14 +553,26 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   configuration version has precedence with no fallback. Its current value is
   `10ac2fb4-f7fc-4dbc-bb73-8c545f31a470` (`#steer-team`). Repository prose, UI label,
   environment default, channel name, or hard-coded constant is never authoritative.
-  A missing key, unknown/deleted channel, name/ID disagreement, relay/workspace
-  mismatch, assigned-agent non-membership, or competing source causes a fail-closed
-  conflict: no new receipt/outbox row, send, item/gate/phase/assignee/decision
-  change, or change to an existing claim. The UI exposes the exact mismatch and
-  current config version beside the dispatch action. “Routing correction resumes the
-  existing claim” means unchanged binding gets same-intent transport repair; changed
-  binding requires an explicitly authorized superseding intent on the same unique
-  lineage and never starts a duplicate run.
+  **Before the receipt/outbox transaction** (the `FAIL-03` pre-receipt phase), a
+  missing key, unknown/deleted channel, name/ID disagreement, relay/workspace
+  mismatch, assigned-agent non-membership, or competing source is a fail-closed
+  conflict: append no receipt, outbox row, reservation, attempt, delivery, state,
+  claim, or run; emit only the typed no-PII diagnostic; and do not emit
+  `TERMINALIZATION_REQUESTED` or invalidate a fence because none exists. The UI
+  exposes the exact mismatch and current config version beside the dispatch action.
+  **After a receipt/outbox row and exactly one `SEND_ATTEMPT_RESERVED` fence commit
+  under route/configuration v1** (the post-receipt/pre-send `FAIL-04` and `REC-04`
+  phases), the pre-receipt rule does not apply: a channel, relay/workspace,
+  membership, publisher, or stale-configuration mismatch before
+  `SEND_ATTEMPT_STARTED` must append signed non-state `TERMINALIZATION_REQUESTED`,
+  invalidate that existing reservation fence, and append the typed diagnostic, with
+  no start, send, state/current-projection change, claim, run, failure, or requeue.
+  `REC-04` additionally requires explicit human reauthorization and permits only one
+  frozen same-lineage successor; retry without that reauthorization is rejected.
+  “Routing correction resumes the existing claim” means unchanged binding gets
+  same-intent transport repair; changed binding follows the applicable deterministic
+  substep below and requires an explicitly authorized superseding intent on the same
+  unique lineage, never a duplicate run.
 
 ### Authoritative 20-case pre-enrollment manifest
 
@@ -555,8 +592,8 @@ unclassifiable results fail.
 | DISP-04 | authorized r1, matching route v1, assistive-tech/narrow UI → exactly one dispatch and local status |
 | FAIL-01 | stale mutation revision r0 against server r1 → HTTP 409 |
 | FAIL-02 | invalid Work Economics field set at r1 → validation failure |
-| FAIL-03 | pre-receipt authorized r1 with missing/unknown canonical routing key → typed diagnostic only; no append, reservation, terminalization, fence, state, claim, or run |
-| FAIL-04 | post-receipt/pre-send authorized r1 with exactly one reservation fence, then noncanonical/mismatched channel, relay, membership, or publisher binding → terminalize/fence/diagnostic; no send, state transition, claim, run, failure, or requeue |
+| FAIL-03 | pre-receipt authorized r1 with each frozen route-binding conflict in `F03-A` through `F03-F` → typed diagnostic only; no append, reservation, terminalization, fence, state, claim, or run |
+| FAIL-04 | post-receipt/pre-send authorized r1 with exactly one reservation fence, then each frozen binding mismatch in `F04-A` through `F04-E` → terminalize/fence/diagnostic; no send, state transition, claim, run, failure, or requeue |
 | ORDER-01 | old bootstrap response arrives after successful save response |
 | ORDER-02 | two explicit saves; older response arrives after newer confirmed response |
 | ORDER-03 | stale activity/receipt projection arrives after newer lifecycle event |
@@ -564,7 +601,64 @@ unclassifiable results fail.
 | REC-01 | exact authorization replay after receipt creation |
 | REC-02 | two concurrent dispatch submissions with the same authorization/expected version |
 | REC-03 | external send may have succeeded but response is lost; reconciliation finds existing delivery/ack |
-| REC-04 | same post-receipt/pre-send reservation seed as FAIL-04, no durable Buzz delivery and absent reconciliation, then stale v2/mismatched binding → terminalize/fence/diagnostic; explicit reauthorization and same-lineage successor only |
+| REC-04 | same post-receipt/pre-send reservation seed as FAIL-04, no durable Buzz delivery and absent reconciliation, then each frozen stale/mismatched binding in `R04-A` through `R04-F` → terminalize/fence/diagnostic; explicit reauthorization and same-lineage successor only |
+
+### Deterministic route-binding substeps within the fixed cases
+
+The denominator remains exactly 20 case IDs. For `FAIL-03`, `FAIL-04`, and `REC-04`,
+every listed substep is mandatory and runs in the stated order; a case passes only if
+all of its substeps pass. Each substep resets to an isolated copy of its named seed so
+one terminalized branch cannot mask another. These resets and substeps do not add case
+IDs, change the denominator, or permit a substitute variant after execution starts.
+
+- **`FAIL-03` pre-receipt seed:** For each substep, start from authorized r1 with no
+  receipt, outbox row, reservation, attempt, or delivery. Reject before append or
+  side effect, emit exactly one typed no-PII diagnostic, and emit no
+  `TERMINALIZATION_REQUESTED`, fence invalidation, state/current-projection change,
+  claim, or run:
+
+  | Substep | Frozen route-binding conflict |
+  |---|---|
+  | `F03-A` | `workspace.routing.steer_agent_handoff.channel_id` is missing |
+  | `F03-B` | the configured canonical channel ID is unknown or deleted |
+  | `F03-C` | configured channel ID and resolved channel identity disagree |
+  | `F03-D` | the relay URL and workspace/POD binding disagree |
+  | `F03-E` | the assigned agent is not a member of the canonical channel |
+  | `F03-F` | a competing routing source is present alongside the active audited configuration |
+
+- **`FAIL-04` post-receipt/pre-send seed:** For each substep, start from authorized
+  r1 under canonical route/configuration v1 with a committed receipt, outbox row, and
+  exactly one `SEND_ATTEMPT_RESERVED` reservation fence, before
+  `SEND_ATTEMPT_STARTED`. Invalidate the named binding, append signed non-state
+  `TERMINALIZATION_REQUESTED`, invalidate the existing fence, and append the typed
+  diagnostic. Do not start or send, change state/current projection, create a claim or
+  run, fail, or requeue:
+
+  | Substep | Frozen binding invalidation |
+  |---|---|
+  | `F04-A` | canonical channel ID is replaced by a noncanonical or mismatched channel |
+  | `F04-B` | relay URL binding changes or disagrees with the receipt |
+  | `F04-C` | workspace/POD binding changes or disagrees with the receipt |
+  | `F04-D` | assigned-agent channel membership becomes absent or unauthorized |
+  | `F04-E` | publisher key is unknown, retired, revoked, or mismatched to the signer registry |
+
+- **`REC-04` post-receipt/pre-send recovery seed:** For each substep, start from the
+  same v1 receipt/outbox/reservation seed as `FAIL-04`, with no durable Buzz delivery
+  and reconciliation proving absence. Before `SEND_ATTEMPT_STARTED`, apply the named
+  stale or mismatched binding, append signed non-state `TERMINALIZATION_REQUESTED`,
+  invalidate the existing fence, and append `DELIVERY_BLOCKED_CONFIG_STALE`. Send
+  nothing; require explicit human reauthorization; allow only one same-lineage
+  successor when the frozen lineage/role/assignee inputs are unchanged; and reject a
+  retry without that reauthorization:
+
+  | Substep | Frozen stale or mismatched binding |
+  |---|---|
+  | `R04-A` | authoritative routing configuration advances from v1 to v2 |
+  | `R04-B` | canonical channel ID becomes noncanonical or mismatched |
+  | `R04-C` | relay URL binding becomes stale or mismatched |
+  | `R04-D` | workspace/POD binding becomes stale or mismatched |
+  | `R04-E` | assigned-agent membership becomes absent or unauthorized |
+  | `R04-F` | publisher key becomes unknown, retired, revoked, or mismatched to the signer registry |
 
 The fixed cases also carry these named security assertions; no case is added or
 substituted:
@@ -768,6 +862,7 @@ inconsistent with the incident evidence and the human routing decision.
 | Exact-revision non-owning review assignments/receipts/idempotency, single primary claim separation, and stage-specific Critic inputs including the `PRE_GATE_1_BRIEF` no-Exam prerequisite | Authenticated decision evidence | [Comment #5316966355](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316966355) | Contract recorded; review only; Gate 1 pending |
 | Complete append-only review assignment/acknowledgement/result receipts, RFC 8785 JCS-SHA-256 idempotency, authenticated append authority and bootstrap, canonical `#steer-team` route with no project fallback, privacy coverage, and aligned REC-04/FAIL-03/FAIL-04 terminalization assertions | Authenticated decision evidence | [Comment #5317059006](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317059006) | Contract recorded; review only; Gate 1 pending |
 | Frozen FAIL-03/FAIL-04/REC-04 phases and seeds, historical wrong-channel non-authority, p95 reliability budgets/named bounded telemetry/observation window, and `REVIEW_TARGET_READY` before Work Management-verified `REVIEW_REQUESTED` | Authenticated decision evidence | [Comment #5317183348](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317183348) | Contract recorded; target-ready handoff only; Gate 1 pending |
+| Pre-receipt versus post-receipt routing phase qualifier, executable Git OID/commit-object/artifact-manifest digest fields, and deterministic `F03-*`/`F04-*`/`R04-*` substeps without changing the 20-case denominator | Authenticated decision evidence | [Comment #5317300148](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317300148) | Contract recorded; target-ready handoff only; Gate 1 pending |
 | Local replay, concurrency, outbox delivery, partial-dispatch recovery | Not run | This Scout handoff did not execute live repair or integration paths | No pass/fail claim |
 | Local reproduction of stale `Next action`/hidden `409` | Not run | Production observations above; no local live run claimed | No pass/fail claim |
 | Independent repeated-signal frequency | Not run | `steer/signals/README.md`; `steer/operating-system/METRICS.md` | Unmeasured |

@@ -1,23 +1,23 @@
-# Scout tenth-documentation-rework evidence — STR-028 Intent Brief 0028
+# Scout eleventh-documentation-rework evidence — STR-028 Intent Brief 0028
 
 **Work item:** [STR-028 / issue #56](https://github.com/idrissenayat/federal-bd-platform/issues/56)
 **Branch:** `scout/str-028-intent-brief`
-**Parent revision:** `e4baf34ee691bc39f3798f1e5ee4288f44c5a6fe`
-**Review role:** Scout evidence for the tenth authorized Intent Brief documentation
+**Parent revision:** `df76d7ac149c5cd2b810019fa9dd9f6147cdf511`
+**Review role:** Scout evidence for the eleventh authorized Intent Brief documentation
 rework; this is not a Critic review, human gate ruling, Exam, implementation evidence,
 or release decision
-**Controlling decisions:** [Tech design decision #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779), [supervisory Tech decision #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334), [supervisory Tech decision #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748), [supervisory Tech decision #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687), [supervisory Tech decision #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932), [supervisory Tech decision #5316881629](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316881629), [supervisory governance decision #5316966355](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316966355), [supervisory governance decision #5317059006](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317059006), and [supervisory Tech decision #5317183348](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317183348)
+**Controlling decisions:** [Tech design decision #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779), [supervisory Tech decision #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334), [supervisory Tech decision #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748), [supervisory Tech decision #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687), [supervisory Tech decision #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932), [supervisory Tech decision #5316881629](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316881629), [supervisory governance decision #5316966355](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316966355), [supervisory governance decision #5317059006](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317059006), [supervisory Tech decision #5317183348](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317183348), and [Tech decision #5317300148](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317300148)
 
 ## Authorized change
 
-The authenticated Tech decision #5317183348 freezes the FAIL-03/FAIL-04/REC-04 case
-phases and seeds, historical wrong-channel labeling, measurable reliability contract,
-and two-phase review handoff ordering that the previous Critic review found missing.
-This rework changes only the Intent Brief, this Scout evidence file, the project
-Decision Log, TEAM-COMMUNICATION, and agent-roles, preserving the same primary claim
-and branch from parent revision `e4baf34ee691bc39f3798f1e5ee4288f44c5a6fe`. It does
-not draft an Exam, change application or worker code, approve a gate, merge, deploy,
-or release.
+The authenticated Tech decision #5317300148 binds this eleventh rework to the same
+primary claim/run and freezes the pre-receipt versus post-receipt routing qualifier,
+the executable Git OID/commit-object/artifact-manifest digest contract, and the
+deterministic fixed-case substeps. This rework changes only the Intent Brief, this
+Scout evidence file, the project Decision Log, TEAM-COMMUNICATION, and agent-roles,
+preserving the same primary claim and branch from parent revision
+`df76d7ac149c5cd2b810019fa9dd9f6147cdf511`. It does not draft an Exam, change
+application or worker code, approve a gate, merge, deploy, or release.
 
 ## Review assignment, receipt, and stage contract
 
@@ -25,11 +25,30 @@ or release.
   assigned Scout. Rework revisions preserve that claim, lineage, and idempotency
   boundary; non-owning reviewers do not acquire, replace, or duplicate it.
 - Each review assignment is bound to the active work-item stable ID/key, STEER
-  workflow, unchanged primary claim lineage/owner/member, review stage, exact target
-  commit SHA-256 and artifact URLs, prior evidence/decision bindings, reviewer role
-  and enrolled member, explicit output/prohibitions, and authenticated authorizing
-  actor/event. It grants review authority only and cannot change primary ownership,
-  workflow, lineage, scope, gate state, or implementation authority.
+  workflow, unchanged primary claim lineage/owner/member, review stage, the canonical
+  target tuple (`target_git_object_format`, `target_git_commit_oid`,
+  `target_commit_object_sha256`, `target_artifacts[]`, and
+  `target_artifact_manifest_sha256`), exact artifact URLs, prior evidence/decision
+  bindings, reviewer role and enrolled member, explicit output/prohibitions, and
+  authenticated authorizing actor/event. It grants review authority only and cannot
+  change primary ownership, workflow, lineage, scope, gate state, or implementation
+  authority.
+- The target tuple is executable: `target_git_commit_oid` is the lowercase Git OID
+  for the repository's `sha1`/`sha256` storage format; `target_commit_object_sha256`
+  hashes `UTF8("commit " + DECIMAL(len(commit_bytes)) + "\0") || commit_bytes`,
+  where `commit_bytes` are the exact raw bytes from `git cat-file commit <oid>`; and
+  each of the five allowed artifact entries stores `{path, url, size_bytes, sha256}`
+  over exact raw file bytes, sorted by UTF-8 byte order of `path`. The paths are
+  `steer/TEAM-COMMUNICATION.md`, `steer/agents/agent-roles.md`,
+  `steer/briefs/0028-stale-post-write-feedback.md`,
+  `steer/operating-system/DECISION-LOG.md`, and
+  `steer/reviews/0028-scout-second-rework-evidence.md`. The manifest digest
+  is `SHA-256(UTF8(RFC8785({schema:"steer-review-artifact-manifest/v1",
+  target_git_object_format:target_git_object_format,
+  target_git_commit_oid:target_git_commit_oid, artifacts:target_artifacts})))`,
+  with JCS UTF-8/no-BOM. Scout recomputes these values and verifies the OID and all
+  five URLs before `REVIEW_TARGET_READY`; Work Management compares the full tuple and
+  rejects missing or mismatched values before append or side effect.
 - `review_assignment_id = SHA-256(UTF8(RFC8785(steer-review-assignment/v1 payload)))`
   using RFC 8785 JCS UTF-8 without BOM and recorded array ordering. Work Management
   alone appends the signed assignment after active-item, unchanged-owner/workflow/
@@ -69,7 +88,7 @@ or release.
   | `GATE_2_EXAM` | Exact human-approved Brief revision, exact Exam revision, applicable guardrails, and assigned Exam/Test evidence | Requires the Exam; it cannot be substituted by a pre-gate Brief review. |
   | `GATE_3_BUILD` | Exact Brief and frozen Exam revisions, implementation diff, test/CI evidence, and prior review receipts/results | Build review only; no merge, deployment, release, or human gate signature. |
 
-- The tenth rework stops at `REVIEW_TARGET_READY`; no Critic request is emitted in this
+- The eleventh rework stops at `REVIEW_TARGET_READY`; no Critic request is emitted in this
   Scout handoff. A later `PRE_GATE_1_BRIEF` request is non-owning, exact-revision bound,
   and valid only after Work Management persists and reload-verifies the assignment.
   The same primary Scout claim/run remains in force.
@@ -200,11 +219,19 @@ or release.
 - Routing is sourced from audited Work Management workspace/POD key
   `workspace.routing.steer_agent_handoff.channel_id`, with the active audited
   configuration version as sole precedence and no fallback. Its current value is
-  `10ac2fb4-f7fc-4dbc-bb73-8c545f31a470` (`#steer-team`). Missing, unknown,
-  conflicting, mismatched, non-member, or competing routing inputs fail closed with
-  no receipt, outbox row, send, state change, or existing-claim change. A project
-  channel may carry discussion only; it cannot override or provide a fallback for the
-  configured canonical route.
+  `10ac2fb4-f7fc-4dbc-bb73-8c545f31a470` (`#steer-team`). During the `FAIL-03`
+  pre-receipt phase, missing, unknown, conflicting, mismatched, non-member, or
+  competing routing inputs fail closed before any receipt/outbox/reservation/attempt/
+  delivery/state/claim/run and emit only the typed no-PII diagnostic; no fence or
+  terminalization exists. During the post-receipt/pre-send `FAIL-04` and `REC-04`
+  phases, the same binding classes are handled only from the committed v1
+  receipt/outbox plus one reservation fence: before `SEND_ATTEMPT_STARTED`, append
+  signed non-state `TERMINALIZATION_REQUESTED`, invalidate the existing fence, append
+  the typed diagnostic, and do not start, send, change state/current projection,
+  create a claim/run, fail, or requeue. `REC-04` requires explicit human
+  reauthorization and only a frozen same-lineage successor. A project channel may
+  carry discussion only; it cannot override or provide a fallback for the configured
+  canonical route.
 - Measurement is pre-enrolled at exactly 20 non-production cases across four cases
   each for successful saves, successful dispatch authorizations, validation/conflict
   failures, delayed/out-of-order responses, and replay/concurrent/partial-dispatch
@@ -223,17 +250,19 @@ or release.
   against terminalization, and no stale send/failure/requeue; `REC-03` NIP-01 relay
   publisher proof and `relay_event_signers` verification before uncertain-send
   backfill, stale reconciliation no-op after `DELIVERED`, and no retry before
-  requeue/reservation; `REC-04` uses the same post-receipt/pre-send seed as FAIL-04:
-  receipt/outbox plus exactly one `SEND_ATTEMPT_RESERVED`, no durable delivery,
-  reconciliation-proven absence, then v2/mismatched binding before
-  `SEND_ATTEMPT_STARTED`; append signed terminalization, invalidate the existing fence,
-  append the typed diagnostic, send nothing, require explicit reauthorization, and
-  permit only the frozen same-lineage successor. `FAIL-03` is pre-receipt route-key
-  rejection with no reservation/fence and only a typed diagnostic; `FAIL-04` is the
-  post-receipt/pre-send binding invalidation with the same terminalization/fence/
-  diagnostic order and no start/send/state/claim/run/failure/requeue. The signed
-  terminalization/audit record is allowed; “no lifecycle event” means no state-transition
-  event or current-state projection change.
+  requeue/reservation; `REC-04` uses the same post-receipt/pre-send seed as FAIL-04
+  and executes mandatory ordered substeps `R04-A` through `R04-F` for configuration
+  v2, channel, relay, workspace/POD, membership, and publisher mismatches. `FAIL-03`
+  executes `F03-A` through `F03-F` for missing key, unknown/deleted channel,
+  name/ID disagreement, relay/workspace mismatch, non-membership, and competing
+  source; all remain pre-receipt with no reservation/fence and only a typed
+  diagnostic. `FAIL-04` executes `F04-A` through `F04-E` for channel, relay,
+  workspace/POD, membership, and publisher invalidation; all use the same
+  post-receipt terminalization/fence/diagnostic order and no start/send/state/claim/
+  run/failure/requeue. Substeps use isolated resets of their fixed seeds, remain
+  inside the 20 case IDs, and are all required for a case pass. The signed
+  terminalization/audit record is allowed; “no lifecycle event” means no
+  state-transition event or current-state projection change.
 - Reliability observability is fixed before Gate 1: p95 <=250 ms for
   `steer_work_item_save_feedback_latency_ms` and
   `steer_agent_handoff_feedback_latency_ms` over the fixed matrix; emit
@@ -252,18 +281,20 @@ or release.
 
 ## Revision provenance
 
-The authorized parent is `e4baf34ee691bc39f3798f1e5ee4288f44c5a6fe`. A Git-tracked file
+The authorized parent is `df76d7ac149c5cd2b810019fa9dd9f6147cdf511`. A Git-tracked file
 cannot contain the hash of the commit that contains itself, so this evidence records
 the parent and binds the review target to the immutable commit named in the external
-Buzz Critic request/result and its exact artifact URLs. No self-referential follow-up
-commit is created merely to write its own hash.
+Work Management/Buzz request/result and its exact artifact URLs. The target binding
+also records the repository Git object format and OID, the independently reproducible
+SHA-256 of the raw Git commit object, and the SHA-256 manifest of the five exact raw
+artifact byte sequences. No self-referential follow-up commit is created merely to
+write its own hash.
 
 ## Evidence classification
 
 The evidence matrix now classifies the authenticated owner/Tech issue comments,
 including the receipt-schema/privacy ruling at [comment #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334), the immutable-event/routing/manifest ruling at [comment #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748), the lineage/event-authority/security-case ruling at [comment #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687), the executable-sequence/cryptographic-profile ruling at [comment #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932), the send-fencing/publisher-trust/fixed-case ruling at [comment #5316881629](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316881629), the review-assignment/stage-input ruling at [comment #5316966355](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316966355), the complete append-only review receipt/canonical-route/lifecycle/provenance/privacy ruling at [comment #5317059006](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317059006), and the frozen case-phase/reliability/two-phase-handoff ruling at [comment #5317183348](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317183348),
-as **authenticated decision evidence**, separate from production observations, source
-inspection, local/non-production execution, and not-run proof obligations.
+and the routing/digest/substep ruling at [comment #5317300148](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317300148), as **authenticated decision evidence**, separate from production observations, source inspection, local/non-production execution, and not-run proof obligations.
 
 ## Validation boundary
 
@@ -273,9 +304,10 @@ inspection, local/non-production execution, and not-run proof obligations.
   it records the required pseudonymous-personal-data treatment for future governed
   implementation.
 - The exact review target is intentionally supplied by the external Work Management
-  request/result rather than written self-referentially into this file. This tenth
+  request/result rather than written self-referentially into this file. This eleventh
   handoff stops at `REVIEW_TARGET_READY`; no `REVIEW_REQUESTED` Critic event is emitted
-  until Work Management records and reload-verifies the exact assignment.
+  until Work Management records and reload-verifies the exact assignment and full
+  target tuple.
 - No Exam was created or required for this `PRE_GATE_1_BRIEF` review; the Exam is a
   downstream artifact after human Gate 1. The Critic request/result must bind the
   exact Brief revision, the non-owning assignment/acknowledgement/result receipts, and

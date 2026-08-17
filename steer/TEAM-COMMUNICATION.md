@@ -73,9 +73,16 @@ The Flight Board maintains one primary execution claim/run for a work item. A re
 receives a separate, non-owning assignment that cannot acquire or duplicate the primary
 claim, change its owner, change scope, approve a gate, or authorize implementation.
 The canonical assignment payload binds the active work-item stable ID/key, workflow,
-unchanged primary claim lineage/owner/member, review stage, exact target commit SHA-256,
-exact artifact URLs, prior evidence/decision bindings, reviewer role/member, explicit
-output/prohibitions, and authenticated authorizing actor/event. Its ID is
+unchanged primary claim lineage/owner/member, review stage, the executable target tuple
+(`target_git_object_format`, `target_git_commit_oid`, `target_commit_object_sha256`,
+`target_artifacts[]`, and `target_artifact_manifest_sha256`), exact artifact URLs, prior
+evidence/decision bindings, reviewer role/member, explicit output/prohibitions, and
+authenticated authorizing actor/event. `target_git_commit_oid` is the repository's
+lowercase Git OID; `target_commit_object_sha256` hashes the raw Git object bytes
+`UTF8("commit " + DECIMAL(len(commit_bytes)) + "\0") || commit_bytes`, where
+`commit_bytes` are the exact `git cat-file commit <oid>` bytes. Each artifact entry
+hashes exact raw bytes and the sorted five-entry manifest digest is
+`SHA-256(UTF8(RFC8785({schema:"steer-review-artifact-manifest/v1", target_git_object_format:target_git_object_format, target_git_commit_oid:target_git_commit_oid, artifacts:target_artifacts})))`, with JCS UTF-8/no-BOM. Its ID is
 `review_assignment_id = SHA-256(UTF8(RFC8785(steer-review-assignment/v1 payload)))`;
 JCS is RFC 8785 UTF-8 without BOM with recorded array ordering.
 
@@ -99,7 +106,8 @@ other identity-linked records.
 The mandatory two-phase ordering is `REVIEW_TARGET_READY` → durable Work Management
 assignment/bootstrap and reload verification → `REVIEW_REQUESTED`. The target-ready
 receipt binds the pushed exact commit, branch/remote verification, clean/diff checks,
-all exact artifact URLs, and the same primary claim/run. The request is not emitted
+the recomputed target tuple, all exact artifact URLs, and the same primary claim/run.
+The request is not emitted
 until Work Management has also verified item state, primary owner/claim/run, reviewer
 identity, stage, prior bindings, output/prohibitions, authorizer/event, idempotency key,
 and canonical route. The target-authoring agent must not mention or request the reviewer

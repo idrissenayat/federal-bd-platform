@@ -31,9 +31,16 @@ Every role gets this preamble:
 
 Every review assignment is non-owning and exact-revision bound. Its canonical payload
 binds the active work-item stable ID/key, workflow, unchanged primary claim
-lineage/owner/member, stage, exact target commit SHA-256 and artifact URLs, prior
-evidence/decision bindings, reviewer role/member, explicit output/prohibitions, and
-authenticated authorizing actor/event. Work Management computes
+lineage/owner/member, stage, the executable target tuple
+(`target_git_object_format`, `target_git_commit_oid`, `target_commit_object_sha256`,
+`target_artifacts[]`, and `target_artifact_manifest_sha256`) and exact artifact URLs,
+prior evidence/decision bindings, reviewer role/member, explicit output/prohibitions,
+and authenticated authorizing actor/event. `target_git_commit_oid` is the repository's
+lowercase Git OID; `target_commit_object_sha256` hashes
+`UTF8("commit " + DECIMAL(len(commit_bytes)) + "\0") || commit_bytes` from the exact
+`git cat-file commit <oid>` bytes; each of the five sorted artifact entries hashes its
+exact raw bytes; and `target_artifact_manifest_sha256` is
+`SHA-256(UTF8(RFC8785({schema:"steer-review-artifact-manifest/v1", target_git_object_format:target_git_object_format, target_git_commit_oid:target_git_commit_oid, artifacts:target_artifacts})))` with JCS UTF-8/no-BOM. Work Management computes
 `review_assignment_id = SHA-256(UTF8(RFC8785(steer-review-assignment/v1 payload)))`
 using RFC 8785 JCS UTF-8 without BOM and recorded array ordering, then appends the
 signed assignment after verifying the active configured canonical `#steer-team` route.
@@ -54,7 +61,7 @@ primary owner keeps the one execution claim/run; a reviewer cannot change primar
 ownership, scope, gate state, or implementation authority.
 
 Review handoffs use two phases: the target-authoring agent pushes and verifies the exact
-revision, clean worktree, required checks, and exact artifact URLs, records
+revision, clean worktree, required checks, recomputed target tuple, and exact artifact URLs, records
 `REVIEW_TARGET_READY` in Work Management, and stops without mentioning/requesting the
 reviewer. Work Management then persists and reload-verifies the complete assignment or
 approved-setup bootstrap, item state, primary owner/claim/run, reviewer identity, stage,
