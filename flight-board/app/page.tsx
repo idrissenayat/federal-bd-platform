@@ -1,8 +1,16 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  BOARD_PHASES,
+  buildPhaseTimeline,
+  completionTime,
+  laneItems,
+  matchesBoardSearch,
+  olderCompletedCount,
+} from "./board-history";
 
-const phases = ["Sense", "Frame", "Engineer", "Evaluate", "Release", "Observe", "Learn"] as const;
+const phases = BOARD_PHASES;
 const priorities = ["Now", "Next", "Later"] as const;
 const workflows = ["STEER", "Control", "Setup / excluded", "Unassigned"] as const;
 const states = ["queued", "active", "blocked", "complete"] as const;
@@ -33,6 +41,8 @@ type WorkItem = {
   github_url: string | null;
   rework_instructions: string | null;
   blocked_since: string | null;
+  created_at: string;
+  closed_at?: string | null;
   updated_at: string;
   dispatch_authorization: AgentDispatchAuthorization;
 };
@@ -179,14 +189,31 @@ const phaseCues: Record<string, string> = {
   Frame: "Make intent testable",
   Engineer: "Build the evidence",
   Evaluate: "Challenge the result",
-  Release: "Make the human call",
-  Observe: "Watch real behavior",
-  Learn: "Improve the system",
+  Release: "Exit: Gate 3, protected delivery, required checks, smoke verification, and rollback readiness",
+  Observe: "Exit: declared observation window checked against actual behavior and evidence",
+  Learn: "Exit: Learning Review, follow-up ownership, and a completion decision",
+};
+
+const phaseExitCriteria: Record<string, string> = {
+  Sense: "A worthy signal and accountable next step are recorded.",
+  Frame: "Intent is testable in an approved Brief and Exam.",
+  Engineer: "The implementation produces reviewable evidence.",
+  Evaluate: "The result is independently challenged against the signed Exam.",
+  Release: "Human Gate 3 approval, protected delivery, required checks, smoke verification, and rollback readiness.",
+  Observe: "The declared observation window is inspected against actual behavior and evidence.",
+  Learn: "A Learning Review records follow-up ownership and the keep, adjust, revert, or completion decision.",
 };
 
 function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Recently" : new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
+}
+
+function formatRecordedDate(value: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 function initials(name: string | null) {
@@ -340,13 +367,13 @@ export default function Home() {
   }, []);
 
   const filteredItems = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!data || !term) return data?.items ?? [];
-    return data.items.filter((item) => [item.key, item.title, item.description, item.assignee_name, item.phase, item.workflow].some((value) => value?.toLowerCase().includes(term)));
+    if (!data) return [];
+    return data.items.filter((item) => matchesBoardSearch(item, search));
   }, [data, search]);
 
   const selected = data?.items.find((item) => item.id === selectedId) ?? null;
   const itemActivity = data?.activity.filter((event) => event.item_id === selectedId) ?? [];
+  const selectedTimeline = selected ? buildPhaseTimeline(selected, itemActivity, new Date(data?.generated_at ?? Date.now())) : null;
   const selectedReview = data?.reviews.find((review) => review.item_id === selectedId) ?? null;
   const freshSelectedReview = selected && selectedReview?.reviewed_item_updated_at === selected.updated_at ? selectedReview : null;
   const changeRequestDraft = freshSelectedReview ? buildChangeRequestDraft(freshSelectedReview) : "";
@@ -611,7 +638,7 @@ export default function Home() {
               onNavigate={navigateTo}
             />
           )}
-          {view === "board" && <FlightBoard items={filteredItems} onOpen={openItem} onMove={updateItem} saving={saving} />}
+          {view === "board" && <FlightBoard items={filteredItems} activity={data.activity} generatedAt={data.generated_at} onOpen={openItem} onMove={updateItem} saving={saving} />}
           {view === "backlog" && <Backlog items={filteredItems} onOpen={openItem} onCreate={() => setCreateOpen(true)} />}
           {view === "decisions" && <DecisionInbox items={decisionItems} decisions={data.decisions} reviews={data.reviews} reviewingIds={reviewingIds} onOpen={openDecisionWorkspace} />}
           {view === "team" && <Team members={data.members} items={data.items} onOpenBuzz={() => void openBuzzWorkspace()} />}
@@ -628,6 +655,23 @@ export default function Home() {
             <div className="drawer-body">
               <h2>{selected.title}</h2>
               <p className="drawer-description">{selected.description}</p>
+
+              {selectedTimeline && (
+                <section className="detail-section phase-timeline-section" aria-labelledby={`timeline-${selected.id}`}>
+                  <div className="timeline-heading">
+                    <div><span>Preserved movement</span><h3 id={`timeline-${selected.id}`}>Phase timeline</h3></div>
+                    {selected.state === "complete" && <StatusPill value="Completed" kind="complete" />}
+                  </div>
+                  <ol className="phase-timeline" aria-label={`${selected.key} preserved phase timeline`}>
+                    {selectedTimeline.entries.map((entry) => <li className={entry.status === "Observed" ? "timeline-observed" : "timeline-missing"} key={entry.phase}>
+                      <span aria-hidden="true">{entry.status === "Observed" ? "✓" : "·"}</span>
+                      <div><strong>{entry.phase}{entry.isCurrent ? " · current" : ""}</strong><small>{entry.enteredAt && formatRecordedDate(entry.enteredAt) ? <time dateTime={entry.enteredAt}>{formatRecordedDate(entry.enteredAt)}</time> : "Not recorded"}</small></div>
+                    </li>)}
+                  </ol>
+                  {selected.state === "complete" && <p className="completion-record">Completed: {selectedTimeline.completionTime && formatRecordedDate(selectedTimeline.completionTime) ? <time dateTime={selectedTimeline.completionTime}>{formatRecordedDate(selectedTimeline.completionTime)}</time> : <strong>Not recorded</strong>}</p>}
+                  <div className="phase-exit"><span>{selected.phase} exit criteria</span><p>{phaseExitCriteria[selected.phase]}</p></div>
+                </section>
+              )}
 
               {["Needed now", "Resubmitted"].includes(selected.decision_status) && (
                 <div className="decision-callout">
@@ -647,7 +691,11 @@ export default function Home() {
 
               <AgentReviewBrief item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => void requestAgentReview(selected.id)} />
 
-              <section className="detail-section">
+              {selected.state === "complete" ? <section className="completed-record-callout" aria-label="Completed record controls">
+                <span>✓ Completed record</span>
+                <strong>Movement and dispatch controls are locked.</strong>
+                <p>Evidence and preserved activity remain available for audit review.</p>
+              </section> : <section className="detail-section">
                 <h3>Work controls</h3>
                 <div className="field-grid">
                   <label>Phase<select value={selected.phase} disabled={saving} onChange={(event) => void updateItem(selected.id, { phase: event.target.value })}>{phases.map((phase) => <option key={phase}>{phase}</option>)}</select></label>
@@ -658,13 +706,13 @@ export default function Home() {
                   <label className="span-two">Assignee<select value={selected.assignee_id ?? ""} disabled={saving} onChange={(event) => void updateItem(selected.id, { assigneeId: event.target.value || null })}><option value="">Unassigned</option>{data.members.map((member) => <option key={member.id} value={member.id}>{member.display_name} · {member.role}</option>)}</select></label>
                   <label className="span-two">Evidence URL<input key={`evidence-${selected.id}`} defaultValue={selected.evidence_url ?? ""} disabled={saving} placeholder="https://github.com/organization/repository/blob/revision/path.md" onBlur={(event) => { const value = event.target.value.trim(); if (value !== (selected.evidence_url ?? "")) void updateItem(selected.id, { evidenceUrl: value || null }); }} /></label>
                 </div>
-              </section>
+              </section>}
 
               <AgentDispatchControl item={selected} dispatching={dispatchingId === selected.id} copied={copiedHandoffId === selected.id} onDispatch={() => void authorizeBuzzHandoff(selected)} />
 
-              <section className="detail-section next-section">
+              <section className={`detail-section next-section ${selected.state === "complete" ? "next-section-readonly" : ""}`}>
                 <div><h3>Next action</h3><span>Keep this executable and unambiguous.</span></div>
-                <textarea defaultValue={selected.next_action} onBlur={(event) => { if (event.target.value !== selected.next_action) void updateItem(selected.id, { nextAction: event.target.value }); }} />
+                {selected.state === "complete" ? <p>{selected.next_action}</p> : <textarea defaultValue={selected.next_action} onBlur={(event) => { if (event.target.value !== selected.next_action) void updateItem(selected.id, { nextAction: event.target.value }); }} />}
               </section>
 
               <section className="detail-section">
@@ -901,10 +949,46 @@ function Overview({ items, activity, decisions, blocked, active, onOpen, onNavig
   </>;
 }
 
-function FlightBoard({ items, onOpen, onMove, saving }: { items: WorkItem[]; onOpen: (item: WorkItem) => void; onMove: (id: number, changes: Record<string, unknown>) => Promise<void>; saving: boolean }) {
+function FlightBoard({ items, activity, generatedAt, onOpen, onMove, saving }: { items: WorkItem[]; activity: Activity[]; generatedAt: string; onOpen: (item: WorkItem) => void; onMove: (id: number, changes: Record<string, unknown>) => Promise<void>; saving: boolean }) {
+  const [showCompleted, setShowCompleted] = useState(false);
+  const now = useMemo(() => new Date(generatedAt), [generatedAt]);
+  const olderCount = olderCompletedCount(items, activity, now);
+
   return <>
-    <PageHeading eyebrow="Seven-phase workflow" title="Flight Board" copy="Move evidence through STEER without losing the why. Human gates stay visible and cannot be crossed by an agent ruling." actions={<div className="board-legend"><span><i className="dot active" /> Active</span><span><i className="dot blocked" /> Blocked</span><span>◆ Human gate</span></div>} />
-    <div className="kanban-board">{phases.map((phase, phaseIndex) => { const phaseItems = items.filter((item) => item.phase === phase && item.state !== "complete"); return <section className="kanban-column" key={phase}><header><div><span className={`phase-dot phase-${phase.toLowerCase()}`} /><strong>{phase}</strong></div><b>{phaseItems.length}</b></header><p className="column-cue">{phaseCues[phase]}</p><div className="kanban-cards">{phaseItems.map((item) => <article className={`kanban-card state-${item.state}`} key={item.id}><button className="card-open" onClick={() => onOpen(item)}><div className="card-topline"><span>{item.key}</span><StatusPill value={item.priority} /></div><h3>{item.title}</h3><p>{item.next_action}</p><div className="card-tags"><StatusPill value={item.workflow} /><StatusPill value={item.gate} kind="gate" /></div><footer><span><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span>{item.decision_status === "Needed now" && <b title="Human decision required">◆</b>}</footer></button><div className="card-move"><button disabled={saving || phaseIndex === 0} aria-label={`Move ${item.key} backward`} onClick={() => void onMove(item.id, { phase: phases[phaseIndex - 1] })}>←</button><span>{item.state}</span><button disabled={saving || phaseIndex === phases.length - 1} aria-label={`Move ${item.key} forward`} onClick={() => void onMove(item.id, { phase: phases[phaseIndex + 1] })}>→</button></div></article>)}{phaseItems.length === 0 && <div className="column-empty">Clear airspace</div>}</div></section>; })}</div>
+    <PageHeading
+      eyebrow="Seven-phase workflow"
+      title="Flight Board"
+      copy="Move evidence through STEER without losing the why. Recent completed history stays visible without inflating active WIP."
+      actions={<div className="board-actions">
+        <div className="board-legend"><span><i className="dot active" /> Active</span><span><i className="dot blocked" /> Blocked</span><span><i className="dot complete" /> Completed</span><span>◆ Human gate</span></div>
+        <label className="completed-toggle"><input type="checkbox" checked={showCompleted} onChange={(event) => setShowCompleted(event.target.checked)} /><span>Show completed</span><small>{olderCount ? `${olderCount} older match${olderCount === 1 ? "" : "es"}` : "No older matches"}</small></label>
+      </div>}
+    />
+    <div className="kanban-board">{phases.map((phase, phaseIndex) => {
+      const lane = laneItems(items, activity, phase, showCompleted, now);
+      return <section className="kanban-column" key={phase}>
+        <header>
+          <div><span className={`phase-dot phase-${phase.toLowerCase()}`} /><strong>{phase}</strong></div>
+          <div className="lane-counts"><b>{lane.active.length} active</b><span>{lane.completed.length} completed</span></div>
+        </header>
+        <p className="column-cue">{phaseCues[phase]}</p>
+        <div className="kanban-cards">
+          {lane.active.length === 0 && <div className="column-empty">{lane.completed.length ? "No active work · completed history below" : "Clear active airspace"}</div>}
+          {lane.active.map((item) => <article className={`kanban-card state-${item.state}`} key={item.id}>
+            <button className="card-open" onClick={() => onOpen(item)}><div className="card-topline"><span>{item.key}</span><StatusPill value={item.priority} /></div><h3>{item.title}</h3><p>{item.next_action}</p><div className="card-tags"><StatusPill value={item.workflow} /><StatusPill value={item.gate} kind="gate" /></div><footer><span><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span>{item.decision_status === "Needed now" && <b title="Human decision required">◆</b>}</footer></button>
+            <div className="card-move"><button disabled={saving || phaseIndex === 0} aria-label={`Move ${item.key} backward`} onClick={() => void onMove(item.id, { phase: phases[phaseIndex - 1] })}>←</button><span>{item.state}</span><button disabled={saving || phaseIndex === phases.length - 1} aria-label={`Move ${item.key} forward`} onClick={() => void onMove(item.id, { phase: phases[phaseIndex + 1] })}>→</button></div>
+          </article>)}
+          {lane.completed.map((item) => {
+            const completedAt = completionTime(item, activity, now);
+            const completedLabel = formatRecordedDate(completedAt);
+            return <article className="kanban-card state-complete" key={item.id}>
+              <button className="card-open" onClick={() => onOpen(item)} aria-label={`Open completed item ${item.key}`}><div className="card-topline"><span>{item.key}</span><StatusPill value="Completed" kind="complete" /></div><h3>{item.title}</h3><p>{item.next_action}</p><div className="card-tags"><StatusPill value={item.workflow} /><StatusPill value={item.gate} kind="gate" /></div><footer><span><Avatar name={item.assignee_name} kind={item.assignee_kind ?? "human"} /> {item.assignee_name ?? "Unassigned"}</span><b aria-hidden="true">✓</b></footer></button>
+              <div className="card-complete-meta"><strong>Completed</strong><span>{completedAt && completedLabel ? <time dateTime={completedAt}>{completedLabel}</time> : "Completion time not recorded"}</span><em>Open for evidence</em></div>
+            </article>;
+          })}
+        </div>
+      </section>;
+    })}</div>
   </>;
 }
 

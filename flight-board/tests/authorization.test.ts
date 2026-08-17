@@ -41,3 +41,10 @@ test("blocks queued work even when every other field is complete", () => {
   assert.equal(result.authorized, false);
   assert.ok(result.missing.includes("Execution state is active"));
 });
+
+test("blocks completed work even when every other field is eligible", () => {
+  const result = evaluateAgentDispatch({ ...readyItem, state: "complete" });
+  assert.equal(result.authorized, false);
+  assert.ok(result.missing.includes("Execution state is active"));
+  assert.equal(result.handoff_message, null);
+});

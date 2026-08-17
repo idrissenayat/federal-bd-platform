@@ -141,8 +141,10 @@ for agent work. This invariant does not expand the approved Brief into security 
 
 ---
 
-GATE 2: PENDING — approve only after Gate 1 and exact Exam review  
-GATE 2 EVIDENCE: PENDING — authenticated approval tied to this Exam revision
+GATE 2: APPROVED — 2026-08-17T16:29-04:00 by authenticated Interim Tech Lead
+GATE 2 EVIDENCE: GitHub issue #59 approval and Flight Board Critic review #49 bound to
+Exam revision `b6b6bc6af8a96b12258e4b10579a10774b0f2ffa`:
+https://github.com/idrissenayat/federal-bd-platform/issues/59#issuecomment-5319868989
 
 GATE 3: PENDING  
 GATE 3 EVIDENCE: PENDING — authenticated release approval plus required checks tied to
