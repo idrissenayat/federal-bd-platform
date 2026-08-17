@@ -39,7 +39,7 @@ appear decorative rather than operational.
 STR-002 exposed the defect directly: it completed the standard flow and disappeared
 from the Flight Board as soon as its state became `complete`.
 
-## What “done and correct” means
+## What "done and correct" means
 
 1. The board keeps all seven STEER lanes.
 2. By default, each lane includes active work plus completed cards closed within the
@@ -59,7 +59,7 @@ from the Flight Board as soon as its state became `complete`.
      verification, and rollback readiness.
    - **Observe:** the declared observation window and actual behavior/evidence.
    - **Learn:** Learning Review, follow-up ownership, and completion decision.
-8. Search, responsive behavior, keyboard operation, authenticated writes, and durable
+8. Search, responsive behavior, keyboard operation, protected writes, and durable
    audit data continue to work.
 
 ## Design intent
@@ -106,8 +106,8 @@ error behavior continue to use the board’s existing patterns.
   keep active counts primary.
 - **False WIP:** compute active and completed counts separately and test the boundary.
 - **False history:** render only preserved events and label missing transitions.
-- **Accidental redispatch:** hide movement controls and keep server authorization’s
-  existing `state !== complete` requirement covered by regression tests.
+- **Accidental redispatch:** hide movement controls and keep the server dispatch
+  boundary's existing `state !== complete` requirement covered by regression tests.
 - **Accessibility regression:** use native labelled controls, visible focus, non-color
   Completed text, and keyboard-operable cards and filters.
 - **Performance:** filter and derive the small board collection already returned by the
