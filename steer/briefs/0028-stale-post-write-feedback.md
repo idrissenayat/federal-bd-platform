@@ -172,6 +172,14 @@ series has been established.
   replay, wrong-key, second-ack, stale-config, and supersession proof. It is
   authenticated design decision evidence only, not a Gate 1/2/3 ruling, Exam,
   implementation authorization, merge, deployment, or release.
+- The supervisory Tech decision at [issue comment
+  #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932)
+  supersedes only conflicting delivery-order and event-verification wording and
+  freezes the executable queued/send-reservation/delivery sequence, uncertain-send
+  reconciliation, signed `REQUEUED` authority and retry-attempt uniqueness, and the
+  RFC 8785 UTF-8/SHA-256/BIP-340 event and audited signer-registry trust profile. It
+  is authenticated design evidence only, not a Gate 1/2/3 ruling, Exam,
+  implementation authorization, merge, deployment, or release.
 - A fresh production observation at [issue comment
   #5310415277](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310415277)
   records a signed-in human editing `Next action`: the drawer showed the new text,
@@ -261,61 +269,105 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   resolution fails closed with no delivery, acknowledgement, retry-created identity,
   downstream work, or item/gate/phase/assignee/decision mutation; the existing claim
   identity is preserved.
-- **Append-only lifecycle and acknowledgement ledger:** In the same initial
-  transaction, create the unique receipt, exactly one outbox identity, and lifecycle
-  event `v0: QUEUED`. The authoritative operational history is an append-only
-  `dispatch_event` ledger keyed by `dispatch_intent_id`, with the exact canonical
-  `steer-dispatch-event/v1` payload: `dispatch_intent_id`,
-  `dispatch_claim_lineage_id`, `event_version`, `expected_event_version`,
-  `previous_event_sha256`, event type, prior state, resulting state, UTC timestamp,
-  authorized actor/service stable ID and key version, typed payload digest,
-  receipt/routing/evidence revision bindings, and external event/reference IDs when
-  applicable. The agent-readable status
-  envelope is immutable receipt plus ordered event ledger plus current projection; the
-  projection is rebuildable and is not independent evidence. Every transition appends
-  exactly one event and updates the projection in one transaction using compare-and-set
-  on `expected_event_version`. `v0:QUEUED` uses `event_version=0`,
-  `expected_event_version=-1`, and null prior hash. Every next event satisfies
-  `event_version = expected_event_version + 1`; its prior hash is SHA-256 of the exact
-  preceding canonical event bytes. Every event is signed by the authorized appending
-  service key over SHA-256 of its canonical payload; `ACKNOWLEDGED` additionally embeds
-  and verifies the assigned agent signature over the acknowledgement bindings. There
-  is no unsigned event. Enforce unique `(dispatch_intent_id,event_version)`, one
-  outbox identity per intent, and at most one accepted `ACKNOWLEDGED` event per intent.
-  Unknown schema/key version, unauthorized actor, bad signature/hash, skipped/reused
-  version, illegal transition, stale expected version, or binding mismatch is rejected
-  before append/projection/side effect and emits only a typed no-PII security diagnostic
-  through the separately authorized audit path. The privacy retention/deletion policy
-  applies to the receipt, ledger, projection, outbox, signatures/key references,
-  indexes, and replicas together.
+- **Append-only lifecycle and acknowledgement ledger:** In the initial transaction,
+  create the unique receipt, exactly one outbox identity, and signed lifecycle event
+  `v0: QUEUED`. Before any external call, the outbox delivery service acquires one
+  leased attempt with CAS on the current event version and commits a signed,
+  non-state `SEND_ATTEMPT_RESERVED` event containing the intent ID, attempt number,
+  lease ID/expiry, canonical channel/configuration bindings, and relay idempotency key
+  equal to `dispatch_intent_id`. Enforce unique
+  `(dispatch_intent_id,attempt_number)` and one active lease; no external call occurs
+  before this reservation commits. The service performs exactly one external send for
+  that reservation with the same intent/attempt/idempotency bindings. When the
+  canonical relay returns a durable event ID, verify its channel, sender/service
+  identity, intent ID, attempt ID, payload digest, and relay signature, then CAS-append
+  signed state event `DELIVERED` and update the projection in one transaction. If the
+  send times out, is unknown, or the worker crashes before durable delivery can be
+  proven, CAS-append `RECONCILIATION_REQUIRED` and query the canonical relay for the
+  same intent/attempt before retry; append `DELIVERED` only after a verified match, or
+  append `FAILED_RETRYABLE` after the bounded check finds no delivery. Downstream
+  authorization remains blocked until committed `ACKNOWLEDGED`.
+
+  The authoritative operational history is an append-only `dispatch_event` ledger
+  keyed by `dispatch_intent_id`, with the exact `steer-dispatch-event/v1` payload:
+  `dispatch_intent_id`, `dispatch_claim_lineage_id`, `event_version`,
+  `expected_event_version`, `previous_event_sha256`, event type, prior state,
+  resulting state, UTC timestamp, authorized actor/service stable ID and key version,
+  typed payload digest, receipt/routing/evidence revision bindings, and external
+  event/reference IDs when applicable. The agent-readable status envelope is immutable
+  receipt plus ordered event ledger plus current projection; the projection is
+  rebuildable and is not independent evidence. Every transition or non-state event
+  appends exactly one event and uses compare-and-set on `expected_event_version`.
+  `v0:QUEUED` uses `event_version=0`, `expected_event_version=-1`, and null prior hash.
+  Every next event satisfies `event_version = expected_event_version + 1`.
+
+  JCS means RFC 8785 JSON Canonicalization Scheme; canonical JSON is UTF-8 with no
+  BOM. The event payload excludes signature fields and its digest is
+  `SHA-256(UTF8(RFC8785(unsigned steer-dispatch-event/v1 payload)))`. Service and
+  agent signatures use BIP-340 Schnorr over secp256k1 on the 32-byte digest; public
+  keys are 32-byte x-only lowercase hex and signatures are 64-byte lowercase hex.
+  The assigned-agent acknowledgement signs the separately versioned
+  `steer-dispatch-ack/v1` JCS/UTF-8/SHA-256 binding payload with the same profile.
+  The stored envelope contains the unsigned payload, service key ID/version, service
+  signature, and only for `ACKNOWLEDGED` the assigned-agent key ID/version and
+  acknowledgement signature. `previous_event_sha256` hashes the exact UTF-8 RFC 8785
+  canonical predecessor envelope including its signatures. There is no unsigned
+  event. Enforce unique `(dispatch_intent_id,event_version)`, one outbox identity per
+  intent, and at most one accepted `ACKNOWLEDGED` event per intent.
+
+  The authoritative audited signer registry is
+  `workspace.security.dispatch_event_signers`, versioned and Tech-owned. It maps
+  service role and allowed event types to key ID/version, x-only public key, validity
+  interval, and `ACTIVE|RETIRED|REVOKED` status. The receipt binds the registry version
+  used at authorization and each append checks the active registry. A key must be
+  authorized for the exact event type and active at the server-recorded append time;
+  payload timestamps do not establish validity. Retired keys verify historical events
+  appended while active but cannot sign new events; revoked keys cannot sign new events.
+  Events at or after effective revocation are rejected. Earlier events signed by a
+  subsequently revoked key remain preserved but fail closed for downstream
+  authorization pending an explicit audited security ruling. Missing registry/version,
+  unknown key/schema/algorithm, invalid encoding/digest/signature, unauthorized event
+  type, retired/revoked new signer, registry mismatch, or untrusted relay signature is
+  rejected before append/projection/side effect. Registry rotation never rewrites old
+  events and records actor, reason, timestamp, old/new key versions, effective
+  interval, and any incident/hold reference.
 
 - **Event append authority:**
 
   | Event | Sole append authority |
   |---|---|
   | `QUEUED` | Work Management authorization service, inside receipt/outbox transaction |
-  | `DELIVERED` | Outbox delivery service after durable canonical-relay event ID is verified |
+  | non-state `SEND_ATTEMPT_RESERVED` | Outbox delivery service after CAS lease acquisition |
+  | `DELIVERED` | Outbox delivery service after one send and durable canonical-relay event ID is verified |
   | `RECONCILIATION_REQUIRED` | Outbox delivery or reconciliation service after typed uncertain-delivery condition |
   | `FAILED_RETRYABLE`, `FAILED_FINAL` | Reconciliation service under the versioned retry/error policy |
+  | `REQUEUED` (`FAILED_RETRYABLE -> QUEUED`) | Reconciliation service under the versioned retry policy |
   | `ACKNOWLEDGED` | Work Management authorization service after exact assigned-agent signature verification |
   | `SUPERSEDED` | Work Management authorization service inside explicit human-reauthorization transaction |
   | `CANCELLED` | Work Management authorization service from an authenticated human cancellation/reassignment ruling |
   | non-state `ACK_REJECTED`, `DELIVERY_BLOCKED_CONFIG_STALE` | Authorization/reconciliation service respectively; diagnostic only and cannot advance state |
 
-  External delivery/retry occurs only after the corresponding committed
-  event/projection transaction, and accepted acknowledgement remains unique per intent
-  while claim/run remains unique per lineage.
+  External delivery/retry occurs only after committed `QUEUED` or `REQUEUED` plus
+  `SEND_ATTEMPT_RESERVED`; no `DELIVERED` event is pre-created. Accepted
+  acknowledgement remains unique per intent while claim/run remains unique per
+  lineage.
 - **Lifecycle and terminals:** The only allowed transitions are
-  `QUEUED -> DELIVERED -> ACKNOWLEDGED`;
+  `QUEUED -> DELIVERED -> ACKNOWLEDGED` only after a committed
+  `SEND_ATTEMPT_RESERVED` and verified external send;
   `QUEUED|DELIVERED -> RECONCILIATION_REQUIRED` for uncertain delivery;
-  `QUEUED|DELIVERED|RECONCILIATION_REQUIRED -> FAILED_RETRYABLE -> QUEUED` using
-  the same intent ID; and
+  `QUEUED|DELIVERED|RECONCILIATION_REQUIRED -> FAILED_RETRYABLE -> REQUEUED ->
+  QUEUED` using the same intent ID; and
   `QUEUED|DELIVERED|RECONCILIATION_REQUIRED|FAILED_RETRYABLE -> FAILED_FINAL`,
   `SUPERSEDED`, or `CANCELLED`. `ACKNOWLEDGED`, `FAILED_FINAL`, `SUPERSEDED`, and
   `CANCELLED` are terminal. `SUPERSEDED` is permitted only before
   `ACKNOWLEDGED`, with an explicitly linked pre-ack successor; no post-ack successor
   or lineage reopening is permitted. `ACKNOWLEDGED`, `FAILED_FINAL`, and `CANCELLED`
-  close the lineage. A retry creates no second receipt, outbox identity, claim, or run.
+  close the lineage. A retry requires signed `REQUEUED` under the versioned retry
+  policy and a new `SEND_ATTEMPT_RESERVED`; its attempt number is prior maximum plus
+  one and never repeats. Stale leases, overlapping reservations, exhausted retry
+  policy, binding/configuration mismatch, or discovered delivery fail closed without
+  another send; exhausted policy appends `FAILED_FINAL`. A retry creates no second
+  receipt, outbox identity, claim, or run.
 - **Acknowledgement and recovery:** Only the exact enrolled assigned-agent pubkey
   may sign a valid acknowledgement. It must bind the intent ID, authorization
   revision and evidence digest, canonical channel ID, delivered Buzz event ID,
@@ -323,9 +375,11 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   another agent/channel, or a stale revision cannot acknowledge. After a possible send
   with unknown durable delivery state, the state becomes
   `RECONCILIATION_REQUIRED`; the canonical channel/relay is queried for the same
-  intent ID and acknowledgement before retry. If found, existing state is backfilled;
-  if absent after the bounded check, resend uses the same intent ID and both Buzz and
-  the runtime deduplicate it. An acknowledgement submission is keyed by the digest
+  intent ID and attempt before retry. If found and verified, existing state is
+  backfilled with `DELIVERED`; if absent after the bounded check, append
+  `FAILED_RETRYABLE`. Only a signed `REQUEUED` followed by a new
+  `SEND_ATTEMPT_RESERVED` permits a same-intent resend, and both Buzz and the runtime
+  deduplicate it. An acknowledgement submission is keyed by the digest
   of its required signed bindings. An exact replay returns the existing accepted event
   idempotently. A different, stale, forged, wrong-key, wrong-channel, wrong-evidence,
   wrong-run, or second acknowledgement is rejected and recorded as a typed
@@ -393,7 +447,9 @@ substituted:
   acknowledgement submissions with the same expected version; CAS permits one
   accepted transition/event and one run.
 - `REC-03`: preserve the uncertain-send reconciliation case and verify discovered
-  delivery/ack event hashes and signatures before backfill.
+  delivery/ack event hashes and signatures before backfill; assert the relay query is
+  for the same intent and attempt, and that no retry occurs before requeue and a new
+  send-attempt reservation.
 - `REC-04`: after receipt commit under route/config v1 but before send, activate v2 or
   a mismatched binding; append only `DELIVERY_BLOCKED_CONFIG_STALE`, send nothing, then
   require explicit human reauthorization. When immutable lineage inputs, role, and
@@ -402,6 +458,11 @@ substituted:
 - `FAIL-03` and `FAIL-04`: retain missing/noncanonical route failures and additionally
   assert no lifecycle event, projection change, external send, claim, or run is
   produced by the rejected authority.
+- `DISP-01`: assert the initial signed `QUEUED`/outbox commit, one committed
+  `SEND_ATTEMPT_RESERVED`, exactly one relay send, relay verification, and only then
+  the signed `DELIVERED` event before the valid acknowledgement.
+- `REC-02`: include the active-lease and unique-attempt constraints so concurrent
+  submissions cannot reserve or send the same intent/attempt twice.
 
 For each case, record seed revision/config, action identity, expected authoritative
 state and local UI/focus/announcement result, actual receipt/outbox/event/claim/run
@@ -542,6 +603,7 @@ inconsistent with the incident evidence and the human routing decision.
 | Self-contained receipt schema, durable audit resolution, pseudonymous personal-data classification, privacy lifecycle/default-closed controls | Authenticated decision evidence | [Comment #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334) | Contract recorded; implementation not authorized |
 | Immutable receipt, append-only lifecycle/ack ledger, CAS and replay rules, claim lineage/routing supersession, exact 20-case manifest, external revision provenance | Authenticated decision evidence | [Comment #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748) | Contract recorded; implementation not authorized |
 | Canonical root lineage formula/lifetime, signed event schema and authority matrix, exact replay/wrong-key/second-ack/stale-config/supersession mappings | Authenticated decision evidence | [Comment #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687) | Contract recorded; implementation not authorized |
+| Executable queued/send-reservation/delivery order, uncertain-send reconciliation, signed requeue authority, retry-attempt uniqueness, and v1 cryptographic/key-trust profile | Authenticated decision evidence | [Comment #5316789932](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316789932) | Contract recorded; implementation not authorized |
 | Local replay, concurrency, outbox delivery, partial-dispatch recovery | Not run | This Scout handoff did not execute live repair or integration paths | No pass/fail claim |
 | Local reproduction of stale `Next action`/hidden `409` | Not run | Production observations above; no local live run claimed | No pass/fail claim |
 | Independent repeated-signal frequency | Not run | `steer/signals/README.md`; `steer/operating-system/METRICS.md` | Unmeasured |
