@@ -164,6 +164,14 @@ series has been established.
   parent and identifies the review target as the immutable commit named in the external
   Buzz Critic request/result. Those external events bind the exact commit and artifact
   URLs; no self-referential follow-up commit is created merely to write its own hash.
+- The supervisory Tech decision at [issue comment
+  #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687)
+  supersedes only conflicting lineage and event wording in the prior decisions and
+  freezes the canonical root-authorization lineage formula and closure rules, exact
+  signed event schema and append authority matrix, and named manifest mappings for
+  replay, wrong-key, second-ack, stale-config, and supersession proof. It is
+  authenticated design decision evidence only, not a Gate 1/2/3 ruling, Exam,
+  implementation authorization, merge, deployment, or release.
 - A fresh production observation at [issue comment
   #5310415277](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310415277)
   records a signed-in human editing `Next action`: the drawer showed the new text,
@@ -200,23 +208,34 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   assignee, scope, channel, configuration, workspace/relay, or membership-authority
   change creates a new revision and new intent under the lineage contract below; it
   supersedes without deleting the prior receipt.
-- **Claim lineage and routing correction:** A separate deterministic
-  `dispatch_claim_lineage_id` is bound to workspace/POD, work-item stable ID/key,
-  STEER workflow, assigned role, enrolled member ID, and the root human-authorization
-  lineage. Every authorized routing/evidence/scope revision in one supersession chain
-  references that lineage, with at most one agent claim/run per lineage. Same-intent
-  retry or transport repair is legal only when the active audited routing-configuration
-  version, canonical channel ID, workspace/relay binding, and assigned-agent
-  membership exactly equal the immutable receipt values; it reuses the intent, receipt,
-  outbox identity, lineage, claim, and run. A changed channel, routing version,
-  workspace/relay binding, membership authority, evidence, assignee, or authorized
-  scope is a material revision: explicit human reauthorization creates a new intent
-  referencing the same lineage and `supersedes_intent_id`, and atomically supersedes
-  the old intent without creating or restarting the runtime claim/run. Delivery and
-  retry compare every active binding to the receipt and fail closed before any side
-  effect on mismatch; no automatic rewrite occurs. If prior delivery is uncertain,
-  reconcile the old intent/channel first; a valid acknowledgement ends the lineage,
-  and a late acknowledgement for a superseded intent cannot authorize downstream work.
+- **Canonical claim lineage and routing correction:**
+  `dispatch_claim_lineage_id = SHA-256(JCS({schema:"steer-dispatch-lineage/v1", originating_workspace_pod_id, work_item_stable_id, work_item_key, workflow:"STEER", root_human_authorization_audit_event_id}))`.
+  Those five inputs are immutable for the lineage. Assigned role, enrolled
+  member/agent, evidence, scope, route/channel/configuration, and individual
+  authorization revision are intent inputs and receipt fields, not lineage inputs.
+  Before a valid acknowledgement, changed evidence, scope, routing channel/config
+  version, relay binding, or membership proof may create an explicitly human-authorized
+  superseding intent on the same lineage only when originating workspace/POD, work-item
+  identity, workflow, root authorization objective, assigned role, and enrolled
+  member/agent are unchanged. The old intent becomes `SUPERSEDED` atomically with its
+  successor; no runtime claim/run is restarted, and if no claim exists the successor is
+  the only intent allowed to create it.
+
+  A role change, assignee/enrolled-member change, originating workspace/POD migration,
+  work-item identity change, workflow change, or new root authorization objective
+  creates a new lineage. The prior pre-ack intent/lineage becomes `CANCELLED` or
+  `SUPERSEDED` with a cross-lineage reference in the same authorization transaction;
+  new human authorization is mandatory, and a new claim/run is allowed only on the new
+  lineage. A valid `ACKNOWLEDGED` event terminalizes both the intent and its lineage
+  for that authorization objective; no same-lineage successor is allowed afterward.
+  Any post-ack material change requires new root authorization, new lineage, and—only
+  if authorized—a new run. `ACKNOWLEDGED`, `FAILED_FINAL`, and `CANCELLED` close the
+  lineage; `SUPERSEDED` keeps it open only for its explicitly linked pre-ack successor.
+  Recovery after a closed lineage requires new root authorization/new lineage. Exactly
+  one accepted claim/run is permitted per lineage. Same-intent retry or transport
+  repair is legal only when the active audited routing-configuration version, canonical
+  channel ID, workspace/relay binding, and assigned-agent membership exactly equal the
+  immutable receipt values; otherwise fail closed before any side effect.
 - **Atomic receipt/outbox creation:** Before external delivery, one database
   transaction validates the current authorization revision and routing configuration,
   reserves the unique intent ID, writes the immutable authorization receipt, and
@@ -245,18 +264,47 @@ bounded controls into executable acceptance tests after human Gate 1 review.
 - **Append-only lifecycle and acknowledgement ledger:** In the same initial
   transaction, create the unique receipt, exactly one outbox identity, and lifecycle
   event `v0: QUEUED`. The authoritative operational history is an append-only
-  `dispatch_event` ledger keyed by `dispatch_intent_id`, with monotonic
-  `event_version`, event type/state, timestamp, actor/service identity, prior-event
-  hash, payload digest, and signature where applicable. The agent-readable status
+  `dispatch_event` ledger keyed by `dispatch_intent_id`, with the exact canonical
+  `steer-dispatch-event/v1` payload: `dispatch_intent_id`,
+  `dispatch_claim_lineage_id`, `event_version`, `expected_event_version`,
+  `previous_event_sha256`, event type, prior state, resulting state, UTC timestamp,
+  authorized actor/service stable ID and key version, typed payload digest,
+  receipt/routing/evidence revision bindings, and external event/reference IDs when
+  applicable. The agent-readable status
   envelope is immutable receipt plus ordered event ledger plus current projection; the
   projection is rebuildable and is not independent evidence. Every transition appends
   exactly one event and updates the projection in one transaction using compare-and-set
-  on `expected_event_version`. Enforce unique
-  `(dispatch_intent_id,event_version)`, one outbox identity per intent, and at most one
-  accepted `ACKNOWLEDGED` event per intent. A stale expected version fails without a
-  second event or side effect. The privacy retention/deletion policy applies to the
-  receipt, ledger, projection, outbox, signatures/key references, indexes, and
-  replicas together.
+  on `expected_event_version`. `v0:QUEUED` uses `event_version=0`,
+  `expected_event_version=-1`, and null prior hash. Every next event satisfies
+  `event_version = expected_event_version + 1`; its prior hash is SHA-256 of the exact
+  preceding canonical event bytes. Every event is signed by the authorized appending
+  service key over SHA-256 of its canonical payload; `ACKNOWLEDGED` additionally embeds
+  and verifies the assigned agent signature over the acknowledgement bindings. There
+  is no unsigned event. Enforce unique `(dispatch_intent_id,event_version)`, one
+  outbox identity per intent, and at most one accepted `ACKNOWLEDGED` event per intent.
+  Unknown schema/key version, unauthorized actor, bad signature/hash, skipped/reused
+  version, illegal transition, stale expected version, or binding mismatch is rejected
+  before append/projection/side effect and emits only a typed no-PII security diagnostic
+  through the separately authorized audit path. The privacy retention/deletion policy
+  applies to the receipt, ledger, projection, outbox, signatures/key references,
+  indexes, and replicas together.
+
+- **Event append authority:**
+
+  | Event | Sole append authority |
+  |---|---|
+  | `QUEUED` | Work Management authorization service, inside receipt/outbox transaction |
+  | `DELIVERED` | Outbox delivery service after durable canonical-relay event ID is verified |
+  | `RECONCILIATION_REQUIRED` | Outbox delivery or reconciliation service after typed uncertain-delivery condition |
+  | `FAILED_RETRYABLE`, `FAILED_FINAL` | Reconciliation service under the versioned retry/error policy |
+  | `ACKNOWLEDGED` | Work Management authorization service after exact assigned-agent signature verification |
+  | `SUPERSEDED` | Work Management authorization service inside explicit human-reauthorization transaction |
+  | `CANCELLED` | Work Management authorization service from an authenticated human cancellation/reassignment ruling |
+  | non-state `ACK_REJECTED`, `DELIVERY_BLOCKED_CONFIG_STALE` | Authorization/reconciliation service respectively; diagnostic only and cannot advance state |
+
+  External delivery/retry occurs only after the corresponding committed
+  event/projection transaction, and accepted acknowledgement remains unique per intent
+  while claim/run remains unique per lineage.
 - **Lifecycle and terminals:** The only allowed transitions are
   `QUEUED -> DELIVERED -> ACKNOWLEDGED`;
   `QUEUED|DELIVERED -> RECONCILIATION_REQUIRED` for uncertain delivery;
@@ -264,8 +312,10 @@ bounded controls into executable acceptance tests after human Gate 1 review.
   the same intent ID; and
   `QUEUED|DELIVERED|RECONCILIATION_REQUIRED|FAILED_RETRYABLE -> FAILED_FINAL`,
   `SUPERSEDED`, or `CANCELLED`. `ACKNOWLEDGED`, `FAILED_FINAL`, `SUPERSEDED`, and
-  `CANCELLED` are terminal. A retry creates no second receipt, outbox identity,
-  claim, or run.
+  `CANCELLED` are terminal. `SUPERSEDED` is permitted only before
+  `ACKNOWLEDGED`, with an explicitly linked pre-ack successor; no post-ack successor
+  or lineage reopening is permitted. `ACKNOWLEDGED`, `FAILED_FINAL`, and `CANCELLED`
+  close the lineage. A retry creates no second receipt, outbox identity, claim, or run.
 - **Acknowledgement and recovery:** Only the exact enrolled assigned-agent pubkey
   may sign a valid acknowledgement. It must bind the intent ID, authorization
   revision and evidence digest, canonical channel ID, delivered Buzz event ID,
@@ -327,6 +377,31 @@ unclassifiable results fail.
 | REC-02 | two concurrent dispatch submissions with the same authorization/expected version |
 | REC-03 | external send may have succeeded but response is lost; reconciliation finds existing delivery/ack |
 | REC-04 | receipt/outbox committed but no durable Buzz delivery; reconcile absent, then same-intent retry |
+
+The fixed cases also carry these named security assertions; no case is added or
+substituted:
+
+- `DISP-02`: reload/re-read the same receipt and replay the exact accepted
+  acknowledgement; return the original acknowledgement event with no new event/run.
+- `DISP-03`: attempt a wrong-key acknowledgement before the valid assigned-agent
+  acknowledgement; reject it, then accept exactly one valid acknowledgement.
+- `DISP-04`: after one valid acknowledgement, attempt a different second
+  acknowledgement; reject it and keep the lineage terminal with one run.
+- `REC-01`: replay the exact authorization and exact signed acknowledgement; both
+  resolve idempotently to the original receipt/events.
+- `REC-02`: submit two concurrent dispatch requests and two concurrent valid
+  acknowledgement submissions with the same expected version; CAS permits one
+  accepted transition/event and one run.
+- `REC-03`: preserve the uncertain-send reconciliation case and verify discovered
+  delivery/ack event hashes and signatures before backfill.
+- `REC-04`: after receipt commit under route/config v1 but before send, activate v2 or
+  a mismatched binding; append only `DELIVERY_BLOCKED_CONFIG_STALE`, send nothing, then
+  require explicit human reauthorization. When immutable lineage inputs, role, and
+  assignee are unchanged, create one successor intent on the same lineage, atomically
+  supersede the old intent, and permit only the existing/sole claim-run path.
+- `FAIL-03` and `FAIL-04`: retain missing/noncanonical route failures and additionally
+  assert no lifecycle event, projection change, external send, claim, or run is
+  produced by the rejected authority.
 
 For each case, record seed revision/config, action identity, expected authoritative
 state and local UI/focus/announcement result, actual receipt/outbox/event/claim/run
@@ -466,6 +541,7 @@ inconsistent with the incident evidence and the human routing decision.
 | Deterministic dispatch identity, atomic receipt/outbox, signed acknowledgement, routing precedence, 20-case measurement | Authenticated decision evidence | [Comment #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779) | Contract recorded; execution not run |
 | Self-contained receipt schema, durable audit resolution, pseudonymous personal-data classification, privacy lifecycle/default-closed controls | Authenticated decision evidence | [Comment #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334) | Contract recorded; implementation not authorized |
 | Immutable receipt, append-only lifecycle/ack ledger, CAS and replay rules, claim lineage/routing supersession, exact 20-case manifest, external revision provenance | Authenticated decision evidence | [Comment #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748) | Contract recorded; implementation not authorized |
+| Canonical root lineage formula/lifetime, signed event schema and authority matrix, exact replay/wrong-key/second-ack/stale-config/supersession mappings | Authenticated decision evidence | [Comment #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687) | Contract recorded; implementation not authorized |
 | Local replay, concurrency, outbox delivery, partial-dispatch recovery | Not run | This Scout handoff did not execute live repair or integration paths | No pass/fail claim |
 | Local reproduction of stale `Next action`/hidden `409` | Not run | Production observations above; no local live run claimed | No pass/fail claim |
 | Independent repeated-signal frequency | Not run | `steer/signals/README.md`; `steer/operating-system/METRICS.md` | Unmeasured |

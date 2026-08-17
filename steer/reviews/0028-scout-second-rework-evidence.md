@@ -1,12 +1,12 @@
-# Scout fourth-rework evidence — STR-028 Intent Brief 0028
+# Scout fifth-rework evidence — STR-028 Intent Brief 0028
 
 **Work item:** [STR-028 / issue #56](https://github.com/idrissenayat/federal-bd-platform/issues/56)
 **Branch:** `scout/str-028-intent-brief`
-**Parent revision:** `1ab5adae90ea55deb12900dd476468c087e2cc05`
-**Review role:** Scout evidence for the fourth authorized Intent Brief rework; this
+**Parent revision:** `4bc9787661775f570d5ae2509fd865940db05946`
+**Review role:** Scout evidence for the fifth authorized Intent Brief rework; this
 is not a Critic review, human gate ruling, Exam, implementation evidence, or release
 decision
-**Controlling decisions:** [Tech design decision #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779), [supervisory Tech decision #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334), and [supervisory Tech decision #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748)
+**Controlling decisions:** [Tech design decision #5310467779](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310467779), [supervisory Tech decision #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334), [supervisory Tech decision #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748), and [supervisory Tech decision #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687)
 
 ## Authorized change
 
@@ -34,42 +34,54 @@ a gate, merge, deploy, or release.
   acknowledgement policy/required-binding fields, not mutable acknowledgement state
   or a future signature. The same initial transaction creates the unique receipt, one
   outbox identity, and `v0: QUEUED`; an append-only `dispatch_event` ledger keyed by
-  intent records monotonic event version, type/state, timestamp, actor/service identity,
-  prior-event hash, payload digest, and applicable signature. Agent-readable status is
+  intent uses the exact `steer-dispatch-event/v1` fields: intent/lineage IDs,
+  event/expected versions, previous-event hash, event/prior/resulting states, UTC
+  timestamp, authorized actor/service stable ID and key version, typed payload digest,
+  receipt/routing/evidence bindings, and external references. Agent-readable status is
   receipt plus ordered ledger plus rebuildable current projection.
 - Every transition appends one event and updates the projection in one transaction with
-  compare-and-set on `expected_event_version`. Enforce unique
-  `(dispatch_intent_id,event_version)`, one outbox identity per intent, and at most one
-  accepted `ACKNOWLEDGED` event. Stale versions fail without a second event or side
-  effect. Acknowledgement submissions use the digest of their signed bindings: exact
-  replay is idempotent; different/stale/forged/wrong-key/wrong-channel/wrong-evidence/
-  wrong-run/second acknowledgements become typed security/reconciliation events without
-  PII and cannot advance state or start work. External effects occur only after the
-  event/projection transaction commits; uncertain delivery appends reconciliation
-  required and reconciles before same-intent retry. Privacy retention/deletion covers
-  receipt, ledger, projection, outbox, signatures/key references, indexes, and replicas
-  together.
+  compare-and-set on `expected_event_version`. `v0:QUEUED` is version 0 with expected
+  version -1 and null prior hash; every next event is exactly
+  `expected_event_version + 1`, and its prior hash is SHA-256 of exact preceding
+  canonical bytes. Every event is signed by its authorized appending service key over
+  the SHA-256 canonical payload; `ACKNOWLEDGED` also verifies the assigned-agent
+  signature. Unknown schema/key, unauthorized actor, bad signature/hash, skipped/reused
+  version, illegal transition, stale expected version, or binding mismatch is rejected
+  before side effect and emits only a typed no-PII diagnostic. Exact signed-binding
+  replay is idempotent; wrong-key/second acknowledgements cannot advance state. Privacy
+  retention/deletion covers receipt, ledger, projection, outbox, signatures/key
+  references, indexes, and replicas together.
+- The authority matrix is fixed: Work Management authorization service appends
+  `QUEUED`, `ACKNOWLEDGED` after exact agent-signature verification, `SUPERSEDED` in
+  explicit human reauthorization, and `CANCELLED` from authenticated human
+  cancellation/reassignment; the outbox delivery service appends `DELIVERED` after
+  canonical-relay verification; outbox/reconciliation appends
+  `RECONCILIATION_REQUIRED`; reconciliation appends `FAILED_RETRYABLE`/`FAILED_FINAL`;
+  authorization/reconciliation append diagnostic-only `ACK_REJECTED`/
+  `DELIVERY_BLOCKED_CONFIG_STALE`. No unsigned event is allowed.
 - The allowed lifecycle is frozen as `QUEUED -> DELIVERED -> ACKNOWLEDGED`, with
   `RECONCILIATION_REQUIRED` for uncertain delivery, retry through
   `FAILED_RETRYABLE -> QUEUED` using the same intent, and terminal
-  `FAILED_FINAL`, `SUPERSEDED`, or `CANCELLED` states. Retries create no second
-  receipt, outbox identity, claim, or run.
+  `FAILED_FINAL`, `SUPERSEDED`, or `CANCELLED` states. `SUPERSEDED` is pre-ack only
+  with an explicitly linked successor; `ACKNOWLEDGED`, `FAILED_FINAL`, and `CANCELLED`
+  close the lineage. Retries create no second receipt, outbox identity, claim, or run.
 - Only the exact enrolled assigned-agent pubkey may sign an acknowledgement binding
   intent ID, authorization revision/evidence digest, canonical channel ID, delivered
   Buzz event ID, agent claim/run ID, and acknowledgement timestamp. Uncertain
   delivery reconciles against the canonical channel/relay before same-intent retry;
   downstream work remains blocked without one valid acknowledgement.
-- A separate deterministic `dispatch_claim_lineage_id` binds workspace/POD, work-item
-  stable ID/key, STEER workflow, assigned role, enrolled member ID, and root
-  human-authorization lineage. At most one agent claim/run exists per lineage. Same-
-  intent transport repair is legal only when active audited routing version, canonical
-  channel ID, workspace/relay binding, and membership exactly equal the receipt; it
-  reuses intent, receipt, outbox, lineage, claim, and run. A changed channel/config
-  version/workspace-relay/membership authority/evidence/assignee/scope requires an
-  explicitly authorized new intent referencing the lineage and `supersedes_intent_id`;
-  the old intent is atomically superseded without a new runtime claim/run. Delivery and
-  retry mismatch fails closed; uncertain old delivery is reconciled first, and a late
-  acknowledgement for a superseded intent cannot authorize downstream work.
+- `dispatch_claim_lineage_id` is the exact root formula
+  `SHA-256(JCS({schema:"steer-dispatch-lineage/v1", originating_workspace_pod_id, work_item_stable_id, work_item_key, workflow:"STEER", root_human_authorization_audit_event_id}))`.
+  Those five inputs are immutable; role, enrolled member/agent, evidence, scope, route,
+  configuration, and individual authorization revision are intent/receipt inputs.
+  Before acknowledgement, changed evidence/scope/route/config/relay/membership proof
+  may use an explicitly authorized same-lineage successor only when originating
+  workspace/POD, work item, workflow, root objective, role, and enrolled member/agent
+  are unchanged. A role/assignee/workspace/work-item/workflow/root-objective change
+  creates a new lineage with cross-lineage terminalization and mandatory new human
+  authorization. `ACKNOWLEDGED`, `FAILED_FINAL`, and `CANCELLED` close a lineage;
+  post-ack recovery requires new root authorization/new lineage/new run. Exactly one
+  accepted claim/run is allowed per lineage.
 - Stable member/agent-key/fingerprint, acknowledgement-signer, and human-actor
   references are pseudonymous personal data. The privacy contract is purpose-limited,
   minimizes stored identity and cryptographic material, prohibits PII in logs,
@@ -91,11 +103,19 @@ a gate, merge, deploy, or release.
   production observations remain incident evidence outside the denominator. Each case
   records seed revision/config, action identity, expected authoritative and UI result,
   actual receipt/outbox/event/claim/run IDs, HTTP/error result, and pass/fail; no
-  substitution or seed change is allowed after execution starts.
+  substitution or seed change is allowed after execution starts. The fixed security
+  mappings are: `DISP-02` exact acknowledgement replay/no new event or run;
+  `DISP-03` wrong-key rejection before one valid acknowledgement; `DISP-04` second
+  acknowledgement rejection after valid ack; `REC-01` exact authorization and ack
+  replay; `REC-02` concurrent dispatch and acknowledgement CAS; `REC-03` hash/signature
+  verification before uncertain-send backfill; `REC-04` v2 stale-config diagnostic,
+  no send, explicit reauthorization, and same-lineage successor only when immutable
+  inputs/role/assignee match; and `FAIL-03`/`FAIL-04` no event/projection/send/claim/run
+  on rejected authority.
 
 ## Revision provenance
 
-The authorized parent is `1ab5adae90ea55deb12900dd476468c087e2cc05`. A Git-tracked file
+The authorized parent is `4bc9787661775f570d5ae2509fd865940db05946`. A Git-tracked file
 cannot contain the hash of the commit that contains itself, so this evidence records
 the parent and binds the review target to the immutable commit named in the external
 Buzz Critic request/result and its exact artifact URLs. No self-referential follow-up
@@ -104,7 +124,7 @@ commit is created merely to write its own hash.
 ## Evidence classification
 
 The evidence matrix now classifies the authenticated owner/Tech issue comments,
-including the receipt-schema/privacy ruling at [comment #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334) and the immutable-event/routing/manifest ruling at [comment #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748),
+including the receipt-schema/privacy ruling at [comment #5316380334](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316380334), the immutable-event/routing/manifest ruling at [comment #5316551748](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316551748), and the lineage/event-authority/security-case ruling at [comment #5316704687](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316704687),
 as **authenticated decision evidence**, separate from production observations, source
 inspection, local/non-production execution, and not-run proof obligations.
 
