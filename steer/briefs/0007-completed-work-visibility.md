@@ -1,9 +1,9 @@
 # Intent Brief — 0007 Completed-work visibility
 
-**Work item:** STR-029 / GitHub issue #59  
-**Status:** draft  
-**Workflow:** Setup / excluded  
-**Tags:** #a11y #design-system #reliability  
+**Work item:** STR-029 / GitHub issue #59
+**Status:** draft
+**Workflow:** Setup / excluded
+**Tags:** #a11y #design-system #reliability
 **Date opened:** 2026-08-17
 
 ## Expected outcome and measurement
@@ -122,6 +122,5 @@ audit history are unchanged, so rollback requires no data repair.
 
 ---
 
-GATE 1: PENDING  
+GATE 1: PENDING
 GATE 1 EVIDENCE: PENDING — authenticated Product Lead approval tied to this revision
-
