@@ -13,6 +13,13 @@ test("renders four separate work-economics records", () => {
   assert.match(page, /<WorkEconomicsPanel/);
 });
 
+test("completed work exposes a read-only economics audit instead of editable records", () => {
+  assert.match(page, /function CompletedEconomicsAudit/);
+  assert.match(page, /Completed work cannot be edited from this drawer/);
+  assert.match(page, /selected\.state === "complete" \? <CompletedEconomicsAudit/);
+  assert.match(page, /: <WorkEconomicsPanel/);
+});
+
 test("initial delivery forecast is prefilled by the Forecast Agent for one-click human acceptance", () => {
   assert.match(page, /Forecast Agent completed the first draft/);
   assert.match(page, /Review & accept AI forecast/);

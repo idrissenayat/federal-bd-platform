@@ -390,6 +390,57 @@ body { background: radial-gradient(circle at 8% 8%, rgba(246, 197, 210, .34), tr
   .dispatch-control > footer button { width: 100%; }
 }
 
+/* STR-029: quiet, auditable completed history without inflating active WIP. */
+.board-actions { align-items: flex-end; display: flex; flex-direction: column; gap: 10px; }
+.dot.complete { background: #7f8c7d; }
+.completed-toggle { align-items: center; background: #f7f4ec; border: 1px solid var(--line); border-radius: 9px; cursor: pointer; display: grid; gap: 2px 8px; grid-template-columns: auto 1fr; padding: 8px 10px; }
+.completed-toggle input { accent-color: var(--aqua-dark); grid-row: 1 / 3; height: 15px; margin: 0; width: 15px; }
+.completed-toggle span { color: var(--ink); font-size: 10px; font-weight: 800; }
+.completed-toggle small { color: var(--muted); font-size: 8px; }
+.completed-toggle:focus-within { outline: 3px solid rgba(20,127,119,.2); outline-offset: 2px; }
+.lane-counts { align-items: flex-end !important; flex-direction: column; gap: 1px !important; }
+.kanban-column > header .lane-counts b { color: var(--ink); font-family: var(--font-geist-mono); font-size: 9px; }
+.kanban-column > header .lane-counts span { color: var(--muted); font-size: 7px; white-space: nowrap; }
+.kanban-card.state-complete { background: #f5f4ef; border-color: #d9d8d0; border-top: 3px solid #889487; box-shadow: none; }
+.kanban-card.state-complete .card-open { opacity: .82; }
+.kanban-card.state-complete .card-open:hover, .kanban-card.state-complete .card-open:focus-visible { opacity: 1; }
+.kanban-card.state-complete h3 { color: #42504e; }
+.token-complete { background: #e1e7df; color: #4f6255; }
+.card-complete-meta { align-items: flex-start; background: #ecefe9; border-top: 1px solid #d5dcd2; display: flex; flex-direction: column; gap: 2px; padding: 8px 11px; }
+.card-complete-meta strong { color: #425b4a; font-size: 8px; letter-spacing: .05em; text-transform: uppercase; }
+.card-complete-meta span { color: #65716a; font-size: 8px; }
+.card-complete-meta em { color: var(--aqua-dark); font-size: 7px; font-style: normal; font-weight: 750; }
+.phase-timeline-section { background: #fbfaf5; border: 1px solid var(--line); border-radius: 12px; margin: 20px 0; padding: 16px; }
+.timeline-heading { align-items: center; display: flex; justify-content: space-between; }
+.timeline-heading > div > span { color: var(--aqua-dark); display: block; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.timeline-heading h3 { font-size: 15px; margin: 4px 0 0; }
+.phase-timeline { display: grid; gap: 7px; list-style: none; margin: 15px 0 0; padding: 0; }
+.phase-timeline li { align-items: center; display: grid; gap: 9px; grid-template-columns: 22px 1fr; min-height: 33px; }
+.phase-timeline li > span { align-items: center; background: #edf4e4; border-radius: 50%; color: #5f762f; display: flex; font-size: 9px; font-weight: 900; height: 22px; justify-content: center; width: 22px; }
+.phase-timeline li > div { display: flex; flex-direction: column; gap: 2px; }
+.phase-timeline strong { font-size: 10px; }
+.phase-timeline small { color: var(--muted); font-size: 9px; }
+.phase-timeline .timeline-missing > span { background: #efede7; color: #9a9890; }
+.phase-timeline .timeline-missing strong, .phase-timeline .timeline-missing small { color: #8c8b86; }
+.completion-record { background: #eef3e9; border-radius: 7px; color: #53645a; font-size: 9px; margin: 14px 0 0; padding: 9px 10px; }
+.completion-record strong { font-size: inherit; }
+.phase-exit { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
+.phase-exit span { color: #9a4d69; font-size: 8px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase; }
+.phase-exit p { color: var(--muted); font-size: 9px; line-height: 1.5; margin: 4px 0 0; }
+.completed-record-callout { background: #eef3e9; border: 1px solid #ccd8c6; border-radius: 11px; margin: 20px 0; padding: 14px 15px; }
+.completed-record-callout > span { color: #4f6b55; display: block; font-size: 9px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase; }
+.completed-record-callout strong { display: block; font-size: 13px; margin-top: 5px; }
+.completed-record-callout p { color: #657269; font-size: 9px; line-height: 1.5; margin: 5px 0 0; }
+.next-section-readonly > div > span { display: none; }
+.next-section-readonly > p { background: #f5f3ed; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font-size: 10px; line-height: 1.55; margin: 9px 0 0; padding: 11px; }
+
+@media (max-width: 760px) {
+  .page-heading { align-items: flex-start; flex-direction: column; }
+  .board-actions { align-items: flex-start; width: 100%; }
+  .board-legend { flex-wrap: wrap; }
+  .completed-toggle { width: 100%; }
+}
+
 /* Readability uplift: keep the dense operations layout while making every
    action, explanation, and workflow signal comfortably legible. */
 body { font-size: 14px; }

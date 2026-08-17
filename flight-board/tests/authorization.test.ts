@@ -148,3 +148,10 @@ test("rework is an authorized execution state after the human starts it", () => 
   const result = evaluateAgentDispatch({ ...readyItem, decision_status: "Rework" });
   assert.equal(result.authorized, true);
 });
+
+test("blocks completed work even when every other field is eligible", () => {
+  const result = evaluateAgentDispatch({ ...readyItem, state: "complete" });
+  assert.equal(result.authorized, false);
+  assert.ok(result.missing.includes("Execution state is active"));
+  assert.equal(result.handoff_message, null);
+});
