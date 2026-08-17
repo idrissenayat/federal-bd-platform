@@ -21,6 +21,14 @@ all of the following in STEER Work Management:
    non-owning `PRE_GATE_1_BRIEF` review, but blocks implementation, gate approval, and
    downstream execution.
 
+For a review handoff, the target-authoring agent first pushes and verifies the exact
+revision, clean worktree, required checks, and exact artifact URLs, then records
+`REVIEW_TARGET_READY` in Work Management and stops. Work Management persists and
+reload-verifies the complete non-owning assignment or approved-setup bootstrap and only
+then emits the authenticated canonical `REVIEW_REQUESTED` event with the exact item
+key/link. A reviewer mention/request before that durable assignment is invalid and
+cannot be retroactively authorized; a changed target requires a new target-ready record.
+
 The authorized human uses the work item's **Authorize & copy Buzz handoff** control and
 posts the generated message in the configured canonical `#steer-team`
 (`10ac2fb4-f7fc-4dbc-bb73-8c545f31a470`) channel. A project channel may carry
@@ -87,6 +95,17 @@ the configured canonical route or a frozen decision explicitly allows it. Review
 assignment/ack/result/bootstrap records follow the same pseudonymous-data inventory,
 no-PII logging, 90-day terminal retention, hold, and auditable deletion controls as
 other identity-linked records.
+
+The mandatory two-phase ordering is `REVIEW_TARGET_READY` → durable Work Management
+assignment/bootstrap and reload verification → `REVIEW_REQUESTED`. The target-ready
+receipt binds the pushed exact commit, branch/remote verification, clean/diff checks,
+all exact artifact URLs, and the same primary claim/run. The request is not emitted
+until Work Management has also verified item state, primary owner/claim/run, reviewer
+identity, stage, prior bindings, output/prohibitions, authorizer/event, idempotency key,
+and canonical route. The target-authoring agent must not mention or request the reviewer
+while stopped at `REVIEW_TARGET_READY`; a reviewer request that predates assignment is
+invalid. Exact retries after assignment are idempotent and do not create a new claim or
+run.
 
 Critic inputs are stage-specific:
 

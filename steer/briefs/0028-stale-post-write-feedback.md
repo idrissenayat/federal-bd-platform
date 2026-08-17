@@ -60,6 +60,15 @@
   replicas, and backups. Missing inventory, retention, deletion, or logging controls
   blocks review assignment/acknowledgement/result creation while preserving the
   primary claim identity.
+- **Mandatory target-ready/request ordering:** The target-authoring Scout must first
+  push and verify the exact revision, clean worktree, required checks, and exact artifact
+  URLs, then stop at a Work Management `REVIEW_TARGET_READY` receipt. Work Management
+  must persist and reload-verify the complete non-owning assignment/approved-setup
+  bootstrap, item state, primary owner/claim/run, reviewer identity, stage, target and
+  prior bindings, output/prohibitions, authorizer/event, idempotency key, and canonical
+  route before emitting `REVIEW_REQUESTED`. No reviewer mention or request is valid
+  before that durable assignment and verification; a changed target requires a new
+  target-ready receipt before a new request, preserving the same primary claim/run.
 - **Stage-specific Critic inputs:**
 
   | Review stage | Required Critic inputs | Boundary |
@@ -102,6 +111,23 @@
   transitions by an agent, zero lost user input after failure, zero duplicate activity
   records, no accessibility blocker, and no secret or unauthorized leakage of
   pseudonymous personal data.
+- **Reliability budget and named observability:** For each supported surface, measure
+  `steer_work_item_save_feedback_latency_ms` from authoritative response receipt to
+  visible local success/error state and `steer_agent_handoff_feedback_latency_ms` from
+  authoritative handoff response receipt to visible local queued/delivered/blocked
+  state; each histogram has p95 <=250 ms over the fixed non-production matrix. Emit
+  `steer_work_item_save_outcome_total{outcome=success|validation|conflict|transport}`,
+  `steer_post_write_reconciliation_total{result=fresh|stale_suppressed|authoritative_reload|error}`,
+  `steer_agent_handoff_outcome_total{outcome=queued|delivered|blocked|duplicate_suppressed|error}`,
+  `steer_stale_ui_recurrence_total{severity=critical|noncritical}`, and
+  `steer_duplicate_dispatch_total`. All 20 cases emit the expected outcome and one
+  terminal UI feedback observation; targets are zero hidden validation/conflict errors,
+  stale-response overwrites, duplicate dispatches, and unresolved critical recurrences.
+  Observe the fixed matrix before Gate 1 and, after any eventual release, the first 100
+  eligible operations or 30 days, whichever is later. Alert immediately on critical
+  stale-view recurrence or duplicate dispatch, and on a 15-minute p95 breach with at
+  least 20 eligible observations. Labels are typed and bounded; they contain no
+  work-item, actor/member, message, or other high-cardinality/PII values.
 
 ## Who this is for
 
@@ -150,11 +176,12 @@ series has been established.
   mirror is not a gate ruling. The current Buzz authorization event is
   `354e0ed8117ff6009837b7c27e294471b448a8535a2a7132794b9172a55c4538` in that
   channel, and repeats the single-run/no-duplicate constraint.
-- The Buzz handoff for this item is event
+- Historical wrong-channel defect evidence is event
   `ee8c2edb3347377c6a343ecc2a6c09e3c01fae6a95509d2a218db112d4ed04d3` in channel
-  `c44eff40-c669-4c18-b6e8-46604af44668`; it identifies STR-028 as In Progress,
-  assigns the Scout to reproduce the stale state and hidden `409`, and requests
-  Gate 1 after evidence publication.
+  `c44eff40-c669-4c18-b6e8-46604af44668`. It is explicitly non-authoritative: it did
+  not authorize execution or review and is superseded for routing/authorization by
+  configured canonical `#steer-team` and exact Work Management request/assignment
+  receipts.
 - Local implementation evidence is preserved in the assigned repository revision
   `d9dcb53398da166aea972eb678e3cfff058a10c6`: the mutation paths are in
   `flight-board/app/page.tsx:517-561` and `728-740`; the page-level error surface is
@@ -241,6 +268,15 @@ series has been established.
   RFC 8785 UTF-8/SHA-256/BIP-340 event and audited signer-registry trust profile. It
   is authenticated design evidence only, not a Gate 1/2/3 ruling, Exam,
   implementation authorization, merge, deployment, or release.
+- The supervisory Tech decision at [issue comment
+  #5317183348](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317183348)
+  freezes the pre-receipt FAIL-03 route-key rejection, the post-receipt/pre-send
+  FAIL-04 binding invalidation, and the same-seed REC-04 recovery path; preserves the
+  signed non-state/no-state-transition distinction; labels the historical wrong-channel
+  event non-authoritative; fixes the reliability budgets/signals and observation window;
+  and requires durable `REVIEW_TARGET_READY` assignment verification before
+  `REVIEW_REQUESTED`. It is technical/operating-contract evidence only, not a Gate 1
+  ruling, Exam, implementation authorization, merge, deployment, or release.
 - A fresh production observation at [issue comment
   #5310415277](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5310415277)
   records a signed-in human editing `Next action`: the drawer showed the new text,
@@ -519,8 +555,8 @@ unclassifiable results fail.
 | DISP-04 | authorized r1, matching route v1, assistive-tech/narrow UI → exactly one dispatch and local status |
 | FAIL-01 | stale mutation revision r0 against server r1 → HTTP 409 |
 | FAIL-02 | invalid Work Economics field set at r1 → validation failure |
-| FAIL-03 | authorized r1 with missing canonical routing key → fail closed |
-| FAIL-04 | authorized r1 with noncanonical/mismatched channel, relay, or membership → fail closed |
+| FAIL-03 | pre-receipt authorized r1 with missing/unknown canonical routing key → typed diagnostic only; no append, reservation, terminalization, fence, state, claim, or run |
+| FAIL-04 | post-receipt/pre-send authorized r1 with exactly one reservation fence, then noncanonical/mismatched channel, relay, membership, or publisher binding → terminalize/fence/diagnostic; no send, state transition, claim, run, failure, or requeue |
 | ORDER-01 | old bootstrap response arrives after successful save response |
 | ORDER-02 | two explicit saves; older response arrives after newer confirmed response |
 | ORDER-03 | stale activity/receipt projection arrives after newer lifecycle event |
@@ -528,7 +564,7 @@ unclassifiable results fail.
 | REC-01 | exact authorization replay after receipt creation |
 | REC-02 | two concurrent dispatch submissions with the same authorization/expected version |
 | REC-03 | external send may have succeeded but response is lost; reconciliation finds existing delivery/ack |
-| REC-04 | receipt/outbox committed but no durable Buzz delivery; reconcile absent, then same-intent retry |
+| REC-04 | same post-receipt/pre-send reservation seed as FAIL-04, no durable Buzz delivery and absent reconciliation, then stale v2/mismatched binding → terminalize/fence/diagnostic; explicit reauthorization and same-lineage successor only |
 
 The fixed cases also carry these named security assertions; no case is added or
 substituted:
@@ -554,24 +590,30 @@ substituted:
   relay query is for the same intent and attempt, that a stale reconciliation after
   `DELIVERED` is an idempotent no-op, and that no retry occurs before requeue and a
   new send-attempt reservation.
-- `REC-04`: after receipt commit under route/config v1 but before send, activate v2 or
-  a mismatched binding; first append signed non-state
-  `TERMINALIZATION_REQUESTED` and invalidate the reservation fence in the serialized
-  terminalization domain, then append the typed diagnostic
-  `DELIVERY_BLOCKED_CONFIG_STALE`. These are allowed non-state/audit records; “no
-  lifecycle event” means no state-transition event and no current-state projection
-  change. Send nothing and require explicit human reauthorization. When immutable
-  lineage inputs, role, and assignee are unchanged, create one successor intent on the
-  same lineage, atomically supersede the old intent, and permit only the existing/sole
-  claim-run path.
-- `FAIL-03` and `FAIL-04`: retain missing/noncanonical route failures and additionally
-  assert signed non-state `TERMINALIZATION_REQUESTED` and reservation-fence
-  invalidation precede the typed diagnostic for the stale or mismatched route. Those
-  audit records are permitted; “no lifecycle event” means no state-transition event or
-  current-state projection change. Assert no external send, claim, or run is produced
-  by the rejected authority, and no failure/requeue occurs while a lease or unresolved
-  reconciliation remains. Include rejection of an untrusted/retired/revoked relay
-  publisher or registry mismatch before `DELIVERED`.
+- `REC-04`: use the same post-receipt/pre-send seed as FAIL-04: receipt/outbox plus
+  exactly one `SEND_ATTEMPT_RESERVED` under route/config v1, no durable delivery, and
+  reconciliation proves absence. Before `SEND_ATTEMPT_STARTED`, v2 or a mismatched
+  binding becomes authoritative; append signed non-state
+  `TERMINALIZATION_REQUESTED`, invalidate that existing reservation fence, then append
+  `DELIVERY_BLOCKED_CONFIG_STALE`. These are allowed audit/control records; “no
+  lifecycle event” means no state-transition event/current-state projection change.
+  Send nothing, require explicit human reauthorization, and allow one same-lineage
+  successor only when frozen lineage/role/assignee inputs remain unchanged. Reject a
+  retry without explicit reauthorization.
+- `FAIL-03`: seed the pre-receipt authorization phase with no receipt, outbox row,
+  reservation, attempt, or delivery; reject a missing/unknown canonical route key before
+  append or side effect and emit only the typed no-PII diagnostic. No fence exists, so
+  no `TERMINALIZATION_REQUESTED` or fence invalidation is expected.
+- `FAIL-04`: seed the post-receipt/pre-send phase with receipt/outbox and exactly one
+  `SEND_ATTEMPT_RESERVED` under canonical route/config v1; before
+  `SEND_ATTEMPT_STARTED`, invalidate a noncanonical/mismatched channel, relay,
+  membership, or publisher binding. Append signed non-state
+  `TERMINALIZATION_REQUESTED`, invalidate the existing fence, then append the typed
+  diagnostic; do not start, send, advance a state/current projection, create a claim or
+  run, fail, or requeue. The signed audit/control record is allowed; “no lifecycle
+  event” means no state-transition event/current-state projection change. Include
+  rejection of an untrusted/retired/revoked relay publisher or registry mismatch before
+  `DELIVERED`.
 - `DISP-01`: assert the initial signed `QUEUED`/outbox commit, one committed
   `SEND_ATTEMPT_RESERVED`, exactly one relay send, relay verification, and only then
   the signed `DELIVERED` event before the valid acknowledgement.
@@ -725,6 +767,7 @@ inconsistent with the incident evidence and the human routing decision.
 | Reservation fencing and serialized pre-call start, terminalization ordering, monotonic delivery/reconciliation, NIP-01 publisher trust, and fixed REC-02/REC-03/FAIL-03/FAIL-04 mappings | Authenticated decision evidence | [Comment #5316881629](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316881629) | Contract recorded; implementation not authorized |
 | Exact-revision non-owning review assignments/receipts/idempotency, single primary claim separation, and stage-specific Critic inputs including the `PRE_GATE_1_BRIEF` no-Exam prerequisite | Authenticated decision evidence | [Comment #5316966355](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5316966355) | Contract recorded; review only; Gate 1 pending |
 | Complete append-only review assignment/acknowledgement/result receipts, RFC 8785 JCS-SHA-256 idempotency, authenticated append authority and bootstrap, canonical `#steer-team` route with no project fallback, privacy coverage, and aligned REC-04/FAIL-03/FAIL-04 terminalization assertions | Authenticated decision evidence | [Comment #5317059006](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317059006) | Contract recorded; review only; Gate 1 pending |
+| Frozen FAIL-03/FAIL-04/REC-04 phases and seeds, historical wrong-channel non-authority, p95 reliability budgets/named bounded telemetry/observation window, and `REVIEW_TARGET_READY` before Work Management-verified `REVIEW_REQUESTED` | Authenticated decision evidence | [Comment #5317183348](https://github.com/idrissenayat/federal-bd-platform/issues/56#issuecomment-5317183348) | Contract recorded; target-ready handoff only; Gate 1 pending |
 | Local replay, concurrency, outbox delivery, partial-dispatch recovery | Not run | This Scout handoff did not execute live repair or integration paths | No pass/fail claim |
 | Local reproduction of stale `Next action`/hidden `409` | Not run | Production observations above; no local live run claimed | No pass/fail claim |
 | Independent repeated-signal frequency | Not run | `steer/signals/README.md`; `steer/operating-system/METRICS.md` | Unmeasured |

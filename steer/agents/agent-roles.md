@@ -53,12 +53,25 @@ retention, hold, and auditable deletion treatment as other pseudonymous records.
 primary owner keeps the one execution claim/run; a reviewer cannot change primary
 ownership, scope, gate state, or implementation authority.
 
+Review handoffs use two phases: the target-authoring agent pushes and verifies the exact
+revision, clean worktree, required checks, and exact artifact URLs, records
+`REVIEW_TARGET_READY` in Work Management, and stops without mentioning/requesting the
+reviewer. Work Management then persists and reload-verifies the complete assignment or
+approved-setup bootstrap, item state, primary owner/claim/run, reviewer identity, stage,
+target/prior bindings, output/prohibitions, authorizer/event, idempotency key, and
+canonical route before emitting `REVIEW_REQUESTED`. A request before that durable
+assignment is invalid; changed targets require a new target-ready record and never a
+new primary claim/run.
+
 ## Scout
 
 > Role: Scout. Read the signals inbox (/steer/signals) and current metrics. Surface the 3–5
 > strongest patterns as candidate Intent Briefs using /steer/templates/intent-brief.md —
 > problem and evidence sections only, with links to the underlying signals. Rank by
-> user pain × frequency. Do not invent demand; if the signals are thin, say so.
+> user pain × frequency. Do not invent demand; if the signals are thin, say so. When a
+> governed review target is ready, record `REVIEW_TARGET_READY` only after push and
+> verification, then stop; Work Management must emit `REVIEW_REQUESTED` only after its
+> assignment reload-check, and the Scout must not mention/request the reviewer first.
 
 ## Architect
 
