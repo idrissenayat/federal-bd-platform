@@ -1,6 +1,6 @@
 # STR-028 dispatch and review data inventory
 
-Status: implementation evidence; Privacy/Security ruling still required before Gate 3  
+Status: approved implementation inventory; provider-recovery ruling recorded 2026-08-18
 Controller/workspace: STEER Flight Team POD  
 System owner: Platform / Ops Lead  
 Policy owner: Privacy / Legal with Security Owner review  
@@ -29,7 +29,13 @@ URLs, or arbitrary error text.
 | `dispatch_retention_holds`: intent/actor ID, bounded reason code, action, expiry | Pseudonymous legal/security control | Prevent deletion during an approved investigation or legal obligation | Tech, Platform / Ops, or Security authority in same POD | Append-only HOLD/RELEASE events. Holds require an explicit expiry no more than 365 days away; deleted with the eligible intent after release/expiry. |
 | `dispatch_retention_runs`: cutoff, eligible count, deleted count, timestamp | Non-identifying aggregate | Prove the deletion job ran without retaining deleted identity | Platform / Ops | Operational evidence; no intent or actor labels. |
 | `notifications` row keyed by `dispatch-<intent>` | Pseudonymous assignment plus message body | Human-visible copy of the authorized handoff | Same-POD UI | Deleted by the same governed intent cascade. |
-| `agent_reviews` and their current activity/notification records | Pseudonymous reviewer/requester identity and evidence metadata | Existing synchronous review result and UI history | Same-POD UI | Not yet connected to the new intent-level cascade. The required signed assignment/acknowledgement/result lifecycle remains a release blocker and is consolidated with the hosted-agent integration dependency. |
+| `review_assignments`: assignment/item/POD/member IDs, target manifest digest, item revision, authorization IDs, signed current-state projection, timestamps | Pseudonymous identity, authorization, and provenance data | Immutable assignment binding between one primary-owner claim lineage and one independent reviewer | Same-POD human UI; exact enrolled reviewer; Platform / Ops | Eligible 90 days after terminal review state. Governed review-retention deletion removes the assignment and every assignment-linked identity record unless a live hold exists. |
+| `review_events`: assignment ID, event version/hash chain, bounded payload, service/reviewer public-key references and signatures, actor ID, timestamp | Pseudonymous identity, security, and provenance data | Append-only authority for assignment, acknowledgement, and one terminal review result | Exact enrolled reviewer signed write/read; same-POD bounded UI; Platform / Ops and Security investigation | Same review-assignment lifecycle. Updates and ordinary deletes are blocked. |
+| `review_retention_holds`: assignment/actor IDs, bounded action/reason, expiry, timestamp | Pseudonymous legal/security control | Prevent deletion during an approved investigation or legal obligation | Named same-POD Tech, Platform / Ops, or Security authority | Append-only HOLD/RELEASE events with explicit expiry of at most 365 days; removed with the eligible assignment after release/expiry. |
+| `review_retention_authorizations`: assignment ID, one-time nonce, short expiry | Pseudonymous transient deletion capability | Allows only the governed review-retention job to cross database delete triggers | Review retention service only | Created immediately before the governed batch and deleted in the same batch; never exposed to UI or logs. |
+| `review_retention_runs`: cutoff, eligible/deleted counts, timestamp | Non-identifying aggregate | Prove the review deletion job ran without retaining deleted identity | Platform / Ops | Operational evidence only; contains no assignment, item, actor, or reviewer labels. |
+| `agent_reviews.review_assignment_id`, `activity.review_assignment_id`, and `notifications.review_assignment_id` | Pseudonymous relationship and bounded human-visible result data | Link the rendered review and its activity/notification projections to the signed assignment authority | Same-POD UI | Deleted by the same governed review-assignment cascade. Legacy rows without a signed assignment remain governed by the pre-existing work-item lifecycle and are not eligible through this cascade. |
+| `dispatch_privacy_policies`: POD, immutable policy version/status, inventory and ruling URL/digests, 90/30-day values, named authority role/actor, authorization event, idempotency key, receipt digest, reason, timestamp | Pseudonymous change authority and policy provenance | Bind dispatch and review authorization to the exact approved inventory and provider-recovery ruling | Named same-POD Privacy, Security, or combined Product/Tech authority; read by dispatch/review authorization | Append-only policy versions. Updates/deletes are blocked. Contains no work-item, message, email, or free-form user content. |
 
 Private keys and bearer credentials are environment secrets only. They are not stored
 in D1, returned by an API, written to activity, emitted in errors, or placed in this
@@ -47,8 +53,20 @@ inventory. Public x-only keys and signatures are necessary provenance, not secre
 - `POST /api/dispatches/<intent>/retention-holds` requires a named same-POD Tech,
   Platform / Ops, or Security human. Free-text reasons are rejected; only bounded
   reason codes and explicit expiries are stored.
+- `POST /api/review-retention/run` applies the same 90-day terminal-age rule to signed
+  review assignments and atomically deletes assignment, signed events, linked review,
+  activity, notification, hold, and transient authorization rows when no live hold exists.
+- `POST /api/review-assignments/<assignment>/retention-holds` uses the same named-role,
+  bounded-reason, explicit-expiry control as dispatch holds.
+- `POST /api/privacy-policy/activate` requires a named authenticated human in the same
+  POD with Privacy, Security, or combined Product Lead and Tech Lead authority. It uses
+  expected-version compare-and-swap plus an idempotency key, resolves both immutable
+  GitHub artifacts and exact SHA-256 digests, and appends—never updates—one `ACTIVE`
+  90/30 policy version with a deterministic authorization event and receipt digest.
 - Synthetic integration coverage proves hold, release, deletion, trigger enforcement,
-  and removal of the identity-linked receipt/event/audit rows.
+  removal of the identity-linked receipt/event/audit and review-lifecycle rows, and
+  fail-closed policy activation for unauthorized, stale, replay-mismatched, missing,
+  or contradictory requests.
 
 ## Replica and backup boundary
 
@@ -58,17 +76,21 @@ current documentation states that paid D1 databases can be restored up to 30 day
 the past (7 days on the free plan), and it exposes whole-database restore rather than
 per-row purge: <https://developers.cloudflare.com/d1/reference/time-travel/>.
 
-Therefore the current governed row deletion at terminal day 90 removes live D1 rows but
-cannot prove that the same bytes are immediately absent from provider Time Travel.
-They may remain recoverable until the provider recovery window expires. This is an
-explicit Gate 3 blocker under the signed Exam. Resolve it by either:
+The Product Lead and interim Tech Lead approved the provider-recovery boundary on
+2026-08-18: eligible live identity-linked records are deleted after 90 days; Cloudflare-
+managed Time Travel history may remain only for the configured recovery window, up to
+30 days; recovery access is restricted; and restored data remains subject to the same
+deletion and hold controls. The exact ruling is retained in the immutable STR-028 Gate 3
+evidence artifact and is bound by URL and SHA-256 in every `ACTIVE` policy version.
 
-1. adding per-intent cryptographic erasure with keys outside D1 and rehearsing deletion
-   across live data and provider recovery, or
-2. obtaining an authenticated Privacy/Security ruling that defines and accepts the
-   provider recovery window as part of the deletion SLA and updates the signed policy.
-
-No implementation or review may describe live-row deletion alone as backup deletion.
+Live-row deletion is not described as immediate provider-history deletion. Platform / Ops
+restricts D1 restore capability to authorized recovery operators. After any Time Travel
+restore, the operator must keep dispatch and review writes closed, run both governed
+retention jobs against the restored database, verify aggregate eligible/deleted counts and
+active holds, then reopen writes only after the latest immutable `ACTIVE` 90/30 policy and
+its exact inventory/ruling digests validate. A restore does not reset retention age, release
+a hold, create a new legal basis, or make an otherwise expired identity record eligible for
+continued live use.
 
 ## No-PII logging contract
 
