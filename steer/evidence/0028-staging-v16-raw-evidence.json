@@ -1,0 +1,228 @@
+{
+  "schema": "steer-str028-staging-evidence/v1",
+  "recorded_at": "2026-08-18T17:50:28.266Z",
+  "environment": {
+    "project_id": "appgprj_6a83763dc1148191b439c0795aa86a1c",
+    "access": "owner-only",
+    "url": "https://steer-flight-board-staging.idriss-enayat.chatgpt.site",
+    "environment_revision": 2
+  },
+  "implementation_target": {
+    "git_commit": "1730e9e98f355ccea80183170b9a6a104f94e3fe",
+    "commit_object_sha256": "e666576f5fe7b1075fc9d139f55695e9cd7b48c31033a81b5a085a4834da5182",
+    "manifest_sha256": "b8a8f2eaa4aa0981af5cdd6cab33c2718371a0ba536c74896faf11617f953a43",
+    "staging_packaging_commit": "a35bdbf9fc5c51c775c21e8aa1acf6e0293c8de0",
+    "saved_version_number": 16,
+    "saved_version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_39ed433d232881919c61a34102cd4fbb",
+    "archive_sha256": "175009d53a640e06c5d6380a8095aea0ee3219303a1af9bd332da241c6356409",
+    "archive_file_count": 109
+  },
+  "initial_deployment": {
+    "deployment_id": "appgdep_6a8499f77ebc81919e3a5d7e237fa4e5",
+    "started_at": "2026-08-18T17:44:23.619344+00:00",
+    "succeeded_at": "2026-08-18T17:44:36.254053+00:00",
+    "status": "succeeded"
+  },
+  "target_verification_negative_probe": {
+    "supplied_commit_object_sha256_without_git_header": "3668ae305be9d3d37f7a15335f38e8aea7f7ac84f4c7eb599d4f25ebd6893613",
+    "recomputed_manifest_sha256": "88f8c5a826a456164f15a841074c167e833db72daf40e630b5c45fb51e7b7881",
+    "expected_result": "REVIEW_TARGET_VERIFICATION_MISMATCH",
+    "assignment_count_before": 2,
+    "event_count_before": 6,
+    "assignment_count_after": 2,
+    "event_count_after": 6,
+    "side_effect_count": 0
+  },
+  "verified_review_request": {
+    "authoritative_assignment_id": "f4deccd3d8e607e9320b76ce09f328548a31cdd32add51b97d76787fa10eeaa0",
+    "target_ready_event_sha256": "1a39d994aec0df8f95244acb19f9e4cab00a06e5460fa70f8b0b3637e9a6cebf",
+    "assigned_event_sha256": "6ca5fe08c77cc9956747ec11ea6f41de4f7c8b0b2c6dc56fb9cbd90280042fb5",
+    "requested_event_sha256": "6af98afcda7ad2ce611f8f1c9eef3ada40315d80a1691b2f1c19e6cc837f2cd0",
+    "superseded_assignments": [
+      {
+        "assignment_id": "f4a525b9e51616fc1d1bcc5eace1643e91c312493fe196b3302970268c7ef292",
+        "event_sha256": "666328de1f840208cbe3fac259ace90e79facc42f675ed34b655532d7f369149"
+      },
+      {
+        "assignment_id": "ccd80c7e0bdfc17f51233c06fc8c2557e005f395c2d69adc43934fcd921b64fb",
+        "event_sha256": "f03df78e02c3725b4fa1ad7cfeaadc04040f3c5ba6e342870b39dcf7b6d88735"
+      }
+    ]
+  },
+  "rollback": {
+    "from_version": 16,
+    "to_version": 15,
+    "deployment_id": "appgdep_6a849ae3dba88191ad30f12f9872ad25",
+    "started_at": "2026-08-18T17:48:20.119206+00:00",
+    "succeeded_at": "2026-08-18T17:48:27.520761+00:00",
+    "rto_ms": 7402,
+    "rpo": 0
+  },
+  "restore": {
+    "from_version": 15,
+    "to_version": 16,
+    "deployment_id": "appgdep_6a849b25e8e08191be3d85c7846129c6",
+    "started_at": "2026-08-18T17:49:26.122061+00:00",
+    "succeeded_at": "2026-08-18T17:49:34.711354+00:00",
+    "rto_ms": 8589,
+    "rpo": 0
+  },
+  "before_rollback_snapshot": {
+    "review_assignments": [
+      {
+        "id": "ccd80c7e0bdfc17f51233c06fc8c2557e005f395c2d69adc43934fcd921b64fb",
+        "state": "SUPERSEDED",
+        "manifest": "99a5f291a1ad24cbd41047115f2391afadec952a42dd03c03328ed733c93ff48",
+        "event": "f03df78e02c3725b4fa1ad7cfeaadc04040f3c5ba6e342870b39dcf7b6d88735"
+      },
+      {
+        "id": "f4a525b9e51616fc1d1bcc5eace1643e91c312493fe196b3302970268c7ef292",
+        "state": "SUPERSEDED",
+        "manifest": "99a5f291a1ad24cbd41047115f2391afadec952a42dd03c03328ed733c93ff48",
+        "event": "666328de1f840208cbe3fac259ace90e79facc42f675ed34b655532d7f369149"
+      },
+      {
+        "id": "f4deccd3d8e607e9320b76ce09f328548a31cdd32add51b97d76787fa10eeaa0",
+        "state": "REQUESTED",
+        "manifest": "b8a8f2eaa4aa0981af5cdd6cab33c2718371a0ba536c74896faf11617f953a43",
+        "event": "6af98afcda7ad2ce611f8f1c9eef3ada40315d80a1691b2f1c19e6cc837f2cd0"
+      }
+    ],
+    "privacy": [
+      {
+        "version": 1,
+        "status": "BLOCKED_BACKUP_RULING",
+        "receipt": null
+      },
+      {
+        "version": 2,
+        "status": "ACTIVE",
+        "receipt": "307b62308b9ae96222ec9767afbaa8ed7c02f3642235913fecbbac9b11f0c1c6"
+      }
+    ],
+    "dispatch_receipts": [
+      {
+        "intent": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf"
+      }
+    ],
+    "outbox": [
+      {
+        "intent": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf",
+        "state": "QUEUED",
+        "event": "fb92da62fc228a59c82aaada545a3fbf089072e9e91852a02a3f459a6be147e9"
+      }
+    ]
+  },
+  "during_rollback_snapshot": {
+    "review_assignments": [
+      {
+        "id": "ccd80c7e0bdfc17f51233c06fc8c2557e005f395c2d69adc43934fcd921b64fb",
+        "state": "SUPERSEDED",
+        "manifest": "99a5f291a1ad24cbd41047115f2391afadec952a42dd03c03328ed733c93ff48",
+        "event": "f03df78e02c3725b4fa1ad7cfeaadc04040f3c5ba6e342870b39dcf7b6d88735"
+      },
+      {
+        "id": "f4a525b9e51616fc1d1bcc5eace1643e91c312493fe196b3302970268c7ef292",
+        "state": "SUPERSEDED",
+        "manifest": "99a5f291a1ad24cbd41047115f2391afadec952a42dd03c03328ed733c93ff48",
+        "event": "666328de1f840208cbe3fac259ace90e79facc42f675ed34b655532d7f369149"
+      },
+      {
+        "id": "f4deccd3d8e607e9320b76ce09f328548a31cdd32add51b97d76787fa10eeaa0",
+        "state": "REQUESTED",
+        "manifest": "b8a8f2eaa4aa0981af5cdd6cab33c2718371a0ba536c74896faf11617f953a43",
+        "event": "6af98afcda7ad2ce611f8f1c9eef3ada40315d80a1691b2f1c19e6cc837f2cd0"
+      }
+    ],
+    "privacy": [
+      {
+        "version": 1,
+        "status": "BLOCKED_BACKUP_RULING",
+        "receipt": null
+      },
+      {
+        "version": 2,
+        "status": "ACTIVE",
+        "receipt": "307b62308b9ae96222ec9767afbaa8ed7c02f3642235913fecbbac9b11f0c1c6"
+      }
+    ],
+    "dispatch_receipts": [
+      {
+        "intent": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf"
+      }
+    ],
+    "outbox": [
+      {
+        "intent": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf",
+        "state": "QUEUED",
+        "event": "fb92da62fc228a59c82aaada545a3fbf089072e9e91852a02a3f459a6be147e9"
+      }
+    ]
+  },
+  "after_restore_snapshot": {
+    "review_assignments": [
+      {
+        "id": "ccd80c7e0bdfc17f51233c06fc8c2557e005f395c2d69adc43934fcd921b64fb",
+        "state": "SUPERSEDED",
+        "manifest": "99a5f291a1ad24cbd41047115f2391afadec952a42dd03c03328ed733c93ff48",
+        "event": "f03df78e02c3725b4fa1ad7cfeaadc04040f3c5ba6e342870b39dcf7b6d88735"
+      },
+      {
+        "id": "f4a525b9e51616fc1d1bcc5eace1643e91c312493fe196b3302970268c7ef292",
+        "state": "SUPERSEDED",
+        "manifest": "99a5f291a1ad24cbd41047115f2391afadec952a42dd03c03328ed733c93ff48",
+        "event": "666328de1f840208cbe3fac259ace90e79facc42f675ed34b655532d7f369149"
+      },
+      {
+        "id": "f4deccd3d8e607e9320b76ce09f328548a31cdd32add51b97d76787fa10eeaa0",
+        "state": "REQUESTED",
+        "manifest": "b8a8f2eaa4aa0981af5cdd6cab33c2718371a0ba536c74896faf11617f953a43",
+        "event": "6af98afcda7ad2ce611f8f1c9eef3ada40315d80a1691b2f1c19e6cc837f2cd0"
+      }
+    ],
+    "privacy": [
+      {
+        "version": 1,
+        "status": "BLOCKED_BACKUP_RULING",
+        "receipt": null
+      },
+      {
+        "version": 2,
+        "status": "ACTIVE",
+        "receipt": "307b62308b9ae96222ec9767afbaa8ed7c02f3642235913fecbbac9b11f0c1c6"
+      }
+    ],
+    "dispatch_receipts": [
+      {
+        "intent": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf"
+      }
+    ],
+    "outbox": [
+      {
+        "intent": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf",
+        "state": "QUEUED",
+        "event": "fb92da62fc228a59c82aaada545a3fbf089072e9e91852a02a3f459a6be147e9"
+      }
+    ]
+  },
+  "snapshot_identity_preserved": true,
+  "pending_human_evidence": {
+    "at_17_keyboard_voiceover_states": [
+      "success",
+      "validation",
+      "conflict",
+      "transport",
+      "blocked",
+      "pending",
+      "empty",
+      "reload"
+    ],
+    "at_19_post_rollback_drawer_smoke": [
+      "pending",
+      "success",
+      "failure"
+    ]
+  },
+  "production_mutated": false
+}
+

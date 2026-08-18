@@ -1,0 +1,277 @@
+{
+  "stage": "GATE_3_BUILD",
+  "target": {
+    "target_git_object_format": "sha1",
+    "target_git_commit_oid": "b928cba7e9d486c9f30f212c452814185f8025da",
+    "target_commit_object_sha256": "340d47a1f7825eec0c5e9b727d98f9afdf8b809d867f7f1d80273cb59b7f73a0",
+    "target_artifacts": [
+      {
+        "path": "flight-board/app/globals.css",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/app/globals.css",
+        "size_bytes": 103002,
+        "sha256": "9d077f3b85f5a44f5812b131282720014d5208b4ae77eaac02085eed867a1c89"
+      },
+      {
+        "path": "flight-board/app/page.tsx",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/app/page.tsx",
+        "size_bytes": 160829,
+        "sha256": "945c31a25722cecdbe093b3e7494e35edf51b2cfb786c4bdf4595983f634206b"
+      },
+      {
+        "path": "flight-board/drizzle/0011_cool_omega_flight.sql",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/drizzle/0011_cool_omega_flight.sql",
+        "size_bytes": 4281,
+        "sha256": "a9aad3767f7aacd88052db108784d46ab5c27f49ad162e2ccf9f0caf067fddec"
+      },
+      {
+        "path": "flight-board/drizzle/0017_fat_zodiak.sql",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/drizzle/0017_fat_zodiak.sql",
+        "size_bytes": 619,
+        "sha256": "042b11ed3adf1ea7b0d7325061dd98f3e09b730c509aadcfa12f05daa8dc82bb"
+      },
+      {
+        "path": "flight-board/drizzle/0018_review_assignment_lifecycle.sql",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/drizzle/0018_review_assignment_lifecycle.sql",
+        "size_bytes": 3176,
+        "sha256": "12a0ba6e89b091f0e7bac679f6abfc2d4d2ed7cb2aae9a26f440cdb7b8973abb"
+      },
+      {
+        "path": "flight-board/drizzle/0019_dispatch_privacy_activation.sql",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/drizzle/0019_dispatch_privacy_activation.sql",
+        "size_bytes": 900,
+        "sha256": "8fccb89b2da462256b8c858f93bc5f866c56003922a9708099ec9c1f1fb5a8d2"
+      },
+      {
+        "path": "flight-board/lib/dispatch-control.ts",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/lib/dispatch-control.ts",
+        "size_bytes": 6501,
+        "sha256": "15922bdf92707bb26d81b8d969c7eff3a683f601fa0645bb54af20c019b845dd"
+      },
+      {
+        "path": "flight-board/lib/dispatch-lifecycle.ts",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/lib/dispatch-lifecycle.ts",
+        "size_bytes": 10977,
+        "sha256": "f9afd388e3e6492f33bfa764d746621899649c3b05d8e28aebcb16bfba73e816"
+      },
+      {
+        "path": "flight-board/lib/post-write.ts",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/lib/post-write.ts",
+        "size_bytes": 3118,
+        "sha256": "25690ea17d1e9c5d610e216ee37ec95278347b9d3c0fd20b910075882cbd79e9"
+      },
+      {
+        "path": "flight-board/lib/review-lifecycle.ts",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/lib/review-lifecycle.ts",
+        "size_bytes": 8590,
+        "sha256": "23e5de94b424c1bfad66568c9f0e9adf0967cf0c0bf4cfc0de322ec175c041ba"
+      },
+      {
+        "path": "flight-board/lib/str028-manifest.ts",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/lib/str028-manifest.ts",
+        "size_bytes": 798,
+        "sha256": "69b30108695afc0322aad169ec1d4bbbbade3c809265885c20e5dedf7b75da44"
+      },
+      {
+        "path": "flight-board/scripts/measure-str028-case-ledger.ts",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/scripts/measure-str028-case-ledger.ts",
+        "size_bytes": 18128,
+        "sha256": "2fefbe66b840dda676616135e8f96a42eb39af284ed1beb1ebb39ee293b77912"
+      },
+      {
+        "path": "flight-board/tests/action-feedback.test.mjs",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/tests/action-feedback.test.mjs",
+        "size_bytes": 5799,
+        "sha256": "e51dae6697d3668e467182f7ac21448aff715a604af501e3fafd92e904d6f9da"
+      },
+      {
+        "path": "flight-board/tests/post-write.test.ts",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/tests/post-write.test.ts",
+        "size_bytes": 3575,
+        "sha256": "00a7b45139f1cc53ac6a35ff7ba180eb3caa4d84325b3b215fde9b8206adcd7e"
+      },
+      {
+        "path": "flight-board/tests/review-lifecycle.test.ts",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/tests/review-lifecycle.test.ts",
+        "size_bytes": 8970,
+        "sha256": "05d71f9111c8fc31b335291ce9b8a6a5ec5a822bd3d1c74212a7e7a54e72cf1a"
+      },
+      {
+        "path": "flight-board/tests/str028-case-ledger.test.ts",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/tests/str028-case-ledger.test.ts",
+        "size_bytes": 3256,
+        "sha256": "482e5067038cb12ab73f7f712f4d42240ad2913ca234930dd289ad8462b121da"
+      },
+      {
+        "path": "flight-board/tests/str028-manifest.test.ts",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/tests/str028-manifest.test.ts",
+        "size_bytes": 1092,
+        "sha256": "1e29b2f99a033441ae204b8ff22752eb91d487a172e4adaf2fb1c0e586da4964"
+      },
+      {
+        "path": "flight-board/tests/work-economics-accessibility.test.ts",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/tests/work-economics-accessibility.test.ts",
+        "size_bytes": 9447,
+        "sha256": "aace7c49292bf01b3347536b79bd509e26f54a151e0450a754846479f0e01c33"
+      },
+      {
+        "path": "flight-board/tests/work-economics-server-controls.test.ts",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/tests/work-economics-server-controls.test.ts",
+        "size_bytes": 109132,
+        "sha256": "eb5236b354908beb1ee5e65c7cfdbae0a73f1ca088970ea7f5bf090f3a548c91"
+      },
+      {
+        "path": "flight-board/worker/api.ts",
+        "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/worker/api.ts",
+        "size_bytes": 217477,
+        "sha256": "e2b3cfa93ec804092c2d07edd3b468e6ec09e1c17a57664fbe1f27157fe4fc9d"
+      }
+    ],
+    "target_artifact_manifest_sha256": "3082e2a318f2a8c035217db677d3c12c52b91a1d3d0ba4c80d54e85b744150b3"
+  },
+  "target_verification": {
+    "receipt": {
+      "schema": "steer-target-verification/v1",
+      "target": {
+        "target_git_object_format": "sha1",
+        "target_git_commit_oid": "b928cba7e9d486c9f30f212c452814185f8025da",
+        "target_commit_object_sha256": "340d47a1f7825eec0c5e9b727d98f9afdf8b809d867f7f1d80273cb59b7f73a0",
+        "target_artifacts": [
+          {
+            "path": "flight-board/app/globals.css",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/app/globals.css",
+            "size_bytes": 103002,
+            "sha256": "9d077f3b85f5a44f5812b131282720014d5208b4ae77eaac02085eed867a1c89"
+          },
+          {
+            "path": "flight-board/app/page.tsx",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/app/page.tsx",
+            "size_bytes": 160829,
+            "sha256": "945c31a25722cecdbe093b3e7494e35edf51b2cfb786c4bdf4595983f634206b"
+          },
+          {
+            "path": "flight-board/drizzle/0011_cool_omega_flight.sql",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/drizzle/0011_cool_omega_flight.sql",
+            "size_bytes": 4281,
+            "sha256": "a9aad3767f7aacd88052db108784d46ab5c27f49ad162e2ccf9f0caf067fddec"
+          },
+          {
+            "path": "flight-board/drizzle/0017_fat_zodiak.sql",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/drizzle/0017_fat_zodiak.sql",
+            "size_bytes": 619,
+            "sha256": "042b11ed3adf1ea7b0d7325061dd98f3e09b730c509aadcfa12f05daa8dc82bb"
+          },
+          {
+            "path": "flight-board/drizzle/0018_review_assignment_lifecycle.sql",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/drizzle/0018_review_assignment_lifecycle.sql",
+            "size_bytes": 3176,
+            "sha256": "12a0ba6e89b091f0e7bac679f6abfc2d4d2ed7cb2aae9a26f440cdb7b8973abb"
+          },
+          {
+            "path": "flight-board/drizzle/0019_dispatch_privacy_activation.sql",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/drizzle/0019_dispatch_privacy_activation.sql",
+            "size_bytes": 900,
+            "sha256": "8fccb89b2da462256b8c858f93bc5f866c56003922a9708099ec9c1f1fb5a8d2"
+          },
+          {
+            "path": "flight-board/lib/dispatch-control.ts",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/lib/dispatch-control.ts",
+            "size_bytes": 6501,
+            "sha256": "15922bdf92707bb26d81b8d969c7eff3a683f601fa0645bb54af20c019b845dd"
+          },
+          {
+            "path": "flight-board/lib/dispatch-lifecycle.ts",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/lib/dispatch-lifecycle.ts",
+            "size_bytes": 10977,
+            "sha256": "f9afd388e3e6492f33bfa764d746621899649c3b05d8e28aebcb16bfba73e816"
+          },
+          {
+            "path": "flight-board/lib/post-write.ts",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/lib/post-write.ts",
+            "size_bytes": 3118,
+            "sha256": "25690ea17d1e9c5d610e216ee37ec95278347b9d3c0fd20b910075882cbd79e9"
+          },
+          {
+            "path": "flight-board/lib/review-lifecycle.ts",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/lib/review-lifecycle.ts",
+            "size_bytes": 8590,
+            "sha256": "23e5de94b424c1bfad66568c9f0e9adf0967cf0c0bf4cfc0de322ec175c041ba"
+          },
+          {
+            "path": "flight-board/lib/str028-manifest.ts",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/lib/str028-manifest.ts",
+            "size_bytes": 798,
+            "sha256": "69b30108695afc0322aad169ec1d4bbbbade3c809265885c20e5dedf7b75da44"
+          },
+          {
+            "path": "flight-board/scripts/measure-str028-case-ledger.ts",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/scripts/measure-str028-case-ledger.ts",
+            "size_bytes": 18128,
+            "sha256": "2fefbe66b840dda676616135e8f96a42eb39af284ed1beb1ebb39ee293b77912"
+          },
+          {
+            "path": "flight-board/tests/action-feedback.test.mjs",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/tests/action-feedback.test.mjs",
+            "size_bytes": 5799,
+            "sha256": "e51dae6697d3668e467182f7ac21448aff715a604af501e3fafd92e904d6f9da"
+          },
+          {
+            "path": "flight-board/tests/post-write.test.ts",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/tests/post-write.test.ts",
+            "size_bytes": 3575,
+            "sha256": "00a7b45139f1cc53ac6a35ff7ba180eb3caa4d84325b3b215fde9b8206adcd7e"
+          },
+          {
+            "path": "flight-board/tests/review-lifecycle.test.ts",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/tests/review-lifecycle.test.ts",
+            "size_bytes": 8970,
+            "sha256": "05d71f9111c8fc31b335291ce9b8a6a5ec5a822bd3d1c74212a7e7a54e72cf1a"
+          },
+          {
+            "path": "flight-board/tests/str028-case-ledger.test.ts",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/tests/str028-case-ledger.test.ts",
+            "size_bytes": 3256,
+            "sha256": "482e5067038cb12ab73f7f712f4d42240ad2913ca234930dd289ad8462b121da"
+          },
+          {
+            "path": "flight-board/tests/str028-manifest.test.ts",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/tests/str028-manifest.test.ts",
+            "size_bytes": 1092,
+            "sha256": "1e29b2f99a033441ae204b8ff22752eb91d487a172e4adaf2fb1c0e586da4964"
+          },
+          {
+            "path": "flight-board/tests/work-economics-accessibility.test.ts",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/tests/work-economics-accessibility.test.ts",
+            "size_bytes": 9447,
+            "sha256": "aace7c49292bf01b3347536b79bd509e26f54a151e0450a754846479f0e01c33"
+          },
+          {
+            "path": "flight-board/tests/work-economics-server-controls.test.ts",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/tests/work-economics-server-controls.test.ts",
+            "size_bytes": 109132,
+            "sha256": "eb5236b354908beb1ee5e65c7cfdbae0a73f1ca088970ea7f5bf090f3a548c91"
+          },
+          {
+            "path": "flight-board/worker/api.ts",
+            "url": "https://github.com/idrissenayat/federal-bd-platform/blob/b928cba7e9d486c9f30f212c452814185f8025da/flight-board/worker/api.ts",
+            "size_bytes": 217477,
+            "sha256": "e2b3cfa93ec804092c2d07edd3b468e6ec09e1c17a57664fbe1f27157fe4fc9d"
+          }
+        ],
+        "target_artifact_manifest_sha256": "3082e2a318f2a8c035217db677d3c12c52b91a1d3d0ba4c80d54e85b744150b3"
+      },
+      "verified_at": "2026-08-18T18:21:19.193Z",
+      "verification_method": "git-cat-file-and-sha256-bytes",
+      "verifier_member_id": "agent-test",
+      "verifier_key_id": "buzz-roster-v3:test",
+      "verifier_key_version": 3
+    },
+    "signature": "909df9955c8ca51de063f7a2f03bbe2217adad0a2b82766d11d8b36ce3dc561f86e28022a7ab0d21b6543a5041cbc684dbef40bd8b4f8580aad0cb80a5856b3e"
+  },
+  "prior_binding_digests": [
+    "4776f295226a75ad17651efafb86b698825bdde2c177ed07a231903d52c0f7af",
+    "d29c3922d3ed0e6dd1f3ee736c10d5db4a4ec806028614422bbb00042283d7b8",
+    "c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d",
+    "12522b22dca4ade812288a2bf47cb6c71405e89275a0db234d20ed8decafe83d",
+    "f490e5388d2afcf0e371d2d80740f965df9aaa23b37cf6aca51430b9da1f3331"
+  ]
+}

@@ -1,5 +1,5 @@
 export type DispatchCheck = {
-  id: "record" | "workflow" | "assignee" | "state" | "scope" | "evidence" | "gate";
+  id: "record" | "workflow" | "assignee" | "state" | "scope" | "evidence" | "forecast" | "gate";
   label: string;
   met: boolean;
   detail: string;
@@ -18,6 +18,8 @@ export type DispatchCandidate = {
   next_action?: unknown;
   evidence_url?: unknown;
   github_url?: unknown;
+  delivery_forecast_json?: unknown;
+  delivery_owner_id?: unknown;
 };
 
 export type AgentDispatchAuthorization = {
@@ -30,13 +32,24 @@ export type AgentDispatchAuthorization = {
   handoff_message: string | null;
 };
 
-const decisionHoldStatuses = new Set(["Needed now", "Changes requested", "Rework", "Resubmitted"]);
+const decisionHoldStatuses = new Set(["Needed now", "Changes requested", "Resubmitted"]);
 
 function value(input: unknown) {
   return String(input ?? "").trim();
 }
 
-export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAuthorization {
+function acceptedForecast(input: unknown, deliveryOwnerId: string, item: DispatchCandidate, nowIso: string) {
+  try {
+    const forecast = JSON.parse(value(input)) as Record<string, unknown>;
+    if (validateAndNormalizeWorkEconomics("deliveryForecast", forecast).error) return false;
+    if (forecast.acceptedBy !== deliveryOwnerId || forecast.deliveryOwnerId !== deliveryOwnerId || forecast.reforecastRequiredReason) return false;
+    return evaluateForecast(forecast as DeliveryForecast, item, nowIso).state === "on track";
+  } catch {
+    return false;
+  }
+}
+
+export function evaluateAgentDispatch(item: DispatchCandidate, nowIso = new Date().toISOString()): AgentDispatchAuthorization {
   const key = value(item.key);
   const title = value(item.title);
   const workflow = value(item.workflow);
@@ -51,6 +64,8 @@ export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAut
   const githubUrl = value(item.github_url);
   const gatePending = /pending/i.test(gate);
   const gateClear = !decisionHoldStatuses.has(decisionStatus);
+  const deliveryOwnerId = value(item.delivery_owner_id);
+  const forecastAccepted = workflow !== "STEER" || (Boolean(deliveryOwnerId) && acceptedForecast(item.delivery_forecast_json, deliveryOwnerId, item, nowIso));
 
   const checks: DispatchCheck[] = [
     {
@@ -90,6 +105,14 @@ export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAut
       detail: evidenceUrl ? "The assigned agent has a durable brief, exam, or approved setup artifact to follow." : "Attach the controlling brief, exam, or approved setup evidence.",
     },
     {
+      id: "forecast",
+      label: "Owner forecast accepted",
+      met: forecastAccepted,
+      detail: forecastAccepted
+        ? workflow === "STEER" ? "The governed completion range, next milestone, confidence, and basis are accepted." : "This setup/control handoff is outside the STEER forecast gate."
+        : "The named delivery owner must accept the range, confidence, basis, and next milestone after the latest material change before execution.",
+    },
+    {
       id: "gate",
       label: "Human holds are clear",
       met: gateClear,
@@ -103,9 +126,9 @@ export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAut
 
   const missing = checks.filter((check) => !check.met).map((check) => check.label);
   const authorized = missing.length === 0;
-  const channel = "#project-federal-bd-pilot";
+  const channel = "Resolved from audited workspace configuration at authorization";
   const handoffMessage = authorized
-    ? `[${key}] ${title} — Authorized Flight Board handoff to ${assigneeName}. State: In Progress. Next action: ${nextAction} Evidence: ${evidenceUrl} Engineering record: ${githubUrl} Buzz coordinates this handoff; scope, status, decisions, and evidence remain authoritative in the Flight Board and GitHub.`
+    ? `[${key}] ${title} — Authorized Flight Board handoff to ${assigneeName}. State: In Progress. Next action: ${nextAction} Owner forecast: ${workflow === "STEER" ? "accepted in STEER Work Economics" : "not required for this workflow"}. Evidence: ${evidenceUrl} Engineering record: ${githubUrl} Buzz coordinates this handoff; scope, forecast, status, decisions, and evidence remain authoritative in the Flight Board and GitHub.`
     : null;
 
   return {
@@ -120,3 +143,5 @@ export function evaluateAgentDispatch(item: DispatchCandidate): AgentDispatchAut
     handoff_message: handoffMessage,
   };
 }
+import { evaluateForecast, type DeliveryForecast } from "../lib/work-economics";
+import { validateAndNormalizeWorkEconomics } from "../lib/work-economics-validation";

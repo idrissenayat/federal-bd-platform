@@ -1,0 +1,1131 @@
+{
+  "schema": "steer-str028-case-ledger/v1",
+  "target_commit": "0fbf1b06b4597ce6bfee934c8389a681e73c7891",
+  "environment": "isolated non-production Node/React fixture with deterministic server-oracle references",
+  "generated_at": "2026-08-18T16:41:13.954Z",
+  "denominator": 20,
+  "missing_case_ids": [],
+  "terminal_ui_feedback_observations": 20,
+  "telemetry_summary": {
+    "steer_work_item_save_feedback_latency_ms": {
+      "sample_count": 9,
+      "missing_count": 0,
+      "p95_ms": 3,
+      "budget_ms": 250
+    },
+    "steer_agent_handoff_feedback_latency_ms": {
+      "sample_count": 11,
+      "missing_count": 0,
+      "p95_ms": 1,
+      "budget_ms": 250
+    },
+    "hidden_validation_or_conflict_errors": 0,
+    "stale_response_overwrites": 0,
+    "duplicate_dispatches": 0,
+    "unresolved_critical_recurrences": 0
+  },
+  "cases": [
+    {
+      "case_id": "SAVE-01",
+      "seed_revision": "r1",
+      "seed_config": "r1; optional economics empty",
+      "action_identity": "4fd46e6a3450c135309e3e883d714b07455dc25e2068a2cd213e806f2786dc06",
+      "expected_authority": "one accepted forecast and one append-only audit event",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:SAVE-01 populates an empty optional Work Economics forecast from the authoritative response",
+        "terminal_render_sha256": "3e60263c6cf5c9d046ce9c12c5d4cbef2b2b59312d3f22c0904c52bce9ff405c",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "OK"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_work_item_save_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 3,
+          "case_id": "SAVE-01"
+        },
+        {
+          "metric_name": "steer_work_item_save_outcome_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1,
+          "case_id": "SAVE-01"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "authoritative_reload",
+          "value": 1,
+          "case_id": "SAVE-01"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "SAVE-02",
+      "seed_revision": "r1",
+      "seed_config": "r1; existing economics value",
+      "action_identity": "543f7cc8017c985b0034f77cb1f2f98bf10e499cb9dd6bff48727b3c2d8e866e",
+      "expected_authority": "one corrected forecast and one append-only audit event",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:SAVE-02 replaces an existing Work Economics forecast with one audited correction",
+        "terminal_render_sha256": "3e60263c6cf5c9d046ce9c12c5d4cbef2b2b59312d3f22c0904c52bce9ff405c",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "OK"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_work_item_save_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "SAVE-02"
+        },
+        {
+          "metric_name": "steer_work_item_save_outcome_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1,
+          "case_id": "SAVE-02"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "authoritative_reload",
+          "value": 1,
+          "case_id": "SAVE-02"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "SAVE-03",
+      "seed_revision": "r1",
+      "seed_config": "r1; exact valid lower bounds",
+      "action_identity": "34babfb2b72ee41f11ffc97462375cddba56b3c70a8c26d9fba725424397cfe2",
+      "expected_authority": "lower-bound values persist without normalization loss",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:SAVE-03 accepts valid lower-bound numeric forecast values",
+        "terminal_render_sha256": "3e60263c6cf5c9d046ce9c12c5d4cbef2b2b59312d3f22c0904c52bce9ff405c",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "OK"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_work_item_save_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "SAVE-03"
+        },
+        {
+          "metric_name": "steer_work_item_save_outcome_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1,
+          "case_id": "SAVE-03"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "fresh",
+          "value": 1,
+          "case_id": "SAVE-03"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "SAVE-04",
+      "seed_revision": "r1",
+      "seed_config": "r1; exact valid upper bounds; long text; 320px",
+      "action_identity": "9226203d0b690352be4772b0a69cb3afa5e2a9c2a4329c35714402b8529ebb9b",
+      "expected_authority": "upper-bound values persist and no narrow overflow exists",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:SAVE-04 accepts valid upper rubric values and long permitted text",
+        "terminal_render_sha256": "3e60263c6cf5c9d046ce9c12c5d4cbef2b2b59312d3f22c0904c52bce9ff405c",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "OK"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_work_item_save_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "SAVE-04"
+        },
+        {
+          "metric_name": "steer_work_item_save_outcome_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1,
+          "case_id": "SAVE-04"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "fresh",
+          "value": 1,
+          "case_id": "SAVE-04"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "DISP-01",
+      "seed_revision": "r1",
+      "seed_config": "authorized r1; route v1; no receipt",
+      "action_identity": "e55f4a346ecb03ded0290f4be310f38c1a64dc54b6e03ed832917087c7503135",
+      "expected_authority": "one receipt/outbox/attempt/send and ordered QUEUED→DELIVERED→ACKNOWLEDGED ledger",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:service fencing, verified relay delivery, signed agent acknowledgement, and agent read form one idempotent lineage",
+        "terminal_render_sha256": "37380eeb6e4dda0570c614cd4d8afcaf8ed6e2621e6d36b2f3cabe60887cb690",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "ACKNOWLEDGED"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_agent_handoff_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "DISP-01"
+        },
+        {
+          "metric_name": "steer_agent_handoff_outcome_total",
+          "label_name": "outcome",
+          "label_value": "delivered",
+          "value": 1,
+          "case_id": "DISP-01"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "fresh",
+          "value": 1,
+          "case_id": "DISP-01"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "DISP-02",
+      "seed_revision": "r1",
+      "seed_config": "authorized r1; route v1; receipt visible after reload",
+      "action_identity": "9bf3ca309280ea060bc4c2166a78962917081949692eee3b05dd2816a5d76b27",
+      "expected_authority": "original receipt/outbox/event IDs returned; zero duplicates",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:successful dispatch creates one immutable receipt, outbox identity, and QUEUED event across replay",
+        "terminal_render_sha256": "d48514ba1e9e30f3053f15d5008203f2231d43edfbc89ca032097a0747cb21c5",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "IDEMPOTENT_REPLAY"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_agent_handoff_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "DISP-02"
+        },
+        {
+          "metric_name": "steer_agent_handoff_outcome_total",
+          "label_name": "outcome",
+          "label_value": "duplicate_suppressed",
+          "value": 1,
+          "case_id": "DISP-02"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "authoritative_reload",
+          "value": 1,
+          "case_id": "DISP-02"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "DISP-03",
+      "seed_revision": "r1",
+      "seed_config": "authorized r1; route v1; noninteractive agent read",
+      "action_identity": "108ffdc22e51b33be3e1c325819303d7a38b5755deb58d104a3ad86bc931d2b7",
+      "expected_authority": "signed assigned-agent read and acknowledgement; zero human-session dependency",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:service fencing, verified relay delivery, signed agent acknowledgement, and agent read form one idempotent lineage",
+        "terminal_render_sha256": "495eaf89611c7c7e2933dd6704b96493c1dcf2256c4b4ecbc4c8cc77ef7639a6",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "SIGNED_AGENT_READ"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_agent_handoff_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "DISP-03"
+        },
+        {
+          "metric_name": "steer_agent_handoff_outcome_total",
+          "label_name": "outcome",
+          "label_value": "delivered",
+          "value": 1,
+          "case_id": "DISP-03"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "fresh",
+          "value": 1,
+          "case_id": "DISP-03"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "DISP-04",
+      "seed_revision": "r1",
+      "seed_config": "authorized r1; route v1; keyboard/VoiceOver; 320px",
+      "action_identity": "c55c78bcfecb220e2269f644e4690c81a4466ea5f4265bddd5fd1b657d312b73",
+      "expected_authority": "one receipt/outbox/run and one accepted acknowledgement",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:DISP-04 dispatch control has a named atomic live region and one focus-stable action",
+        "terminal_render_sha256": "28b06b31dfe5402307925d6258647a0b44dbf14f026a463e8fde70af517d88da",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "QUEUED"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_agent_handoff_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "DISP-04"
+        },
+        {
+          "metric_name": "steer_agent_handoff_outcome_total",
+          "label_name": "outcome",
+          "label_value": "queued",
+          "value": 1,
+          "case_id": "DISP-04"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "fresh",
+          "value": 1,
+          "case_id": "DISP-04"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "FAIL-01",
+      "seed_revision": "r1",
+      "seed_config": "mutation r0; server r1",
+      "action_identity": "604166c1ba7e88308ed08e41ef2608f6571507b0e9ba5fda9ab52964717bad18",
+      "expected_authority": "server r1 and audit counts unchanged",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "error",
+        "focus_target": "perceivable inline alert",
+        "announcement": "assertive"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:FAIL-01 rejects stale mutation revision r0 against authoritative r1 without a durable side effect",
+        "terminal_render_sha256": "362b4926ec82dce068c448760457f8411f0fcd9d6645cd3c5fe49c883685fcc3",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 409,
+        "typed_code": "REVISION_CONFLICT"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_work_item_save_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "FAIL-01"
+        },
+        {
+          "metric_name": "steer_work_item_save_outcome_total",
+          "label_name": "outcome",
+          "label_value": "conflict",
+          "value": 1,
+          "case_id": "FAIL-01"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "stale_suppressed",
+          "value": 1,
+          "case_id": "FAIL-01"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "FAIL-02",
+      "seed_revision": "r1",
+      "seed_config": "r1; invalid Work Economics field set",
+      "action_identity": "a5e05cc087f40b817562eb36e252fd2e062f4d6a805d596d20ca0ae07fc139b0",
+      "expected_authority": "server r1 and audit counts unchanged",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "error",
+        "focus_target": "perceivable inline alert",
+        "announcement": "assertive"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:FAIL-02 rejects an invalid Work Economics field set without overwriting r1",
+        "terminal_render_sha256": "30db90e2aa96188234f9b77888400674c0933c119e86117c2adf8ff5681bed0e",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 400,
+        "typed_code": "VALIDATION_ERROR"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_work_item_save_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "FAIL-02"
+        },
+        {
+          "metric_name": "steer_work_item_save_outcome_total",
+          "label_name": "outcome",
+          "label_value": "validation",
+          "value": 1,
+          "case_id": "FAIL-02"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "fresh",
+          "value": 1,
+          "case_id": "FAIL-02"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "FAIL-03",
+      "seed_revision": "r1",
+      "seed_config": "authorized r1; pre-receipt route conflicts; isolated reset",
+      "action_identity": "a67be35080c741917ba1463324901d8e984a547ffe0e354add75ddc392f6fcdc",
+      "expected_authority": "typed diagnostic only; zero receipt/outbox/attempt/send/run",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "error",
+        "focus_target": "perceivable inline alert",
+        "announcement": "assertive"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic",
+        "terminal_render_sha256": "ce947292ead5eea7d971954ed93a7bc8c8fc1de623ccaad79b3aac6a8f3d6610",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 409,
+        "typed_code": "ROUTE_BINDING_INVALID"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_agent_handoff_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "FAIL-03"
+        },
+        {
+          "metric_name": "steer_agent_handoff_outcome_total",
+          "label_name": "outcome",
+          "label_value": "blocked",
+          "value": 1,
+          "case_id": "FAIL-03"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "fresh",
+          "value": 1,
+          "case_id": "FAIL-03"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [
+        {
+          "parent_case_id": "FAIL-03",
+          "substep_id": "F03-A",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic"
+        },
+        {
+          "parent_case_id": "FAIL-03",
+          "substep_id": "F03-B",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic"
+        },
+        {
+          "parent_case_id": "FAIL-03",
+          "substep_id": "F03-C",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic"
+        },
+        {
+          "parent_case_id": "FAIL-03",
+          "substep_id": "F03-D",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic"
+        },
+        {
+          "parent_case_id": "FAIL-03",
+          "substep_id": "F03-E",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic"
+        },
+        {
+          "parent_case_id": "FAIL-03",
+          "substep_id": "F03-F",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic"
+        }
+      ],
+      "result": "pass"
+    },
+    {
+      "case_id": "FAIL-04",
+      "seed_revision": "r1",
+      "seed_config": "authorized r1; receipt; one reservation; pre-send; isolated reset",
+      "action_identity": "ed6ad912a5a8357d6143cc0da290af6b0707045c0441215e7566f64297e76d7b",
+      "expected_authority": "one terminalization and diagnostic; fence invalid; zero send/state/run",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "error",
+        "focus_target": "perceivable inline alert",
+        "announcement": "assertive"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:FAIL-04 fences every frozen post-receipt binding invalidation before send",
+        "terminal_render_sha256": "5ade23e306e062033c09e1d61057ac1cb8140a642a5a9da9258506857718ec04",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 409,
+        "typed_code": "DELIVERY_BLOCKED_CONFIG_STALE"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_agent_handoff_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "FAIL-04"
+        },
+        {
+          "metric_name": "steer_agent_handoff_outcome_total",
+          "label_name": "outcome",
+          "label_value": "blocked",
+          "value": 1,
+          "case_id": "FAIL-04"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "fresh",
+          "value": 1,
+          "case_id": "FAIL-04"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [
+        {
+          "parent_case_id": "FAIL-04",
+          "substep_id": "F04-A",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:FAIL-04 fences every frozen post-receipt binding invalidation before send"
+        },
+        {
+          "parent_case_id": "FAIL-04",
+          "substep_id": "F04-B",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:FAIL-04 fences every frozen post-receipt binding invalidation before send"
+        },
+        {
+          "parent_case_id": "FAIL-04",
+          "substep_id": "F04-C",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:FAIL-04 fences every frozen post-receipt binding invalidation before send"
+        },
+        {
+          "parent_case_id": "FAIL-04",
+          "substep_id": "F04-D",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:FAIL-04 fences every frozen post-receipt binding invalidation before send"
+        },
+        {
+          "parent_case_id": "FAIL-04",
+          "substep_id": "F04-E",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:FAIL-04 fences every frozen post-receipt binding invalidation before send"
+        }
+      ],
+      "result": "pass"
+    },
+    {
+      "case_id": "ORDER-01",
+      "seed_revision": "r1",
+      "seed_config": "old bootstrap resolves after confirmed save",
+      "action_identity": "53e1f9dbaf9d235bfa90351aa83bc84f375036bc4a9d6247d14b2916739d9751",
+      "expected_authority": "confirmed item and activity remain newest",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:ORDER-01 an older bootstrap response cannot overwrite a newer confirmed mutation",
+        "terminal_render_sha256": "e92f0d5abfc7d47ce2f8f2b9ebf1d12b6d98bd80ea3134a5a8702f34a586ca99",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "STALE_SUPPRESSED"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_work_item_save_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "ORDER-01"
+        },
+        {
+          "metric_name": "steer_work_item_save_outcome_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1,
+          "case_id": "ORDER-01"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "stale_suppressed",
+          "value": 1,
+          "case_id": "ORDER-01"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "ORDER-02",
+      "seed_revision": "r1",
+      "seed_config": "two saves; older explicit result resolves last",
+      "action_identity": "d418ea87020acaf3281f6d278425c6627787a249e97b6b8e9048c7286e9937c7",
+      "expected_authority": "latest mutation sequence remains authoritative",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:ORDER-02 and ORDER-04 accept only the latest explicit action result",
+        "terminal_render_sha256": "e9449a94e71b1775d33a40b52e538168da469c3d992103baa71a83098017dc14",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "OLDER_ACTION_SUPPRESSED"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_work_item_save_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "ORDER-02"
+        },
+        {
+          "metric_name": "steer_work_item_save_outcome_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1,
+          "case_id": "ORDER-02"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "stale_suppressed",
+          "value": 1,
+          "case_id": "ORDER-02"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "ORDER-03",
+      "seed_revision": "r1",
+      "seed_config": "old receipt projection resolves after newer lifecycle event",
+      "action_identity": "cabf1ad765683a6a33ea33433348ada459ad43927e7b91645397001f80920af6",
+      "expected_authority": "newer event version and state remain authoritative",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:ORDER-03 an older dispatch projection cannot overwrite a newer receipt lifecycle event",
+        "terminal_render_sha256": "12eccc7183c3495630d2ced41b00ed6ef46911d4fbfcf5dfc11bb5645965c48d",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "STALE_PROJECTION_SUPPRESSED"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_agent_handoff_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "ORDER-03"
+        },
+        {
+          "metric_name": "steer_agent_handoff_outcome_total",
+          "label_name": "outcome",
+          "label_value": "duplicate_suppressed",
+          "value": 1,
+          "case_id": "ORDER-03"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "stale_suppressed",
+          "value": 1,
+          "case_id": "ORDER-03"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "ORDER-04",
+      "seed_revision": "r1",
+      "seed_config": "old failure resolves after later authoritative success",
+      "action_identity": "672e3d9914c96f4384382837212395abc9b02739a1315fce5e39234ebae5c435",
+      "expected_authority": "later success remains visible and no false failure is shown",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:ORDER-02 and ORDER-04 accept only the latest explicit action result",
+        "terminal_render_sha256": "5f5488295ce663dc4141440dd44d0ce18bc7f65cee44ea4aab4226af07207b4b",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "OLDER_FAILURE_SUPPRESSED"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_work_item_save_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "ORDER-04"
+        },
+        {
+          "metric_name": "steer_work_item_save_outcome_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1,
+          "case_id": "ORDER-04"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "stale_suppressed",
+          "value": 1,
+          "case_id": "ORDER-04"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "REC-01",
+      "seed_revision": "r1",
+      "seed_config": "exact authorization and acknowledgement replay",
+      "action_identity": "94b4234e3bb1390303ec000c9ae1f54da6e5ffa77fcb2469ba91c6a469663f88",
+      "expected_authority": "original receipt/event IDs and zero new append/send/run",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:successful dispatch creates one immutable receipt, outbox identity, and QUEUED event across replay",
+        "terminal_render_sha256": "d48514ba1e9e30f3053f15d5008203f2231d43edfbc89ca032097a0747cb21c5",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "IDEMPOTENT_REPLAY"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_agent_handoff_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "REC-01"
+        },
+        {
+          "metric_name": "steer_agent_handoff_outcome_total",
+          "label_name": "outcome",
+          "label_value": "duplicate_suppressed",
+          "value": 1,
+          "case_id": "REC-01"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "fresh",
+          "value": 1,
+          "case_id": "REC-01"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "REC-02",
+      "seed_revision": "r1",
+      "seed_config": "two concurrent submissions; same authorization/version",
+      "action_identity": "9204940e8056f4b9892e938ec16c3585f6812beaab8da6d116549e2a6bc85fc0",
+      "expected_authority": "one CAS winner, one replay, one receipt/outbox/event/run",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:REC-02 concurrent dispatch submissions commit one identity and return one idempotent replay",
+        "terminal_render_sha256": "a964086042e2155e0508d6ed1afea6c074c5fcf417134580278ea233026172ee",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "ONE_CAS_WINNER"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_agent_handoff_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "REC-02"
+        },
+        {
+          "metric_name": "steer_agent_handoff_outcome_total",
+          "label_name": "outcome",
+          "label_value": "duplicate_suppressed",
+          "value": 1,
+          "case_id": "REC-02"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "fresh",
+          "value": 1,
+          "case_id": "REC-02"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "REC-03",
+      "seed_revision": "r1",
+      "seed_config": "send may succeed; response lost; relay reconciliation",
+      "action_identity": "4d5aba3a18f90e702e82ee1b87d988be1576e5afff6a3086c078bd737f7dc254",
+      "expected_authority": "verified delivery backfilled; zero resend and one lineage",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "success",
+        "focus_target": "initiating control",
+        "announcement": "polite"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:REC-03 uncertain send reconciles a discovered relay delivery before acknowledgement without retry",
+        "terminal_render_sha256": "da406950daa74d6bc9a91945d474dd91fa3dc720fa5a4add73d60b15bd4f57c9",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 200,
+        "typed_code": "DELIVERY_RECONCILED"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_agent_handoff_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "REC-03"
+        },
+        {
+          "metric_name": "steer_agent_handoff_outcome_total",
+          "label_name": "outcome",
+          "label_value": "delivered",
+          "value": 1,
+          "case_id": "REC-03"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "authoritative_reload",
+          "value": 1,
+          "case_id": "REC-03"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [],
+      "result": "pass"
+    },
+    {
+      "case_id": "REC-04",
+      "seed_revision": "r1",
+      "seed_config": "post-receipt pre-send stale binding; isolated reset; explicit reauthorization",
+      "action_identity": "163f8a003f993b17e9f37fde0fe6563483191c1a15671403f9495ae90e259cc5",
+      "expected_authority": "old intent fenced; one explicit successor; original 0 run; successor sole run",
+      "expected_ui": {
+        "drawer": "authoritative local result",
+        "activity": "reconciled",
+        "inline_status": "error",
+        "focus_target": "perceivable inline alert",
+        "announcement": "assertive"
+      },
+      "actual_evidence": {
+        "automated_oracle": "flight-board/tests:REC-04 permits one same-lineage successor for every remaining frozen binding branch",
+        "terminal_render_sha256": "77a5c1127341b434217ea9d9c45d56e5773fef1faaff6d166b3d4abd296f1b61",
+        "forbidden_side_effect_count": 0
+      },
+      "transport_result": {
+        "http_status": 409,
+        "typed_code": "SUCCESSOR_REAUTHORIZATION_REQUIRED"
+      },
+      "telemetry": [
+        {
+          "metric_name": "steer_agent_handoff_feedback_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1,
+          "case_id": "REC-04"
+        },
+        {
+          "metric_name": "steer_agent_handoff_outcome_total",
+          "label_name": "outcome",
+          "label_value": "blocked",
+          "value": 1,
+          "case_id": "REC-04"
+        },
+        {
+          "metric_name": "steer_post_write_reconciliation_total",
+          "label_name": "result",
+          "label_value": "fresh",
+          "value": 1,
+          "case_id": "REC-04"
+        }
+      ],
+      "terminal_ui_feedback_observations": 1,
+      "substeps": [
+        {
+          "parent_case_id": "REC-04",
+          "substep_id": "R04-A",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:REC-04 permits one same-lineage successor for every remaining frozen binding branch"
+        },
+        {
+          "parent_case_id": "REC-04",
+          "substep_id": "R04-B",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:REC-04 permits one same-lineage successor for every remaining frozen binding branch"
+        },
+        {
+          "parent_case_id": "REC-04",
+          "substep_id": "R04-C",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:REC-04 permits one same-lineage successor for every remaining frozen binding branch"
+        },
+        {
+          "parent_case_id": "REC-04",
+          "substep_id": "R04-D",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:REC-04 permits one same-lineage successor for every remaining frozen binding branch"
+        },
+        {
+          "parent_case_id": "REC-04",
+          "substep_id": "R04-E",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:REC-04 permits one same-lineage successor for every remaining frozen binding branch"
+        },
+        {
+          "parent_case_id": "REC-04",
+          "substep_id": "R04-F",
+          "seed_reset": true,
+          "result": "pass",
+          "evidence_ref": "flight-board/tests:REC-04 permits one same-lineage successor for every remaining frozen binding branch"
+        }
+      ],
+      "result": "pass"
+    }
+  ]
+}
