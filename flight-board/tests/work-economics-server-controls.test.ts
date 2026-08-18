@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { schnorr } from "@noble/curves/secp256k1.js";
+import { canonicalJson, sha256Hex } from "../lib/dispatch-lifecycle";
 import { handleApi } from "../worker/api";
+
+const dispatchEnv = {
+  DISPATCH_SERVICE_PRIVATE_KEY: "0".repeat(63) + "7",
+  DISPATCH_SERVICE_KEY_ID: "test-dispatch-signer",
+  DISPATCH_SERVICE_KEY_VERSION: "1",
+  DISPATCH_SERVICE_TOKEN: "test-dispatch-service-token-0000000000000000",
+};
 
 class D1Statement {
   constructor(private readonly db: DatabaseSync, private readonly sql: string, private readonly values: unknown[] = []) {}
@@ -30,6 +39,23 @@ function request(user: string, path: string, method = "GET", body?: unknown) {
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+}
+
+function serviceRequest(path: string, body: unknown) {
+  return new Request(`https://steer.test${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${dispatchEnv.DISPATCH_SERVICE_TOKEN}` },
+    body: JSON.stringify(body),
+  });
+}
+
+function hex(value: Uint8Array) {
+  return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function signBinding(payload: unknown, secret: Uint8Array) {
+  const digest = await sha256Hex(canonicalJson(payload));
+  return hex(schnorr.sign(Uint8Array.from(digest.match(/.{2}/g)!.map((byte) => Number.parseInt(byte, 16))), secret));
 }
 
 const forecast = {
@@ -84,7 +110,7 @@ test("successful dispatch creates one immutable receipt, outbox identity, and QU
   const acceptedAt = new Date().toISOString();
   const currentForecast = { ...forecast, acceptedAt, updatedAt: acceptedAt, earliestCompletion: "2026-08-20T14:00:00.000Z", likelyCompletion: "2026-08-20T18:00:00.000Z", latestCompletion: "2026-08-21T18:00:00.000Z", nextMilestoneAt: "2026-08-19T16:00:00.000Z", phaseExitAt: "2026-08-20T18:00:00.000Z" };
   db.sqlite.prepare(`UPDATE members SET agent_key_id = 'agent-a-key', agent_key_version = 1,
-    agent_public_key_fingerprint = ? WHERE id = 'agent-a'`).run("a".repeat(64));
+    agent_public_key = ?, agent_public_key_fingerprint = ? WHERE id = 'agent-a'`).run("e".repeat(64), "a".repeat(64));
   db.sqlite.prepare(`INSERT INTO workspace_routing
     (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
     VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'member-a', 'Test fixture', ?)`)
@@ -95,14 +121,18 @@ test("successful dispatch creates one immutable receipt, outbox identity, and QU
     .run(acceptedAt);
   db.sqlite.prepare("UPDATE work_items SET evidence_url = ?, delivery_forecast_json = ? WHERE id = ?")
     .run(`https://github.com/idrissenayat/federal-bd-platform/blob/${revision}/steer/exams/0028.md`, JSON.stringify(currentForecast), itemId);
+  db.sqlite.prepare(`INSERT INTO work_economics_events
+    (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+    VALUES (?, 'deliveryForecast', 'accepted', 'member-a', 'Delivery owner', NULL, ?, 'Test accepted forecast audit', ?)`)
+    .run(itemId, JSON.stringify(currentForecast), acceptedAt);
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input) => String(input).includes("raw.githubusercontent.com")
     ? new Response("# exact approved exam\n", { status: 200 })
     : originalFetch(input);
   try {
-    const first = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db });
+    const first = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
     assert.equal(first?.status, 200, await first?.text());
-    const replay = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db });
+    const replay = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
     const replayBody = await replay?.json() as { idempotent_replay: boolean; error?: string };
     assert.equal(replay?.status, 200, JSON.stringify(replayBody));
     assert.equal(replayBody.idempotent_replay, true);
@@ -110,6 +140,90 @@ test("successful dispatch creates one immutable receipt, outbox identity, and QU
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_outbox").get()!.total, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE event_type = 'QUEUED'").get()!.total, 1);
     assert.equal(db.sqlite.prepare("SELECT channel_name FROM dispatch_outbox").get()!.channel_name, "#steer-team");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("service fencing, verified relay delivery, signed agent acknowledgement, and agent read form one idempotent lineage", async () => {
+  const { db, itemId } = await setup();
+  const revision = "c".repeat(40);
+  const acceptedAt = new Date().toISOString();
+  const currentForecast = { ...forecast, acceptedAt, updatedAt: acceptedAt, earliestCompletion: "2026-08-20T14:00:00.000Z", likelyCompletion: "2026-08-20T18:00:00.000Z", latestCompletion: "2026-08-21T18:00:00.000Z", nextMilestoneAt: "2026-08-19T16:00:00.000Z", phaseExitAt: "2026-08-20T18:00:00.000Z" };
+  const agentSecret = new Uint8Array(32); agentSecret[31] = 11;
+  const relaySecret = new Uint8Array(32); relaySecret[31] = 13;
+  const agentPublicKey = hex(schnorr.getPublicKey(agentSecret));
+  const relayPublicKey = hex(schnorr.getPublicKey(relaySecret));
+  db.sqlite.prepare(`UPDATE members SET agent_key_id = 'agent-a-key', agent_key_version = 1,
+    agent_public_key = ?, agent_public_key_fingerprint = ? WHERE id = 'agent-a'`).run(agentPublicKey, "a".repeat(64));
+  db.sqlite.prepare(`INSERT INTO workspace_routing
+    (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+    VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'member-a', 'Test fixture', ?)`)
+    .run(acceptedAt);
+  db.sqlite.prepare(`INSERT INTO agent_channel_memberships
+    (pod_id, channel_id, member_id, membership_version, status, created_at)
+    VALUES ('pod-a', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'agent-a', 1, 'active', ?)`)
+    .run(acceptedAt);
+  db.sqlite.prepare(`INSERT INTO relay_event_signers
+    (pod_id, registry_version, relay_url, channel_id, key_id, key_version, public_key, valid_from, valid_until, status, changed_by, change_reason, created_at)
+    VALUES ('pod-a', 1, 'https://relay.example', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'relay-test', 1, ?, ?, NULL, 'ACTIVE', 'member-a', 'Test fixture', ?)`)
+    .run(relayPublicKey, acceptedAt, acceptedAt);
+  db.sqlite.prepare("UPDATE work_items SET evidence_url = ?, delivery_forecast_json = ? WHERE id = ?")
+    .run(`https://github.com/idrissenayat/federal-bd-platform/blob/${revision}/steer/exams/0028.md`, JSON.stringify(currentForecast), itemId);
+  db.sqlite.prepare(`INSERT INTO work_economics_events
+    (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+    VALUES (?, 'deliveryForecast', 'accepted', 'member-a', 'Delivery owner', NULL, ?, 'Test accepted forecast audit', ?)`)
+    .run(itemId, JSON.stringify(currentForecast), acceptedAt);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => String(input).includes("raw.githubusercontent.com")
+    ? new Response("# exact approved exam\n", { status: 200 })
+    : originalFetch(input);
+  try {
+    const authorized = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+    assert.equal(authorized?.status, 200, await authorized?.text());
+    const intentId = String(db.sqlite.prepare("SELECT intent_id FROM dispatch_receipts").get()!.intent_id);
+    const receipt = JSON.parse(String(db.sqlite.prepare("SELECT receipt_json FROM dispatch_receipts").get()!.receipt_json));
+
+    const reserved = await handleApi(serviceRequest("/api/dispatches/next", {}), { DB: db, ...dispatchEnv });
+    assert.equal(reserved?.status, 201, await reserved?.clone().text());
+    const reservationBody = await reserved?.json() as { dispatch_intent_id: string; transport_content: string };
+    assert.equal(reservationBody.dispatch_intent_id, intentId);
+    assert.equal(JSON.parse(reservationBody.transport_content).payload_sha256, receipt.authorized_handoff_sha256);
+    const started = await handleApi(serviceRequest(`/api/dispatches/${intentId}/commands`, { command: "START_SEND" }), { DB: db, ...dispatchEnv });
+    assert.equal(started?.status, 201, await started?.text());
+    const attempt = Number(db.sqlite.prepare("SELECT attempt_number FROM dispatch_outbox").get()!.attempt_number);
+    const relayContent = JSON.stringify({ schema: "steer-dispatch-delivery/v1", dispatch_intent_id: intentId, attempt_number: attempt, channel_id: receipt.canonical_channel_id, payload_sha256: receipt.authorized_handoff_sha256 });
+    const relayUnsigned = { pubkey: relayPublicKey, created_at: Math.floor(Date.now() / 1000), kind: 9, tags: [["h", receipt.canonical_channel_id], ["p", agentPublicKey]], content: relayContent };
+    const relayId = await sha256Hex(JSON.stringify([0, relayUnsigned.pubkey, relayUnsigned.created_at, relayUnsigned.kind, relayUnsigned.tags, relayUnsigned.content]));
+    const relayEvent = { ...relayUnsigned, id: relayId, sig: hex(schnorr.sign(Uint8Array.from(relayId.match(/.{2}/g)!.map((byte) => Number.parseInt(byte, 16))), relaySecret)) };
+    const delivered = await handleApi(serviceRequest(`/api/dispatches/${intentId}/commands`, { command: "CONFIRM_DELIVERY", relay_event: relayEvent }), { DB: db, ...dispatchEnv });
+    assert.equal(delivered?.status, 201, await delivered?.text());
+
+    const acknowledgedAt = new Date().toISOString();
+    const acknowledgementPayload = {
+      schema: "steer-dispatch-ack/v1", dispatch_intent_id: intentId,
+      authorization_revision: receipt.authorization_revision, evidence_sha256: receipt.evidence_sha256,
+      canonical_channel_id: receipt.canonical_channel_id, delivered_event_id: relayId,
+      agent_claim_run_id: "claim-run-900", acknowledged_at: acknowledgedAt,
+    };
+    const acknowledgement = { member_id: "agent-a", key_id: "agent-a-key", key_version: 1, ...acknowledgementPayload, signature: await signBinding(acknowledgementPayload, agentSecret) };
+    const accepted = await handleApi(request("agent-a", `/api/dispatches/${intentId}/acknowledgements`, "POST", acknowledgement), { DB: db, ...dispatchEnv });
+    assert.equal(accepted?.status, 201, await accepted?.text());
+    const replay = await handleApi(request("agent-a", `/api/dispatches/${intentId}/acknowledgements`, "POST", acknowledgement), { DB: db, ...dispatchEnv });
+    assert.equal(replay?.status, 200, await replay?.clone().text());
+    assert.equal((await replay?.json() as { idempotent_replay: boolean }).idempotent_replay, true);
+
+    const requestedAt = new Date().toISOString();
+    const readPayload = { schema: "steer-dispatch-read/v1", method: "POST", path: `/api/dispatches/${intentId}/read`, dispatch_intent_id: intentId, requested_at: requestedAt };
+    const read = await handleApi(request("agent-a", `/api/dispatches/${intentId}/read`, "POST", { member_id: "agent-a", key_id: "agent-a-key", key_version: 1, requested_at: requestedAt, signature: await signBinding(readPayload, agentSecret) }), { DB: db, ...dispatchEnv });
+    assert.equal(read?.status, 200, await read?.clone().text());
+    const readBody = await read?.json() as { events: unknown[]; projection: { state: string } };
+    assert.equal(readBody.projection.state, "ACKNOWLEDGED");
+    assert.equal(readBody.events.length, 5);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_receipts").get()!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_outbox").get()!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_attempts").get()!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE event_type = 'ACKNOWLEDGED'").get()!.total, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }

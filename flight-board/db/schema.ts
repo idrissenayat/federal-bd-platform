@@ -278,6 +278,21 @@ export const dispatchReceipts = sqliteTable(
   ],
 );
 
+export const dispatchAuthorizationAudits = sqliteTable(
+  "dispatch_authorization_audits",
+  {
+    auditEventId: text("audit_event_id").primaryKey(),
+    intentId: text("intent_id").notNull().unique(),
+    itemId: integer("item_id").notNull(),
+    podId: text("pod_id").notNull(),
+    authorizationRevision: text("authorization_revision").notNull(),
+    authorizationJson: text("authorization_json").notNull(),
+    actorId: text("actor_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_dispatch_authorization_item_created").on(table.itemId, table.createdAt)],
+);
+
 export const dispatchOutbox = sqliteTable(
   "dispatch_outbox",
   {
@@ -288,7 +303,20 @@ export const dispatchOutbox = sqliteTable(
     channelId: text("channel_id").notNull(),
     channelName: text("channel_name").notNull(),
     status: text("status").notNull(),
+    currentState: text("current_state").notNull().default("QUEUED"),
+    currentEventVersion: integer("current_event_version").notNull().default(0),
+    currentEventSha256: text("current_event_sha256").notNull(),
     attemptNumber: integer("attempt_number").notNull().default(0),
+    leaseId: text("lease_id"),
+    leaseExpiresAt: text("lease_expires_at"),
+    reservationFence: text("reservation_fence"),
+    sendStarted: integer("send_started", { mode: "boolean" }).notNull().default(false),
+    reconciliationRequired: integer("reconciliation_required", { mode: "boolean" }).notNull().default(false),
+    terminalizationRequested: integer("terminalization_requested", { mode: "boolean" }).notNull().default(false),
+    relayUrl: text("relay_url").notNull(),
+    routingConfigurationVersion: integer("routing_configuration_version").notNull(),
+    deliveredEventId: text("delivered_event_id"),
+    acceptedAcknowledgementSha256: text("accepted_acknowledgement_sha256"),
     lastErrorCode: text("last_error_code"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -302,16 +330,91 @@ export const dispatchEvents = sqliteTable(
     id: integer("id").primaryKey({ autoIncrement: true }),
     intentId: text("intent_id").notNull(),
     eventVersion: integer("event_version").notNull(),
+    expectedEventVersion: integer("expected_event_version").notNull(),
     eventType: text("event_type").notNull(),
     priorState: text("prior_state"),
     resultingState: text("resulting_state"),
     payloadJson: text("payload_json").notNull(),
+    previousEventSha256: text("previous_event_sha256"),
+    eventSha256: text("event_sha256").notNull(),
+    serviceKeyId: text("service_key_id").notNull(),
+    serviceKeyVersion: integer("service_key_version").notNull(),
+    serviceSignature: text("service_signature").notNull(),
+    agentKeyId: text("agent_key_id"),
+    agentKeyVersion: integer("agent_key_version"),
+    agentSignature: text("agent_signature"),
+    acknowledgementSha256: text("acknowledgement_sha256"),
     actorId: text("actor_id").notNull(),
     createdAt: text("created_at").notNull(),
   },
   (table) => [
     uniqueIndex("uq_dispatch_events_intent_version").on(table.intentId, table.eventVersion),
     index("idx_dispatch_events_intent_created").on(table.intentId, table.createdAt),
+  ],
+);
+
+export const dispatchAttempts = sqliteTable(
+  "dispatch_attempts",
+  {
+    intentId: text("intent_id").notNull(),
+    attemptNumber: integer("attempt_number").notNull(),
+    leaseId: text("lease_id").notNull(),
+    leaseExpiresAt: text("lease_expires_at").notNull(),
+    reservationFence: text("reservation_fence").notNull(),
+    status: text("status").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("uq_dispatch_attempts_intent_number").on(table.intentId, table.attemptNumber),
+    uniqueIndex("uq_dispatch_attempts_fence").on(table.reservationFence),
+    index("idx_dispatch_attempts_intent_status").on(table.intentId, table.status),
+  ],
+);
+
+export const dispatchEventSigners = sqliteTable(
+  "dispatch_event_signers",
+  {
+    podId: text("pod_id").notNull(),
+    registryVersion: integer("registry_version").notNull(),
+    serviceRole: text("service_role").notNull(),
+    allowedEventTypesJson: text("allowed_event_types_json").notNull(),
+    keyId: text("key_id").notNull(),
+    keyVersion: integer("key_version").notNull(),
+    publicKey: text("public_key").notNull(),
+    validFrom: text("valid_from").notNull(),
+    validUntil: text("valid_until"),
+    status: text("status").notNull(),
+    changedBy: text("changed_by").notNull(),
+    changeReason: text("change_reason").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("uq_dispatch_event_signers_key_version").on(table.podId, table.keyId, table.keyVersion),
+    index("idx_dispatch_event_signers_active").on(table.podId, table.serviceRole, table.status),
+  ],
+);
+
+export const relayEventSigners = sqliteTable(
+  "relay_event_signers",
+  {
+    podId: text("pod_id").notNull(),
+    registryVersion: integer("registry_version").notNull(),
+    relayUrl: text("relay_url").notNull(),
+    channelId: text("channel_id").notNull(),
+    keyId: text("key_id").notNull(),
+    keyVersion: integer("key_version").notNull(),
+    publicKey: text("public_key").notNull(),
+    validFrom: text("valid_from").notNull(),
+    validUntil: text("valid_until"),
+    status: text("status").notNull(),
+    changedBy: text("changed_by").notNull(),
+    changeReason: text("change_reason").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("uq_relay_event_signers_key_version").on(table.podId, table.keyId, table.keyVersion),
+    index("idx_relay_event_signers_active").on(table.podId, table.relayUrl, table.channelId, table.status),
   ],
 );
 

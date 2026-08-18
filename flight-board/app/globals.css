@@ -359,6 +359,10 @@ body { background: radial-gradient(circle at 8% 8%, rgba(246, 197, 210, .34), tr
 .dispatch-rule { background: #fff0f4; border-block: 1px solid #ead2d9; padding: 11px 17px; }
 .dispatch-rule strong { color: #a34c6c; font-size: 10px; text-transform: uppercase; }
 .dispatch-rule p { color: #735e67; font-size: 11px; line-height: 1.5; margin: 3px 0 0; }
+.dispatch-lifecycle { background: #f6f2e8; border-bottom: 1px solid #ded4bd; display: grid; gap: 3px; padding: 11px 17px; }
+.dispatch-lifecycle > span { color: #704159; font-size: 10px; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
+.dispatch-lifecycle > strong { color: #30282b; font-size: 12px; text-transform: capitalize; }
+.dispatch-lifecycle > small { color: #574b4f; font-size: 10px; line-height: 1.45; }
 .dispatch-control > footer { align-items: center; display: flex; gap: 12px; justify-content: space-between; padding: 13px 17px; }
 .dispatch-control > footer span { color: var(--muted); font-size: 10px; line-height: 1.45; }
 .dispatch-control > footer button { background: #c85e84; border: 0; border-radius: 8px; color: white; cursor: pointer; font-size: 11px; font-weight: 850; padding: 10px 12px; }

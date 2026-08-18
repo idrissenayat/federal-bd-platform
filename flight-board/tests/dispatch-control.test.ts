@@ -5,10 +5,12 @@ import { buildDispatchIdentity, exactGitEvidence, validateDispatchRoute } from "
 const input = {
   podId: "pod-a", itemId: 28, itemKey: "STR-028", workflow: "STEER",
   agentMemberId: "agent-builder", agentKeyId: "builder-key", agentKeyVersion: 1,
-  agentPublicKeyFingerprint: "a".repeat(64), authorizationRevision: "2026-08-17T16:00:00.000Z",
+  agentPublicKey: "e".repeat(64), agentPublicKeyFingerprint: "a".repeat(64), authorizationRevision: "2026-08-17T16:00:00.000Z",
   authorizationAuditEventId: "decision-28", evidenceUrl: `https://github.com/idrissenayat/federal-bd-platform/blob/${"b".repeat(40)}/steer/exams/0028.md`,
   evidenceRevision: "b".repeat(40), evidenceSha256: "c".repeat(64), forecastAuditEventId: "forecast-28",
-  channelId: "10ac2fb4-f7fc-4dbc-bb73-8c545f31a470", nextAction: "Implement the exact approved Exam and stop before release.",
+  channelId: "10ac2fb4-f7fc-4dbc-bb73-8c545f31a470", routingConfigurationVersion: 1,
+  relayUrl: "https://relay.example", membershipVersion: 1,
+  nextAction: "Implement the exact approved Exam and stop before release.",
 };
 
 test("dispatch identity is deterministic and changes on an authorization binding", async () => {

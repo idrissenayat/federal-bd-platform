@@ -11,6 +11,8 @@ import {
 } from "../lib/work-economics";
 import { acceptedValueHypothesisReady, humanAcceptanceState, validateAndNormalizeWorkEconomics, type WorkEconomicsSection } from "../lib/work-economics-validation";
 import { buildDispatchIdentity, exactGitEvidence, STEER_HANDOFF_ROUTE_KEY, validateDispatchRoute, type DispatchRoute } from "../lib/dispatch-control";
+import { canonicalJson, sha256Hex } from "../lib/dispatch-lifecycle";
+import { buildInitialQueuedEvent, ensureDispatchServiceSigner, handleDispatchServiceApi, type DispatchServiceEnv } from "./dispatch";
 
 type D1Result<T = Record<string, unknown>> = {
   results?: T[];
@@ -29,7 +31,7 @@ type Database = {
   batch(statements: Statement[]): Promise<unknown[]>;
 };
 
-type Env = { DB: Database; GITHUB_TOKEN?: string };
+type Env = { DB: Database; GITHUB_TOKEN?: string } & DispatchServiceEnv;
 
 type User = { id: string; email: string | null; name: string };
 
@@ -150,6 +152,16 @@ async function authoritativeItemSnapshot(db: Database, user: User, itemId: numbe
   const [item, activity, economicsEvents] = await Promise.all([
     db.prepare(
       `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind,
+         (SELECT o.intent_id FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_intent_id,
+         (SELECT o.current_state FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_state,
+         (SELECT o.current_event_version FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_event_version,
+         (SELECT r.authorization_revision FROM dispatch_receipts r
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_authorization_revision,
+         (SELECT o.updated_at FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_updated_at,
          (SELECT a.created_at FROM activity a
           WHERE a.item_id = w.id AND a.action = 'updated' AND a.detail = 'state → complete'
           ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS closed_at
@@ -418,20 +430,56 @@ async function ensureSchema(db: Database) {
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_receipts_item_created ON dispatch_receipts (item_id, created_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_receipts_lineage ON dispatch_receipts (lineage_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_authorization_audits (
+      audit_event_id text PRIMARY KEY NOT NULL, intent_id text NOT NULL UNIQUE, item_id integer NOT NULL,
+      pod_id text NOT NULL, authorization_revision text NOT NULL, authorization_json text NOT NULL,
+      actor_id text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_authorization_item_created ON dispatch_authorization_audits (item_id, created_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_outbox (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL, intent_id text NOT NULL UNIQUE,
       receipt_id text NOT NULL, member_id text NOT NULL, channel_id text NOT NULL,
-      channel_name text NOT NULL, status text NOT NULL, attempt_number integer NOT NULL DEFAULT 0,
+      channel_name text NOT NULL, status text NOT NULL, current_state text NOT NULL DEFAULT 'QUEUED',
+      current_event_version integer NOT NULL DEFAULT 0, current_event_sha256 text NOT NULL,
+      attempt_number integer NOT NULL DEFAULT 0, lease_id text, lease_expires_at text,
+      reservation_fence text, send_started integer NOT NULL DEFAULT 0,
+      reconciliation_required integer NOT NULL DEFAULT 0, terminalization_requested integer NOT NULL DEFAULT 0,
+      relay_url text NOT NULL, routing_configuration_version integer NOT NULL,
+      delivered_event_id text, accepted_acknowledgement_sha256 text,
       last_error_code text, created_at text NOT NULL, updated_at text NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_outbox_status_created ON dispatch_outbox (status, created_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_events (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL, intent_id text NOT NULL,
-      event_version integer NOT NULL, event_type text NOT NULL, prior_state text,
-      resulting_state text, payload_json text NOT NULL, actor_id text NOT NULL, created_at text NOT NULL,
+      event_version integer NOT NULL, expected_event_version integer NOT NULL, event_type text NOT NULL, prior_state text,
+      resulting_state text, payload_json text NOT NULL, previous_event_sha256 text, event_sha256 text NOT NULL,
+      service_key_id text NOT NULL, service_key_version integer NOT NULL, service_signature text NOT NULL,
+      agent_key_id text, agent_key_version integer, agent_signature text, acknowledgement_sha256 text,
+      actor_id text NOT NULL, created_at text NOT NULL,
       UNIQUE(intent_id, event_version)
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_events_intent_created ON dispatch_events (intent_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_attempts (
+      intent_id text NOT NULL, attempt_number integer NOT NULL, lease_id text NOT NULL,
+      lease_expires_at text NOT NULL, reservation_fence text NOT NULL UNIQUE, status text NOT NULL,
+      created_at text NOT NULL, updated_at text NOT NULL, UNIQUE(intent_id, attempt_number)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_attempts_intent_status ON dispatch_attempts (intent_id, status)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_event_signers (
+      pod_id text NOT NULL, registry_version integer NOT NULL, service_role text NOT NULL,
+      allowed_event_types_json text NOT NULL, key_id text NOT NULL, key_version integer NOT NULL,
+      public_key text NOT NULL, valid_from text NOT NULL, valid_until text, status text NOT NULL,
+      changed_by text NOT NULL, change_reason text NOT NULL, created_at text NOT NULL,
+      UNIQUE(pod_id, key_id, key_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_event_signers_active ON dispatch_event_signers (pod_id, service_role, status)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS relay_event_signers (
+      pod_id text NOT NULL, registry_version integer NOT NULL, relay_url text NOT NULL, channel_id text NOT NULL,
+      key_id text NOT NULL, key_version integer NOT NULL, public_key text NOT NULL, valid_from text NOT NULL,
+      valid_until text, status text NOT NULL, changed_by text NOT NULL, change_reason text NOT NULL,
+      created_at text NOT NULL, UNIQUE(pod_id, key_id, key_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_relay_event_signers_active ON relay_event_signers (pod_id, relay_url, channel_id, status)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS code_reviews (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
       item_id integer NOT NULL,
@@ -477,6 +525,29 @@ async function ensureSchema(db: Database) {
   await ensureColumn(db, "agent_reviews", "evidence_url", "evidence_url text");
   await ensureColumn(db, "agent_reviews", "evidence_revision", "evidence_revision text");
   await ensureColumn(db, "agent_reviews", "evidence_sha256", "evidence_sha256 text");
+  await ensureColumn(db, "dispatch_events", "expected_event_version", "expected_event_version integer NOT NULL DEFAULT -1");
+  await ensureColumn(db, "dispatch_events", "previous_event_sha256", "previous_event_sha256 text");
+  await ensureColumn(db, "dispatch_events", "event_sha256", "event_sha256 text NOT NULL DEFAULT ''");
+  await ensureColumn(db, "dispatch_events", "service_key_id", "service_key_id text NOT NULL DEFAULT ''");
+  await ensureColumn(db, "dispatch_events", "service_key_version", "service_key_version integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "dispatch_events", "service_signature", "service_signature text NOT NULL DEFAULT ''");
+  await ensureColumn(db, "dispatch_events", "agent_key_id", "agent_key_id text");
+  await ensureColumn(db, "dispatch_events", "agent_key_version", "agent_key_version integer");
+  await ensureColumn(db, "dispatch_events", "agent_signature", "agent_signature text");
+  await ensureColumn(db, "dispatch_events", "acknowledgement_sha256", "acknowledgement_sha256 text");
+  await ensureColumn(db, "dispatch_outbox", "current_state", "current_state text NOT NULL DEFAULT 'QUEUED'");
+  await ensureColumn(db, "dispatch_outbox", "current_event_version", "current_event_version integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "dispatch_outbox", "current_event_sha256", "current_event_sha256 text NOT NULL DEFAULT ''");
+  await ensureColumn(db, "dispatch_outbox", "lease_id", "lease_id text");
+  await ensureColumn(db, "dispatch_outbox", "lease_expires_at", "lease_expires_at text");
+  await ensureColumn(db, "dispatch_outbox", "reservation_fence", "reservation_fence text");
+  await ensureColumn(db, "dispatch_outbox", "send_started", "send_started integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "dispatch_outbox", "reconciliation_required", "reconciliation_required integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "dispatch_outbox", "terminalization_requested", "terminalization_requested integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "dispatch_outbox", "relay_url", "relay_url text NOT NULL DEFAULT ''");
+  await ensureColumn(db, "dispatch_outbox", "routing_configuration_version", "routing_configuration_version integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "dispatch_outbox", "delivered_event_id", "delivered_event_id text");
+  await ensureColumn(db, "dispatch_outbox", "accepted_acknowledgement_sha256", "accepted_acknowledgement_sha256 text");
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_receipts_no_update
     BEFORE UPDATE ON dispatch_receipts BEGIN SELECT RAISE(ABORT, 'dispatch receipts are immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_receipts_no_delete
@@ -485,6 +556,19 @@ async function ensureSchema(db: Database) {
     BEFORE UPDATE ON dispatch_events BEGIN SELECT RAISE(ABORT, 'dispatch events are append-only'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_events_no_delete
     BEFORE DELETE ON dispatch_events BEGIN SELECT RAISE(ABORT, 'dispatch events require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_authorization_audits_no_update
+    BEFORE UPDATE ON dispatch_authorization_audits BEGIN SELECT RAISE(ABORT, 'dispatch authorization audits are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_authorization_audits_no_delete
+    BEFORE DELETE ON dispatch_authorization_audits BEGIN SELECT RAISE(ABORT, 'dispatch authorization audits require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_event_signers_no_update
+    BEFORE UPDATE ON dispatch_event_signers BEGIN SELECT RAISE(ABORT, 'dispatch signer registry entries are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_event_signers_no_delete
+    BEFORE DELETE ON dispatch_event_signers BEGIN SELECT RAISE(ABORT, 'dispatch signer registry entries are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS relay_event_signers_no_update
+    BEFORE UPDATE ON relay_event_signers BEGIN SELECT RAISE(ABORT, 'relay signer registry entries are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS relay_event_signers_no_delete
+    BEFORE DELETE ON relay_event_signers BEGIN SELECT RAISE(ABORT, 'relay signer registry entries are immutable'); END`).run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_dispatch_events_one_acknowledged ON dispatch_events (intent_id) WHERE event_type = 'ACKNOWLEDGED'").run();
   await db.prepare("PRAGMA optimize").run();
 }
 
@@ -705,6 +789,16 @@ async function bootstrap(db: Database, user: User) {
   const [items, members, activity, decisions, reviews, notifications, currentMember, economicsEvents] = await Promise.all([
     db.prepare(
       `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind,
+         (SELECT o.intent_id FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_intent_id,
+         (SELECT o.current_state FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_state,
+         (SELECT o.current_event_version FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_event_version,
+         (SELECT r.authorization_revision FROM dispatch_receipts r
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_authorization_revision,
+         (SELECT o.updated_at FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_updated_at,
          (SELECT a.created_at FROM activity a
           WHERE a.item_id = w.id AND a.action = 'updated' AND a.detail = 'state → complete'
           ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS closed_at
@@ -774,12 +868,12 @@ async function bootstrap(db: Database, user: User) {
   };
 }
 
-async function authorizeAgentDispatch(db: Database, user: User, itemId: number) {
+async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId: number) {
   const actor = await memberContext(db, user);
   if (actor?.kind !== "human") return json({ error: "Only an authenticated human POD member may authorize agent dispatch." }, 403);
   const item = await db.prepare(
     `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind, m.role AS assignee_role,
-            m.agent_key_id, m.agent_key_version, m.agent_public_key_fingerprint
+            m.agent_key_id, m.agent_key_version, m.agent_public_key, m.agent_public_key_fingerprint
      FROM work_items w JOIN members actor ON actor.id = ? AND actor.pod_id = w.pod_id
      LEFT JOIN members m ON m.id = w.assignee_id WHERE w.id = ?`,
   ).bind(user.id, itemId).first<Record<string, unknown>>();
@@ -822,8 +916,9 @@ async function authorizeAgentDispatch(db: Database, user: User, itemId: number) 
 
   const agentKeyId = String(item.agent_key_id ?? "");
   const agentKeyVersion = Number(item.agent_key_version ?? 0);
+  const agentPublicKey = String(item.agent_public_key ?? "");
   const agentPublicKeyFingerprint = String(item.agent_public_key_fingerprint ?? "");
-  if (!agentKeyId || !Number.isInteger(agentKeyVersion) || agentKeyVersion < 1 || !/^[0-9a-f]{64}$/i.test(agentPublicKeyFingerprint)) {
+  if (!agentKeyId || !Number.isInteger(agentKeyVersion) || agentKeyVersion < 1 || !/^[0-9a-f]{64}$/.test(agentPublicKey) || !/^[0-9a-f]{64}$/.test(agentPublicKeyFingerprint)) {
     return json({ error: "The assigned agent has no active versioned acknowledgement key enrollment.", code: "AGENT_KEY_NOT_ENROLLED", authorization }, 409);
   }
 
@@ -833,18 +928,27 @@ async function authorizeAgentDispatch(db: Database, user: User, itemId: number) 
     return json({ error: "Dispatch evidence must resolve to an immutable GitHub blob revision and exact content digest.", code: "EVIDENCE_REVISION_UNRESOLVED", authorization }, 409);
   }
   let forecastAcceptedAt = "not-required";
+  let forecastAuditEventId = "not-required";
   if (String(item.workflow) === "STEER") {
     try { forecastAcceptedAt = String((JSON.parse(String(item.delivery_forecast_json)) as Record<string, unknown>).acceptedAt ?? ""); } catch { forecastAcceptedAt = ""; }
     if (!forecastAcceptedAt) return json({ error: "The accepted forecast has no durable acceptance timestamp.", code: "FORECAST_AUDIT_MISSING", authorization }, 409);
+    const forecastEvent = await db.prepare(`SELECT id, replacement_json FROM work_economics_events
+      WHERE item_id = ? AND section = 'deliveryForecast' AND action IN ('accepted','corrected') ORDER BY id DESC LIMIT 1`)
+      .bind(itemId).first<{ id: number; replacement_json: string }>();
+    let eventAcceptedAt = "";
+    try { eventAcceptedAt = String((JSON.parse(String(forecastEvent?.replacement_json ?? "{}")) as Record<string, unknown>).acceptedAt ?? ""); } catch { eventAcceptedAt = ""; }
+    if (!forecastEvent || eventAcceptedAt !== forecastAcceptedAt) return json({ error: "The accepted forecast does not resolve to its append-only audit event.", code: "FORECAST_AUDIT_MISSING", authorization }, 409);
+    forecastAuditEventId = `work-economics:${forecastEvent.id}`;
   }
   const authorizationRevision = String(item.updated_at);
   const authorizationAuditEventId = `dispatch-authorize:${itemId}:${authorizationRevision}:${user.id}`;
   const identity = await buildDispatchIdentity({
     podId, itemId, itemKey: String(item.key), workflow: String(item.workflow),
-    agentMemberId: assigneeId, agentKeyId, agentKeyVersion, agentPublicKeyFingerprint,
+    agentMemberId: assigneeId, agentKeyId, agentKeyVersion, agentPublicKey, agentPublicKeyFingerprint,
     authorizationRevision, authorizationAuditEventId, evidenceUrl: exactEvidence.url,
     evidenceRevision: exactEvidence.revision, evidenceSha256: evidence.sha256,
-    forecastAuditEventId: forecastAcceptedAt, channelId: route.channelId, nextAction: String(item.next_action),
+    forecastAuditEventId, channelId: route.channelId, routingConfigurationVersion: route.configurationVersion,
+    relayUrl: route.relayUrl, membershipVersion: route.membershipVersion, nextAction: String(item.next_action),
   });
   const existing = await db.prepare("SELECT receipt_json FROM dispatch_receipts WHERE intent_id = ?").bind(identity.intentId).first<{ receipt_json: string }>();
   if (existing) {
@@ -853,6 +957,8 @@ async function authorizeAgentDispatch(db: Database, user: User, itemId: number) 
 
   const allowedScope = { next_action: String(item.next_action), evidence_url: exactEvidence.url };
   const prohibitedScope = { merge: true, deploy: true, release: true, human_gate_ruling: true, external_action_beyond_handoff: true };
+  const handoffMessage = `[${String(item.key)}] Authorized handoff to ${String(item.assignee_name)}. Receipt: ${identity.intentId}. Channel: ${route.channelName} (${route.channelId}). Next action: ${String(item.next_action)} Evidence: ${exactEvidence.url} Prohibited: merge, deployment, release, or any human gate ruling without a separate authenticated approval.`;
+  const authorizedHandoffSha256 = await sha256Hex(handoffMessage);
   const receipt = {
     schema: "steer-dispatch-receipt/v1", receipt_id: identity.intentId,
     dispatch_intent_id: identity.intentId, dispatch_claim_lineage_id: identity.lineageId,
@@ -863,30 +969,70 @@ async function authorizeAgentDispatch(db: Database, user: User, itemId: number) 
     enrolled_agent_key_version: agentKeyVersion, enrolled_agent_public_key_fingerprint: agentPublicKeyFingerprint,
     allowed_scope: allowedScope, prohibited_scope: prohibitedScope,
     evidence_url: exactEvidence.url, evidence_revision: exactEvidence.revision, evidence_sha256: evidence.sha256,
-    accepted_forecast_timestamp: forecastAcceptedAt, accepted_forecast_audit_event_id: forecastAcceptedAt,
+    accepted_forecast_timestamp: forecastAcceptedAt, accepted_forecast_audit_event_id: forecastAuditEventId,
     human_authorization_timestamp: now, human_authorization_actor_id: user.id,
     human_authorization_audit_event_id: authorizationAuditEventId,
     canonical_channel_id: route.channelId, canonical_channel_name: route.channelName,
     routing_configuration_version: route.configurationVersion, membership_version: route.membershipVersion,
     authorized_next_action_sha256: identity.nextActionDigest,
+    authorized_handoff_sha256: authorizedHandoffSha256,
+    authorized_handoff_message: handoffMessage,
     acknowledgement_policy: "exact-enrolled-agent-signature-required",
   };
-  const handoffMessage = `[${String(item.key)}] Authorized handoff to ${String(item.assignee_name)}. Receipt: ${identity.intentId}. Channel: ${route.channelName} (${route.channelId}). Next action: ${String(item.next_action)} Evidence: ${exactEvidence.url} Prohibited: merge, deployment, release, or any human gate ruling without a separate authenticated approval.`;
+  let dispatchSigner: Awaited<ReturnType<typeof ensureDispatchServiceSigner>>;
+  try {
+    dispatchSigner = await ensureDispatchServiceSigner(db, podId, user.id, env, now);
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Dispatch signing is unavailable.", code: "DISPATCH_SIGNER_UNAVAILABLE", authorization }, 503);
+  }
+  const queuedEvent = await buildInitialQueuedEvent({
+    intentId: identity.intentId,
+    lineageId: identity.lineageId,
+    occurredAt: now,
+    routingConfigurationVersion: route.configurationVersion,
+    evidenceRevision: exactEvidence.revision,
+    signer: dispatchSigner,
+  });
+  const authorizationAudit = {
+    schema: "steer-dispatch-authorization-audit/v1",
+    audit_event_id: authorizationAuditEventId,
+    dispatch_intent_id: identity.intentId,
+    workspace_pod_id: podId,
+    work_item_stable_id: itemId,
+    work_item_key: String(item.key),
+    authorization_revision: authorizationRevision,
+    human_actor_id: user.id,
+    assigned_agent_member_id: assigneeId,
+    allowed_scope: allowedScope,
+    prohibited_scope: prohibitedScope,
+    evidence_revision: exactEvidence.revision,
+    canonical_channel_id: route.channelId,
+    routing_configuration_version: route.configurationVersion,
+    occurred_at: now,
+  };
   await db.batch([
     db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'dispatch_authorized', ?, ?)")
       .bind(itemId, user.id, `authorized agent handoff receipt ${identity.intentId} to ${String(item.assignee_name)} in ${route.channelName} (${route.channelId})`, now),
+    db.prepare(`INSERT INTO dispatch_authorization_audits
+      (audit_event_id, intent_id, item_id, pod_id, authorization_revision, authorization_json, actor_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(authorizationAuditEventId, identity.intentId, itemId, podId, authorizationRevision, JSON.stringify(authorizationAudit), user.id, now),
     db.prepare(`INSERT INTO dispatch_receipts
       (intent_id, lineage_id, item_id, pod_id, authorization_revision, channel_id, configuration_version, receipt_json, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(identity.intentId, identity.lineageId, itemId, podId, authorizationRevision, route.channelId, route.configurationVersion, JSON.stringify(receipt), now),
     db.prepare(`INSERT INTO dispatch_outbox
-      (intent_id, receipt_id, member_id, channel_id, channel_name, status, attempt_number, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'QUEUED', 0, ?, ?)`)
-      .bind(identity.intentId, identity.intentId, assigneeId, route.channelId, route.channelName, now, now),
+      (intent_id, receipt_id, member_id, channel_id, channel_name, status, current_state, current_event_version,
+       current_event_sha256, attempt_number, send_started, reconciliation_required, terminalization_requested,
+       relay_url, routing_configuration_version, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'QUEUED', 'QUEUED', 0, ?, 0, 0, 0, 0, ?, ?, ?, ?)`)
+      .bind(identity.intentId, identity.intentId, assigneeId, route.channelId, route.channelName, queuedEvent.eventSha256, route.relayUrl, route.configurationVersion, now, now),
     db.prepare(`INSERT INTO dispatch_events
-      (intent_id, event_version, event_type, prior_state, resulting_state, payload_json, actor_id, created_at)
-      VALUES (?, 0, 'QUEUED', NULL, 'QUEUED', ?, ?, ?)`)
-      .bind(identity.intentId, JSON.stringify({ schema: "steer-dispatch-event/v1", dispatch_intent_id: identity.intentId, event_version: 0, expected_event_version: -1, previous_event_sha256: null, event_type: "QUEUED", receipt_id: identity.intentId, routing_configuration_version: route.configurationVersion }), user.id, now),
+      (intent_id, event_version, expected_event_version, event_type, prior_state, resulting_state, payload_json,
+       previous_event_sha256, event_sha256, service_key_id, service_key_version, service_signature,
+       agent_key_id, agent_key_version, agent_signature, acknowledgement_sha256, actor_id, created_at)
+      VALUES (?, 0, -1, 'QUEUED', NULL, 'QUEUED', ?, NULL, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?)`)
+      .bind(identity.intentId, canonicalJson(queuedEvent.envelope), queuedEvent.eventSha256, dispatchSigner.keyId, dispatchSigner.keyVersion, queuedEvent.envelope.service_signature, user.id, now),
     db.prepare(
       `INSERT OR IGNORE INTO notifications
        (dedupe_key, item_id, member_id, recipient_role, kind, title, body, channel, status, created_at)
@@ -2079,11 +2225,13 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/")) return null;
   if (!env.DB) return json({ error: "Persistent database binding is unavailable." }, 503);
-  const user = userFrom(request);
-  if (!user) return json({ error: "Authentication required." }, 401);
 
   try {
     await ensureSchema(env.DB);
+    const dispatchServiceResponse = await handleDispatchServiceApi(request, env.DB, env);
+    if (dispatchServiceResponse) return dispatchServiceResponse;
+    const user = userFrom(request);
+    if (!user) return json({ error: "Authentication required." }, 401);
     await ensureCurrentUser(env.DB, user);
     if (request.method === "GET" && url.pathname === "/api/buzz-status") return getBuzzStatus();
     if (request.method === "GET" && url.pathname === "/api/bootstrap") return json(await bootstrap(env.DB, user));
@@ -2095,7 +2243,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     const reviewMatch = url.pathname.match(/^\/api\/items\/(\d+)\/reviews$/);
     if (request.method === "POST" && reviewMatch) return runCriticReview(env.DB, user, Number(reviewMatch[1]));
     const dispatchMatch = url.pathname.match(/^\/api\/items\/(\d+)\/dispatch$/);
-    if (request.method === "POST" && dispatchMatch) return authorizeAgentDispatch(env.DB, user, Number(dispatchMatch[1]));
+    if (request.method === "POST" && dispatchMatch) return authorizeAgentDispatch(env.DB, env, user, Number(dispatchMatch[1]));
     const codeReviewMatch = url.pathname.match(/^\/api\/items\/(\d+)\/code-review$/);
     if (request.method === "GET" && codeReviewMatch) return loadCodeReview(env.DB, env, user, Number(codeReviewMatch[1]));
     if (request.method === "POST" && codeReviewMatch) return actOnCodeReview(request, env.DB, env, user, Number(codeReviewMatch[1]));

@@ -56,6 +56,11 @@ type WorkItem = {
   updated_at: string;
   work_economics: WorkEconomicsRecord;
   dispatch_authorization: AgentDispatchAuthorization;
+  dispatch_intent_id?: string | null;
+  dispatch_state?: string | null;
+  dispatch_event_version?: number | null;
+  dispatch_authorization_revision?: string | null;
+  dispatch_updated_at?: string | null;
 };
 
 type WorkEconomicsEvent = {
@@ -566,6 +571,8 @@ export function WorkEconomicsPanel({ item, events, members, serviceLevels, curre
 
 function AgentDispatchControl({ item, dispatching, copied, onDispatch }: { item: WorkItem; dispatching: boolean; copied: boolean; onDispatch: () => void }) {
   const authorization = item.dispatch_authorization;
+  const currentReceipt = Boolean(item.dispatch_intent_id) && item.dispatch_authorization_revision === item.updated_at;
+  const dispatchState = item.dispatch_state ? item.dispatch_state.replaceAll("_", " ") : null;
   return <section className={`dispatch-control ${authorization.authorized ? "dispatch-authorized" : "dispatch-blocked"}`}>
     <header>
       <div><span>Agent work authorization</span><h3>{authorization.authorized ? "Ready for a controlled Buzz handoff" : "Buzz cannot start this work"}</h3></div>
@@ -576,9 +583,14 @@ function AgentDispatchControl({ item, dispatching, copied, onDispatch }: { item:
       {authorization.checks.map((check) => <div className={check.met ? "met" : "missing"} key={check.id}><span>{check.met ? "✓" : "!"}</span><div><strong>{check.label}</strong><small>{check.detail}</small></div></div>)}
     </div>
     <div className="dispatch-rule"><strong>One rule</strong><p>The Flight Board authorizes and assigns. Buzz coordinates the conversation. GitHub proves the implementation.</p></div>
+    {item.dispatch_intent_id && <div className="dispatch-lifecycle" role="status" aria-live="polite" aria-label="Durable dispatch status">
+      <span>Durable handoff</span>
+      <strong>{dispatchState} · event v{item.dispatch_event_version ?? 0}</strong>
+      <small>Receipt {item.dispatch_intent_id.slice(0, 12)} · updated {item.dispatch_updated_at ? formatDate(item.dispatch_updated_at) : "not recorded"}</small>
+    </div>}
     <footer>
       <span>{authorization.authorized ? `Handoff destination: ${authorization.channel}` : "Resolve the missing controls above in this work item."}</span>
-      <button type="button" disabled={!authorization.authorized || dispatching} onClick={onDispatch}>{dispatching ? "Authorizing…" : copied ? "Handoff copied ✓" : "Authorize & copy Buzz handoff"}</button>
+      <button type="button" disabled={!authorization.authorized || dispatching || currentReceipt} onClick={onDispatch}>{dispatching ? "Authorizing…" : currentReceipt ? "Receipt already recorded" : copied ? "Handoff copied ✓" : "Authorize & copy Buzz handoff"}</button>
     </footer>
   </section>;
 }

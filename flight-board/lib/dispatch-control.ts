@@ -19,6 +19,7 @@ export type DispatchIdentityInput = {
   agentMemberId: string;
   agentKeyId: string;
   agentKeyVersion: number;
+  agentPublicKey: string;
   agentPublicKeyFingerprint: string;
   authorizationRevision: string;
   authorizationAuditEventId: string;
@@ -27,6 +28,9 @@ export type DispatchIdentityInput = {
   evidenceSha256: string;
   forecastAuditEventId: string;
   channelId: string;
+  routingConfigurationVersion: number;
+  relayUrl: string;
+  membershipVersion: number;
   nextAction: string;
 };
 
@@ -62,6 +66,7 @@ export async function buildDispatchIdentity(input: DispatchIdentityInput) {
     assigned_agent_member_id: input.agentMemberId,
     assigned_agent_key_id: input.agentKeyId,
     assigned_agent_key_version: input.agentKeyVersion,
+    assigned_agent_public_key: input.agentPublicKey,
     assigned_agent_public_key_fingerprint: input.agentPublicKeyFingerprint,
     authorization_revision: input.authorizationRevision,
     human_authorization_audit_event_id: input.authorizationAuditEventId,
@@ -70,6 +75,9 @@ export async function buildDispatchIdentity(input: DispatchIdentityInput) {
     evidence_sha256: input.evidenceSha256,
     accepted_forecast_audit_event_id: input.forecastAuditEventId,
     canonical_channel_id: input.channelId,
+    routing_configuration_version: input.routingConfigurationVersion,
+    relay_url: input.relayUrl,
+    membership_version: input.membershipVersion,
     authorized_next_action_sha256: nextActionDigest,
   };
   const lineagePayload = {
