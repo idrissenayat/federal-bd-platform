@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS `decision_intents` (
   `accepted_countersignatures` integer NOT NULL DEFAULT 0,
   `submitter_id` text NOT NULL,
   `submitter_role` text NOT NULL,
+  `decision_session_id` text NOT NULL UNIQUE,
   `effective_not_before` text NOT NULL,
   `signer_policy_version` integer NOT NULL,
   `created_at` text NOT NULL,
@@ -35,6 +36,13 @@ CREATE TABLE IF NOT EXISTS `decision_intents` (
   UNIQUE(`pod_id`,`idempotency_key`)
 );
 CREATE INDEX IF NOT EXISTS `idx_decision_intents_item_created` ON `decision_intents` (`item_id`,`created_at`);
+
+CREATE TABLE IF NOT EXISTS `decision_sessions` (
+  `session_id` text PRIMARY KEY NOT NULL, `pod_id` text NOT NULL, `principal_id` text NOT NULL,
+  `item_id` integer NOT NULL, `decision_kind` text NOT NULL, `reason` text NOT NULL,
+  `started_at` text NOT NULL, `expires_at` text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS `idx_decision_sessions_principal_started` ON `decision_sessions` (`principal_id`,`started_at`);
 
 CREATE TABLE IF NOT EXISTS `decision_signer_policies` (
   `pod_id` text NOT NULL, `policy_version` integer NOT NULL, `operating_mode` text NOT NULL,
@@ -82,8 +90,18 @@ BEFORE UPDATE ON `decision_packages` BEGIN SELECT RAISE(ABORT, 'decision package
 CREATE TRIGGER IF NOT EXISTS `decision_packages_no_delete`
 BEFORE DELETE ON `decision_packages` BEGIN SELECT RAISE(ABORT, 'decision packages require governed retention'); END;
 CREATE TRIGGER IF NOT EXISTS `decision_intents_immutable_payload`
-BEFORE UPDATE ON `decision_intents` WHEN NEW.intent_json != OLD.intent_json OR NEW.intent_sha256 != OLD.intent_sha256 OR NEW.submitter_id != OLD.submitter_id OR NEW.created_at != OLD.created_at
+BEFORE UPDATE ON `decision_intents` WHEN NEW.intent_json != OLD.intent_json OR NEW.intent_sha256 != OLD.intent_sha256
+  OR NEW.submitter_id != OLD.submitter_id OR NEW.submitter_role != OLD.submitter_role
+  OR NEW.decision_session_id != OLD.decision_session_id
+  OR NEW.required_countersignatures != OLD.required_countersignatures
+  OR NEW.effective_not_before != OLD.effective_not_before OR NEW.signer_policy_version != OLD.signer_policy_version
+  OR NEW.created_at != OLD.created_at
 BEGIN SELECT RAISE(ABORT, 'decision intent authority is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS `decision_intents_immutable_authority_v2`
+BEFORE UPDATE ON `decision_intents` WHEN NEW.submitter_role != OLD.submitter_role
+  OR NEW.required_countersignatures != OLD.required_countersignatures
+  OR NEW.effective_not_before != OLD.effective_not_before OR NEW.signer_policy_version != OLD.signer_policy_version
+BEGIN SELECT RAISE(ABORT, 'decision intent signer authority is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS `decision_proof_events_no_update`
 BEFORE UPDATE ON `decision_proof_events` BEGIN SELECT RAISE(ABORT, 'decision proof events are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS `decision_proof_events_no_delete`
@@ -98,3 +116,7 @@ CREATE TRIGGER IF NOT EXISTS `decision_signer_policies_no_update`
 BEFORE UPDATE ON `decision_signer_policies` BEGIN SELECT RAISE(ABORT, 'decision signer policies are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS `decision_signer_policies_no_delete`
 BEFORE DELETE ON `decision_signer_policies` BEGIN SELECT RAISE(ABORT, 'decision signer policies require governed retention'); END;
+CREATE TRIGGER IF NOT EXISTS `decision_sessions_no_update`
+BEFORE UPDATE ON `decision_sessions` BEGIN SELECT RAISE(ABORT, 'decision sessions are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS `decision_sessions_no_delete`
+BEFORE DELETE ON `decision_sessions` BEGIN SELECT RAISE(ABORT, 'decision sessions require governed retention'); END;

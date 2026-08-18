@@ -194,10 +194,20 @@ export const decisionIntents = sqliteTable(
     intentJson: text("intent_json").notNull(), intentSha256: text("intent_sha256").notNull(), currentState: text("current_state").notNull(),
     currentSequence: integer("current_sequence").notNull(), currentEventSha256: text("current_event_sha256").notNull(),
     requiredCountersignatures: integer("required_countersignatures").notNull().default(1), acceptedCountersignatures: integer("accepted_countersignatures").notNull().default(0),
-    submitterId: text("submitter_id").notNull(), submitterRole: text("submitter_role").notNull(), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
+    submitterId: text("submitter_id").notNull(), submitterRole: text("submitter_role").notNull(), decisionSessionId: text("decision_session_id").notNull().unique(), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
     effectiveNotBefore: text("effective_not_before").notNull(), signerPolicyVersion: integer("signer_policy_version").notNull(),
   },
   (table) => [index("idx_decision_intents_item_created").on(table.itemId, table.createdAt), uniqueIndex("uq_decision_intents_pod_idempotency").on(table.podId, table.idempotencyKey)],
+);
+
+export const decisionSessions = sqliteTable(
+  "decision_sessions",
+  {
+    sessionId: text("session_id").primaryKey(), podId: text("pod_id").notNull(), principalId: text("principal_id").notNull(),
+    itemId: integer("item_id").notNull(), decisionKind: text("decision_kind").notNull(), reason: text("reason").notNull(),
+    startedAt: text("started_at").notNull(), expiresAt: text("expires_at").notNull(),
+  },
+  (table) => [index("idx_decision_sessions_principal_started").on(table.principalId, table.startedAt)],
 );
 
 export const decisionSignerPolicies = sqliteTable(

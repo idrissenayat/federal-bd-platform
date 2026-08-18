@@ -53,6 +53,7 @@ export type DecisionIntentPayload = {
   target: DecisionTarget;
   submitter_principal: string;
   submitter_role: string;
+  decision_session_id: string;
   submitted_at: string;
   effective_not_before: string;
   operating_mode: "SOLO_CALIBRATION" | "TEAM";
@@ -88,7 +89,7 @@ export function validateDecisionTarget(target: DecisionTarget) {
 }
 
 export function validateDecisionIntent(input: DecisionIntentPayload) {
-  if (!UUID_V7.test(input.intent_id) || !UUID_V7.test(input.receipt_id) || !UUID_V7.test(input.idempotency_key)) return "Decision identities must be UUIDv7.";
+  if (!UUID_V7.test(input.intent_id) || !UUID_V7.test(input.receipt_id) || !UUID_V7.test(input.idempotency_key) || !UUID_V7.test(input.decision_session_id)) return "Decision identities must be UUIDv7.";
   if (input.sequence !== 1) return "A new decision intent must begin at sequence 1.";
   if (!Number.isInteger(input.signer_policy_version) || input.signer_policy_version < 1) return "A positive signer policy version is required.";
   if (!["SOLO_CALIBRATION", "TEAM"].includes(input.operating_mode)) return "A recognized signer operating mode is required.";
@@ -180,13 +181,17 @@ export async function createDecisionIssuerEnvelope(input: {
   issuerPrincipal: string;
   issuedAt: string;
 }) {
+  const intentSha256 = await decisionDigest(input.intent);
   const payload = {
     schema: "steer.gate-receipt.payload.v1", receipt_id: input.intent.receipt_id,
     intent_id: input.intent.intent_id, package_id: input.intent.package_id,
+    intent_sha256: intentSha256, idempotency_key: input.intent.idempotency_key,
     item_key: input.intent.item_key, decision_kind: input.intent.decision_kind,
     decision: input.intent.decision, final_reasoning_sha256: await sha256Hex(input.intent.final_reasoning),
+    draft_sha256: input.intent.draft_sha256, evidence_set_sha256: input.intent.evidence_set_sha256,
     target: input.intent.target, submitter_principal: input.intent.submitter_principal,
-    submitter_role: input.intent.submitter_role, submitted_at: input.intent.submitted_at,
+    submitter_role: input.intent.submitter_role, decision_session_id: input.intent.decision_session_id,
+    submitted_at: input.intent.submitted_at,
     effective_not_before: input.intent.effective_not_before, operating_mode: input.intent.operating_mode,
     signer_policy_version: input.intent.signer_policy_version, required_countersignatures: input.intent.required_countersignatures,
     sequence: input.intent.sequence,

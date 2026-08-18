@@ -108,10 +108,17 @@ function json(data: unknown, status = 200) {
   });
 }
 
-type MemberContext = { id: string; kind: string; role: string; pod_id: string | null };
+type MemberContext = { id: string; kind: string; role: string; status: string; pod_id: string | null };
 
 async function memberContext(db: Database, user: User) {
-  return db.prepare("SELECT id, kind, role, pod_id FROM members WHERE id = ?").bind(user.id).first<MemberContext>();
+  return db.prepare("SELECT id, kind, role, status, pod_id FROM members WHERE id = ?").bind(user.id).first<MemberContext>();
+}
+
+function humanDecisionAuthority(member: MemberContext | null, gate: string): member is MemberContext {
+  if (!member || member.kind !== "human" || member.status !== "available") return false;
+  return (gate === "Gate 1 pending" && member.role.includes("Product Lead")) ||
+    (gate === "Gate 2 pending" && member.role.includes("Tech Lead")) ||
+    (gate === "Gate 3 pending" && member.role.includes("Product Lead") && member.role.includes("Tech Lead"));
 }
 
 async function scopedItem(db: Database, user: User, itemId: number) {
@@ -407,11 +414,18 @@ async function ensureSchema(db: Database) {
       intent_json text NOT NULL, intent_sha256 text NOT NULL, current_state text NOT NULL,
       current_sequence integer NOT NULL, current_event_sha256 text NOT NULL,
       required_countersignatures integer NOT NULL DEFAULT 1, accepted_countersignatures integer NOT NULL DEFAULT 0,
-      submitter_id text NOT NULL, submitter_role text NOT NULL, created_at text NOT NULL, updated_at text NOT NULL,
+      submitter_id text NOT NULL, submitter_role text NOT NULL, decision_session_id text NOT NULL UNIQUE,
+      created_at text NOT NULL, updated_at text NOT NULL,
       effective_not_before text NOT NULL, signer_policy_version integer NOT NULL,
       UNIQUE(pod_id, idempotency_key)
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_decision_intents_item_created ON decision_intents (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS decision_sessions (
+      session_id text PRIMARY KEY NOT NULL, pod_id text NOT NULL, principal_id text NOT NULL,
+      item_id integer NOT NULL, decision_kind text NOT NULL, reason text NOT NULL,
+      started_at text NOT NULL, expires_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_decision_sessions_principal_started ON decision_sessions (principal_id, started_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS decision_signer_policies (
       pod_id text NOT NULL, policy_version integer NOT NULL, operating_mode text NOT NULL,
       required_countersignatures integer NOT NULL, cooling_hours integer NOT NULL,
@@ -681,8 +695,18 @@ async function ensureSchema(db: Database) {
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_intents_immutable_payload
     BEFORE UPDATE ON decision_intents WHEN
       NEW.intent_json != OLD.intent_json OR NEW.intent_sha256 != OLD.intent_sha256 OR
-      NEW.submitter_id != OLD.submitter_id OR NEW.created_at != OLD.created_at
+      NEW.submitter_id != OLD.submitter_id OR NEW.submitter_role != OLD.submitter_role OR
+      NEW.decision_session_id != OLD.decision_session_id OR
+      NEW.required_countersignatures != OLD.required_countersignatures OR
+      NEW.effective_not_before != OLD.effective_not_before OR NEW.signer_policy_version != OLD.signer_policy_version OR
+      NEW.created_at != OLD.created_at
     BEGIN SELECT RAISE(ABORT, 'decision intent authority is immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_intents_immutable_authority_v2
+    BEFORE UPDATE ON decision_intents WHEN
+      NEW.submitter_role != OLD.submitter_role OR
+      NEW.required_countersignatures != OLD.required_countersignatures OR
+      NEW.effective_not_before != OLD.effective_not_before OR NEW.signer_policy_version != OLD.signer_policy_version
+    BEGIN SELECT RAISE(ABORT, 'decision intent signer authority is immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_proof_events_no_update
     BEFORE UPDATE ON decision_proof_events BEGIN SELECT RAISE(ABORT, 'decision proof events are append-only'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_proof_events_no_delete
@@ -700,7 +724,13 @@ async function ensureSchema(db: Database) {
     BEFORE DELETE ON decision_signer_policies BEGIN SELECT RAISE(ABORT, 'decision signer policies require governed retention'); END`).run();
   await ensureColumn(db, "decision_intents", "effective_not_before", "effective_not_before text NOT NULL DEFAULT '9999-12-31T23:59:59Z'");
   await ensureColumn(db, "decision_intents", "signer_policy_version", "signer_policy_version integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "decision_intents", "decision_session_id", "decision_session_id text");
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_decision_intents_session ON decision_intents (decision_session_id) WHERE decision_session_id IS NOT NULL").run();
   await ensureColumn(db, "decision_signer_policies", "ruling_sha256", "ruling_sha256 text NOT NULL DEFAULT ''");
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_sessions_no_update
+    BEFORE UPDATE ON decision_sessions BEGIN SELECT RAISE(ABORT, 'decision sessions are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_sessions_no_delete
+    BEFORE DELETE ON decision_sessions BEGIN SELECT RAISE(ABORT, 'decision sessions require governed retention'); END`).run();
   await ensureColumn(db, "agent_reviews", "evidence_url", "evidence_url text");
   await ensureColumn(db, "agent_reviews", "evidence_revision", "evidence_revision text");
   await ensureColumn(db, "agent_reviews", "evidence_sha256", "evidence_sha256 text");
@@ -2677,22 +2707,38 @@ async function prepareDecisionPackage(db: Database, user: User, itemId: number) 
   return json({ package: prepared, package_sha256: packageSha256, advisory: true, decision_created: false }, 201);
 }
 
+async function startDecisionSession(request: Request, db: Database, user: User, itemId: number) {
+  const current = await scopedItemOrDenied(db, user, itemId, "decision session start");
+  if (!current) return json({ error: "Work item not found in your POD." }, 404);
+  const member = await memberContext(db, user);
+  const gate = String(current.gate);
+  if (!humanDecisionAuthority(member, gate)) return json({ error: `Your current human membership is not authorized to start a ${gate} decision session.` }, 403);
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  const reason = String(body?.reason ?? "").trim();
+  if (reason.length < 12) return json({ error: "Confirm that you are starting a fresh work session after rereading the exact evidence." }, 400);
+  const now = new Date();
+  const sessionId = createUuidV7(now.getTime());
+  const expiresAt = new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString();
+  await db.prepare(`INSERT INTO decision_sessions
+    (session_id, pod_id, principal_id, item_id, decision_kind, reason, started_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(sessionId, String(current.pod_id), user.id, itemId, gate, reason, now.toISOString(), expiresAt).run();
+  return json({ session_id: sessionId, item_key: current.key, decision_kind: gate, expires_at: expiresAt, one_intent_only: true }, 201);
+}
+
 async function createDecisionIntent(request: Request, db: Database, user: User, itemId: number) {
   const current = await scopedItemOrDenied(db, user, itemId, "decision intent submission");
   if (!current) return json({ error: "Work item not found in your POD." }, 404);
   const member = await memberContext(db, user);
   const gate = String(current.gate);
-  const authorized = member?.kind === "human" && (
-    (gate === "Gate 1 pending" && member.role.includes("Product Lead")) ||
-    (gate === "Gate 2 pending" && member.role.includes("Tech Lead")) ||
-    (gate === "Gate 3 pending" && member.role.includes("Product Lead") && member.role.includes("Tech Lead"))
-  );
+  const authorized = humanDecisionAuthority(member, gate);
   if (!authorized) return json({ error: `Your recorded human role is not authorized to submit intent for ${gate}.` }, 403);
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const packageId = String(body?.package_id ?? "");
   const decision = String(body?.decision ?? "");
   const finalReasoning = String(body?.final_reasoning ?? "").trim();
   const idempotencyKey = String(body?.idempotency_key ?? "");
+  const decisionSessionId = String(body?.decision_session_id ?? "");
   if (!["APPROVED", "CHANGES_REQUESTED"].includes(decision)) return json({ error: "Select one explicit human ruling." }, 400);
   const prepared = await db.prepare("SELECT * FROM decision_packages WHERE package_id = ? AND item_id = ? AND pod_id = ?")
     .bind(packageId, itemId, String(current.pod_id)).first<Record<string, unknown>>();
@@ -2701,8 +2747,21 @@ async function createDecisionIntent(request: Request, db: Database, user: User, 
     .bind(String(current.pod_id), idempotencyKey).first<Record<string, unknown>>();
   if (existing) {
     const prior = JSON.parse(String(existing.intent_json)) as DecisionIntentPayload;
-    if (prior.package_id !== packageId || prior.decision !== decision || prior.final_reasoning !== finalReasoning) return json({ error: "The idempotency key is already bound to different decision bytes." }, 409);
+    if (prior.package_id !== packageId || prior.decision !== decision || prior.final_reasoning !== finalReasoning || prior.decision_session_id !== decisionSessionId) return json({ error: "The idempotency key is already bound to different decision bytes." }, 409);
     return json(safeDecisionExport(prior, String(existing.current_state) as "PENDING_PROOF", String(existing.current_event_sha256)));
+  }
+  const now = new Date().toISOString();
+  const decisionSession = await db.prepare(`SELECT * FROM decision_sessions WHERE session_id = ?
+    AND pod_id = ? AND principal_id = ? AND item_id = ? AND decision_kind = ? AND expires_at > ?`)
+    .bind(decisionSessionId, String(current.pod_id), user.id, itemId, gate, now).first<Record<string, unknown>>();
+  if (!decisionSession) return json({ error: "Start a fresh, unexpired decision session for this exact work item and Gate before submitting intent." }, 409);
+  const priorDecision = await db.prepare(`SELECT i.intent_json FROM decisions d
+    LEFT JOIN decision_intents i ON i.intent_id = d.decision_intent_id
+    WHERE d.item_id = ? ORDER BY d.id DESC LIMIT 1`).bind(itemId).first<{ intent_json: string | null }>();
+  if (["Gate 2 pending", "Gate 3 pending"].includes(gate)) {
+    if (!priorDecision?.intent_json) return json({ error: "The prior Gate lacks durable session proof; this later Gate remains default-closed." }, 409);
+    const priorIntent = JSON.parse(priorDecision.intent_json) as DecisionIntentPayload;
+    if (priorIntent.decision_session_id === decisionSessionId) return json({ error: "A later Gate must use a different work session from the prior Gate." }, 409);
   }
   const target = JSON.parse(String(prepared.target_json)) as DecisionIntentPayload["target"];
   const draft = JSON.parse(String(prepared.package_json)) as PreparedDecisionPackage;
@@ -2710,14 +2769,13 @@ async function createDecisionIntent(request: Request, db: Database, user: User, 
     WHERE pod_id = ? AND status = 'ACTIVE' ORDER BY policy_version DESC LIMIT 1`)
     .bind(String(current.pod_id)).first<Record<string, unknown>>();
   if (!signerPolicy) return json({ error: "Decision intent submission is default-closed until the Tech Lead activates an exact-revision signer policy." }, 409);
-  const now = new Date().toISOString();
   const coolingHours = Number(signerPolicy.cooling_hours);
   const effectiveNotBefore = new Date(Date.parse(now) + coolingHours * 60 * 60 * 1000).toISOString();
   const intent: DecisionIntentPayload = {
     schema: "steer-decision-intent/v1", intent_id: createUuidV7(), receipt_id: createUuidV7(), package_id: packageId,
     item_key: String(current.key), decision_kind: gate, decision, final_reasoning: finalReasoning,
     draft_sha256: await decisionDigest(draft), evidence_set_sha256: String(prepared.evidence_set_sha256), target,
-    submitter_principal: user.id, submitter_role: member.role, submitted_at: now,
+    submitter_principal: user.id, submitter_role: member.role, decision_session_id: decisionSessionId, submitted_at: now,
     effective_not_before: effectiveNotBefore,
     operating_mode: String(signerPolicy.operating_mode) as DecisionIntentPayload["operating_mode"],
     signer_policy_version: Number(signerPolicy.policy_version),
@@ -2733,11 +2791,11 @@ async function createDecisionIntent(request: Request, db: Database, user: User, 
       (intent_id, receipt_id, package_id, item_id, pod_id, idempotency_key, intent_json, intent_sha256,
        current_state, current_sequence, current_event_sha256, required_countersignatures,
        accepted_countersignatures, submitter_id, submitter_role, effective_not_before,
-       signer_policy_version, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_PROOF', 1, ?, ?, 0, ?, ?, ?, ?, ?, ?)`).bind(
+       decision_session_id, signer_policy_version, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_PROOF', 1, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`).bind(
       intent.intent_id, intent.receipt_id, packageId, itemId, String(current.pod_id), idempotencyKey,
       JSON.stringify(intent), intentSha256, eventResult.event_sha256, intent.required_countersignatures,
-      user.id, member.role, intent.effective_not_before, intent.signer_policy_version, now, now,
+      user.id, member.role, intent.effective_not_before, intent.decision_session_id, intent.signer_policy_version, now, now,
     ),
     db.prepare(`INSERT INTO decision_proof_events
       (intent_id, sequence, event_type, resulting_state, previous_event_sha256, event_json, event_sha256, actor_id, created_at)
@@ -2754,6 +2812,41 @@ async function exportDecisionIntent(db: Database, user: User, intentId: string) 
     .bind(user.id, intentId).first<Record<string, unknown>>();
   if (!row) return json({ error: "Decision receipt not found in your POD." }, 404);
   return json(safeDecisionExport(JSON.parse(String(row.intent_json)) as DecisionIntentPayload, String(row.current_state) as "PENDING_PROOF", String(row.current_event_sha256)));
+}
+
+async function appendDecisionFailure(db: Database, row: Record<string, unknown>, intent: DecisionIntentPayload, eventType: string, code: string, resultingState: "PROOF_FAILED" | "PENDING_COUNTERSIGNATURE") {
+  const sequence = Number(row.current_sequence) + 1;
+  const now = new Date().toISOString();
+  const eventResult = await buildDecisionEvent({
+    intent_id: intent.intent_id, sequence, previous_event_sha256: String(row.current_event_sha256),
+    event_type: eventType, resulting_state: resultingState, actor_id: "steer-decision-proof-service",
+    occurred_at: now, payload: { code },
+  });
+  try {
+    await db.batch([
+      db.prepare(`INSERT INTO decision_proof_events
+        (intent_id, sequence, event_type, resulting_state, previous_event_sha256, event_json, event_sha256, actor_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'steer-decision-proof-service', ?)`)
+        .bind(intent.intent_id, sequence, eventType, resultingState, String(row.current_event_sha256), JSON.stringify(eventResult.event), eventResult.event_sha256, now),
+      db.prepare(`UPDATE decision_intents SET current_state = ?, current_sequence = ?, current_event_sha256 = ?, updated_at = ?
+        WHERE intent_id = ? AND current_state = ? AND current_sequence = ?`)
+        .bind(resultingState, sequence, eventResult.event_sha256, now, intent.intent_id, String(row.current_state), Number(row.current_sequence)),
+    ]);
+  } catch {
+    // A concurrent verifier may have already appended the same authoritative outcome.
+  }
+}
+
+async function currentIntentAuthority(db: Database, row: Record<string, unknown>, intent: DecisionIntentPayload, requireUnexpired: boolean) {
+  const member = await db.prepare("SELECT kind, role, status, pod_id FROM members WHERE id = ?")
+    .bind(intent.submitter_principal).first<MemberContext>();
+  if (!humanDecisionAuthority(member, intent.decision_kind) || member?.pod_id !== row.pod_id || member.role !== intent.submitter_role) return false;
+  const session = await db.prepare(`SELECT * FROM decision_sessions WHERE session_id = ? AND pod_id = ?
+    AND principal_id = ? AND item_id = ? AND decision_kind = ?`)
+    .bind(intent.decision_session_id, String(row.pod_id), intent.submitter_principal, Number(row.item_id), intent.decision_kind)
+    .first<Record<string, unknown>>();
+  if (!session || String(session.started_at) > intent.submitted_at || String(session.expires_at) < intent.submitted_at) return false;
+  return !requireUnexpired || String(session.expires_at) > new Date().toISOString();
 }
 
 async function activateDecisionSignerPolicy(request: Request, db: Database, user: User) {
@@ -2821,13 +2914,17 @@ async function proveDecisionIntent(request: Request, db: Database, env: Env, int
   if (!/^[0-9a-f]{64}$/.test(privateKey) || !keyId || !Number.isInteger(keyVersion) || keyVersion < 1) return json({ error: "Decision proof service configuration is incomplete." }, 503);
   const intentRow = await db.prepare("SELECT * FROM decision_intents WHERE intent_id = ?").bind(intentId).first<Record<string, unknown>>();
   if (!intentRow) return json({ error: "Decision intent not found." }, 404);
+  const intent = JSON.parse(String(intentRow.intent_json)) as DecisionIntentPayload;
+  if (!await currentIntentAuthority(db, intentRow, intent, true)) {
+    await appendDecisionFailure(db, intentRow, intent, "ISSUER_AUTHORITY_REJECTED", "SUBMITTER_OR_SESSION_AUTHORITY_DRIFT", "PROOF_FAILED");
+    return json({ error: "The submitter membership, role, POD, or decision session is no longer valid; the intent remains ineffective." }, 409);
+  }
   const publicKey = decisionIssuerPublicKey(privateKey);
   const signer = await db.prepare(`SELECT * FROM decision_issuer_signers
     WHERE pod_id = ? AND key_id = ? AND key_version = ? AND status = 'ACTIVE'`)
     .bind(String(intentRow.pod_id), keyId, keyVersion).first<Record<string, unknown>>();
   if (!signer || signer.public_key !== publicKey) return json({ error: "The configured private key has no matching human-activated public signer record." }, 409);
   const existingEnvelope = await db.prepare("SELECT * FROM decision_issuer_envelopes WHERE intent_id = ?").bind(intentId).first<Record<string, unknown>>();
-  const intent = JSON.parse(String(intentRow.intent_json)) as DecisionIntentPayload;
   if (existingEnvelope) return json({ ...safeDecisionExport(intent, String(intentRow.current_state) as "PENDING_COUNTERSIGNATURE", String(intentRow.current_event_sha256)), issuer_envelope_sha256: existingEnvelope.envelope_sha256, replay: true });
   if (intentRow.current_state !== "PENDING_PROOF" || Number(intentRow.current_sequence) !== 1) return json({ error: "Only an exact sequence-1 PENDING_PROOF intent may receive issuer proof." }, 409);
   const now = new Date().toISOString();
@@ -2864,12 +2961,24 @@ async function finalizeDecisionIntent(request: Request, db: Database, env: Env, 
   const intent = JSON.parse(String(row.intent_json)) as DecisionIntentPayload;
   if (await decisionDigest(intent) !== row.intent_sha256) return json({ error: "The immutable intent digest does not match its stored payload." }, 409);
   if (row.current_state === "EFFECTIVE") return json({ ...safeDecisionExport(intent, "EFFECTIVE", String(row.current_event_sha256)), replay: true });
+  if (!await currentIntentAuthority(db, row, intent, false)) {
+    await appendDecisionFailure(db, row, intent, "FINALIZATION_AUTHORITY_REJECTED", "SUBMITTER_OR_SESSION_AUTHORITY_DRIFT", "PENDING_COUNTERSIGNATURE");
+    return json({ error: "Current human membership, role, POD, or durable session proof no longer authorizes this decision; it remains ineffective." }, 409);
+  }
   const now = new Date().toISOString();
+  const acceptedCountersignatures = await db.prepare(`SELECT COUNT(*) AS count FROM decision_proof_events
+    WHERE intent_id = ? AND event_type = 'COUNTERSIGNATURE_VERIFIED'`)
+    .bind(intentId).first<{ count: number }>();
+  if (Number(row.required_countersignatures) !== intent.required_countersignatures ||
+      row.effective_not_before !== intent.effective_not_before ||
+      Number(row.signer_policy_version) !== intent.signer_policy_version) {
+    return json({ error: "The immutable signer-policy projection does not match the signed decision intent." }, 409);
+  }
   const finalizationError = decisionFinalizationError({
     state: String(row.current_state) as "PENDING_COUNTERSIGNATURE",
-    requiredCountersignatures: Number(row.required_countersignatures),
-    acceptedCountersignatures: Number(row.accepted_countersignatures),
-    effectiveNotBefore: String(row.effective_not_before),
+    requiredCountersignatures: intent.required_countersignatures,
+    acceptedCountersignatures: Number(acceptedCountersignatures?.count ?? 0),
+    effectiveNotBefore: intent.effective_not_before,
     now,
   });
   if (finalizationError) return json({ error: finalizationError, ...safeDecisionExport(intent, String(row.current_state) as "PENDING_COUNTERSIGNATURE", String(row.current_event_sha256)) }, 409);
@@ -2881,8 +2990,10 @@ async function finalizeDecisionIntent(request: Request, db: Database, env: Env, 
   const envelope = JSON.parse(String(envelopeRow.envelope_json)) as Parameters<typeof verifyDecisionIssuerEnvelope>[0];
   const envelopeMatchesIntent = envelope.payload.intent_id === intent.intent_id &&
     envelope.payload.receipt_id === intent.receipt_id && envelope.payload.package_id === intent.package_id &&
+    envelope.payload.intent_sha256 === row.intent_sha256 && envelope.payload.idempotency_key === intent.idempotency_key &&
     envelope.payload.item_key === intent.item_key && envelope.payload.decision_kind === intent.decision_kind &&
     envelope.payload.decision === intent.decision && envelope.payload.submitter_principal === intent.submitter_principal &&
+    envelope.payload.draft_sha256 === intent.draft_sha256 && envelope.payload.evidence_set_sha256 === intent.evidence_set_sha256 &&
     envelope.payload.submitted_at === intent.submitted_at && envelope.payload.effective_not_before === intent.effective_not_before &&
     envelope.payload.operating_mode === intent.operating_mode && envelope.payload.signer_policy_version === intent.signer_policy_version &&
     envelope.payload.required_countersignatures === intent.required_countersignatures &&
@@ -3490,6 +3601,8 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "POST" && decisionMatch) return decide(request, env.DB, user, Number(decisionMatch[1]));
     const decisionPackageMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decision-packages$/);
     if (request.method === "POST" && decisionPackageMatch) return prepareDecisionPackage(env.DB, user, Number(decisionPackageMatch[1]));
+    const decisionSessionMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decision-sessions$/);
+    if (request.method === "POST" && decisionSessionMatch) return startDecisionSession(request, env.DB, user, Number(decisionSessionMatch[1]));
     const decisionIntentMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decision-intents$/);
     if (request.method === "POST" && decisionIntentMatch) return createDecisionIntent(request, env.DB, user, Number(decisionIntentMatch[1]));
     const decisionExportMatch = url.pathname.match(/^\/api\/decision-intents\/([0-9a-f-]{36})\/export$/);

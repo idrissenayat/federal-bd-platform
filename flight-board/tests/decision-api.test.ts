@@ -33,8 +33,12 @@ class D1Database {
   }
 }
 
-function humanRequest(path: string) {
-  return new Request(`https://steer.test${path}`, { headers: { "oai-authenticated-user-id": "human-1", "oai-authenticated-user-email": "human-1@example.test" } });
+function humanRequest(path: string, method = "GET", body?: unknown) {
+  return new Request(`https://steer.test${path}`, {
+    method,
+    headers: { "oai-authenticated-user-id": "human-1", "oai-authenticated-user-email": "human-1@example.test", ...(body === undefined ? {} : { "content-type": "application/json" }) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
 }
 
 function serviceRequest(path: string, token: string) {
@@ -42,6 +46,7 @@ function serviceRequest(path: string, token: string) {
 }
 
 test("cooled solo finalization advances Gate 2 exactly once and replays without duplicate projections", async (context) => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-16T20:00:00.000Z") });
   const db = new D1Database();
   const initialized = await handleApi(humanRequest("/api/bootstrap"), { DB: db });
   assert.equal(initialized?.status, 200);
@@ -69,6 +74,9 @@ test("cooled solo finalization advances Gate 2 exactly once and replays without 
       '[]', '[]', '[]', '[]', '[]', 'Exact fixture', ?, ?, ?, ?, 'human-1', ?)`)
     .run(itemId, evidenceUrl, commit, evidenceSha256, itemUpdatedAt, itemUpdatedAt);
   assert.ok(Number(review.lastInsertRowid) > 0);
+  const startedSession = await handleApi(humanRequest(`/api/items/${itemId}/decision-sessions`, "POST", { reason: "Fresh session after rereading the exact evidence." }), { DB: db });
+  assert.equal(startedSession?.status, 201, await startedSession?.clone().text());
+  const decisionSessionId = (await startedSession?.json() as { session_id: string }).session_id;
   db.sqlite.prepare(`INSERT INTO decision_signer_policies
     (pod_id, policy_version, operating_mode, required_countersignatures, cooling_hours,
      status, activated_by, activation_reason, ruling_url, ruling_sha256, created_at)
@@ -84,6 +92,7 @@ test("cooled solo finalization advances Gate 2 exactly once and replays without 
     draft_sha256: "a".repeat(64), evidence_set_sha256: "b".repeat(64),
     target: { repository_uri: "https://github.com/idrissenayat/federal-bd-platform", commit, path, body_sha256: evidenceSha256 },
     submitter_principal: "human-1", submitter_role: "Product Lead · interim Tech Lead",
+    decision_session_id: decisionSessionId,
     submitted_at: "2026-08-16T20:00:00.000Z", effective_not_before: "2026-08-17T20:00:00.000Z",
     operating_mode: "SOLO_CALIBRATION", signer_policy_version: 1, required_countersignatures: 0,
     idempotency_key: createUuidV7(1_700_000_000_003), sequence: 1,
@@ -93,13 +102,17 @@ test("cooled solo finalization advances Gate 2 exactly once and replays without 
   db.sqlite.prepare(`INSERT INTO decision_intents
     (intent_id, receipt_id, package_id, item_id, pod_id, idempotency_key, intent_json, intent_sha256,
      current_state, current_sequence, current_event_sha256, required_countersignatures,
-     accepted_countersignatures, submitter_id, submitter_role, effective_not_before,
+     accepted_countersignatures, submitter_id, submitter_role, decision_session_id, effective_not_before,
      signer_policy_version, created_at, updated_at)
     VALUES (?, ?, ?, ?, 'pod-a', ?, ?, ?, 'PENDING_COUNTERSIGNATURE', 2, ?, 0, 0,
-      'human-1', ?, ?, 1, ?, ?)`)
+      'human-1', ?, ?, ?, 1, ?, ?)`)
     .run(intent.intent_id, intent.receipt_id, intent.package_id, itemId, intent.idempotency_key,
       JSON.stringify(intent), intentSha256, priorEventSha256, intent.submitter_role,
-      intent.effective_not_before, intent.submitted_at, intent.submitted_at);
+      intent.decision_session_id, intent.effective_not_before, intent.submitted_at, intent.submitted_at);
+  assert.throws(() => db.sqlite.prepare("UPDATE decision_intents SET required_countersignatures = 2 WHERE intent_id = ?").run(intent.intent_id), /decision intent .*authority is immutable/);
+  assert.throws(() => db.sqlite.prepare("UPDATE decision_intents SET effective_not_before = '2000-01-01T00:00:00Z' WHERE intent_id = ?").run(intent.intent_id), /decision intent .*authority is immutable/);
+  assert.throws(() => db.sqlite.prepare("UPDATE decision_intents SET signer_policy_version = 2 WHERE intent_id = ?").run(intent.intent_id), /decision intent .*authority is immutable/);
+  assert.throws(() => db.sqlite.prepare("UPDATE decision_sessions SET decision_kind = 'Gate 1 pending' WHERE session_id = ?").run(intent.decision_session_id), /decision sessions are immutable/);
 
   const privateKey = "1".repeat(64);
   const keyId = "connected-decision-issuer";
@@ -114,8 +127,15 @@ test("cooled solo finalization advances Gate 2 exactly once and replays without 
     .run(intent.intent_id, keyId, JSON.stringify(envelope), await decisionDigest(envelope), intent.submitted_at);
 
   context.mock.method(globalThis, "fetch", async () => new Response(evidenceText, { status: 200 }));
+  context.mock.timers.setTime(new Date("2026-08-18T20:00:00.000Z").getTime());
   const token = "connected-decision-service-token-000000000000000";
   const env = { DB: db, DECISION_SERVICE_TOKEN: token };
+  db.sqlite.prepare("UPDATE members SET status = 'inactive' WHERE id = 'human-1'").run();
+  const rejected = await handleApi(serviceRequest(`/api/decision-intents/${intent.intent_id}/finalize`, token), env);
+  assert.equal(rejected?.status, 409);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM decisions WHERE decision_intent_id = ?").get(intent.intent_id)?.count, 0);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM decision_proof_events WHERE intent_id = ? AND event_type = 'FINALIZATION_AUTHORITY_REJECTED'").get(intent.intent_id)?.count, 1);
+  db.sqlite.prepare("UPDATE members SET status = 'available' WHERE id = 'human-1'").run();
   const first = await handleApi(serviceRequest(`/api/decision-intents/${intent.intent_id}/finalize`, token), env);
   assert.equal(first?.status, 201, await first?.clone().text());
   assert.equal((await first?.json() as { effective: boolean }).effective, true);

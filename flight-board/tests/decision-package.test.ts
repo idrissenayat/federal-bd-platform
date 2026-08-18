@@ -17,6 +17,7 @@ function intent(): DecisionIntentPayload {
     target: { repository_uri: "https://github.com/idrissenayat/federal-bd-platform", commit: "c".repeat(40), path: "steer/exams/0024-governed-agent-execution.md", body_sha256: "d".repeat(64) },
     submitter_principal: "human-1",
     submitter_role: "Interim Tech Lead",
+    decision_session_id: createUuidV7(1_700_000_000_004),
     submitted_at: "2026-08-18T23:00:00Z",
     effective_not_before: "2026-08-19T23:00:00Z",
     operating_mode: "SOLO_CALIBRATION",
@@ -73,4 +74,16 @@ test("issuer proof signs exact domain-separated canonical receipt bytes", async 
   assert.equal(new TextDecoder().decode(gateReceiptSignedBytes(envelope.header, envelope.payload)).startsWith("STEER_GATE_RECEIPT_V1\0"), true);
   const transplanted = { ...envelope, payload: { ...envelope.payload, item_key: "STR-999" } };
   assert.equal(await verifyDecisionIssuerEnvelope(transplanted, decisionIssuerPublicKey(privateKey)), false);
+});
+
+test("issuer proof binds the digest and every authority-bearing intent field", async () => {
+  const privateKey = "1".repeat(64);
+  const original = intent();
+  const changed = { ...original, draft_sha256: "f".repeat(64), evidence_set_sha256: "e".repeat(64), idempotency_key: createUuidV7(1_700_000_000_099) };
+  const first = await createDecisionIssuerEnvelope({ intent: original, privateKeyHex: privateKey, keyId: "steer-decision-issuer", issuerPrincipal: "decision-proof-service", issuedAt: "2026-08-18T23:10:00Z" });
+  const second = await createDecisionIssuerEnvelope({ intent: changed, privateKeyHex: privateKey, keyId: "steer-decision-issuer", issuerPrincipal: "decision-proof-service", issuedAt: "2026-08-18T23:10:00Z" });
+  assert.equal(first.payload.intent_sha256, await decisionDigest(original));
+  assert.equal(second.payload.intent_sha256, await decisionDigest(changed));
+  assert.notEqual(first.payload.intent_sha256, second.payload.intent_sha256);
+  assert.notEqual(first.signature, second.signature);
 });
