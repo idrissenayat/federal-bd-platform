@@ -861,7 +861,8 @@ export default function Home() {
     const actionId = beginItemAction(id, scope, "Waiting for the authoritative server response.");
     setSaving(true);
     try {
-      const result = await api(`/api/items/${id}`, { method: "PATCH", body: JSON.stringify(changes) }) as ItemMutationResult;
+      const expectedRevision = data?.items.find((item) => item.id === id)?.updated_at;
+      const result = await api(`/api/items/${id}`, { method: "PATCH", body: JSON.stringify({ ...changes, expectedRevision }) }) as ItemMutationResult;
       const responseReceivedAt = feedbackClock();
       if (latestMutation.current.get(id) !== actionId) return;
       applySnapshot(result.snapshot);
@@ -881,7 +882,8 @@ export default function Home() {
     setSaving(true);
     setNotice(null);
     try {
-      const result = await api(`/api/items/${id}/work-economics`, { method: "PATCH", body: JSON.stringify({ section, value, reason }) }) as ItemMutationResult;
+      const expectedRevision = data?.items.find((item) => item.id === id)?.updated_at;
+      const result = await api(`/api/items/${id}/work-economics`, { method: "PATCH", body: JSON.stringify({ section, value, reason, expectedRevision }) }) as ItemMutationResult;
       const responseReceivedAt = feedbackClock();
       if (latestMutation.current.get(id) !== actionId) return;
       applySnapshot(result.snapshot);

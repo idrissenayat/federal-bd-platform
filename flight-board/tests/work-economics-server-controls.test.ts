@@ -23,7 +23,7 @@ class D1Statement {
   async all<T>() { return { results: this.db.prepare(this.sql).all(...this.values as never[]) as T[] }; }
   async run<T>() {
     const result = this.db.prepare(this.sql).run(...this.values as never[]);
-    return { results: [] as T[], meta: { last_row_id: Number(result.lastInsertRowid) } };
+    return { results: [] as T[], meta: { last_row_id: Number(result.lastInsertRowid), changes: Number(result.changes) } };
   }
 }
 
@@ -34,14 +34,17 @@ class D1Database {
 }
 
 function request(user: string, path: string, method = "GET", body?: unknown) {
+  const versionedBody = method === "PATCH" && body && typeof body === "object" && !Array.isArray(body) && !("expectedRevision" in body)
+    ? { ...body, expectedRevision: "2026-08-14T14:00:00.000Z" }
+    : body;
   return new Request(`https://steer.test${path}`, {
     method,
     headers: {
       "oai-authenticated-user-id": user,
       "oai-authenticated-user-email": `${user}@example.test`,
-      ...(body === undefined ? {} : { "content-type": "application/json" }),
+      ...(versionedBody === undefined ? {} : { "content-type": "application/json" }),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: versionedBody === undefined ? undefined : JSON.stringify(versionedBody),
   });
 }
 
@@ -150,6 +153,24 @@ test("STR-028 telemetry accepts only bounded labels and rejects PII-shaped extra
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM steer_telemetry").get()!.total, 1);
   const row = db.sqlite.prepare("SELECT metric_name, label_name, label_value, value, case_id FROM steer_telemetry").get()!;
   assert.deepEqual({ ...row }, { metric_name: "steer_work_item_save_outcome_total", label_name: "outcome", label_value: "success", value: 1, case_id: "SAVE-01" });
+});
+
+test("FAIL-01 rejects stale mutation revision r0 against authoritative r1 without a durable side effect", async () => {
+  const { db, itemId } = await setup();
+  db.sqlite.prepare("UPDATE work_items SET updated_at = '2026-08-14T14:01:00.000Z' WHERE id = ?").run(itemId);
+  const response = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", {
+    expectedRevision: "2026-08-14T14:00:00.000Z",
+    section: "deliveryForecast",
+    value: forecast,
+    reason: "Stale revision must fail closed",
+  }), { DB: db });
+  assert.equal(response?.status, 409, await response?.clone().text());
+  const body = await response?.json() as { code: string; snapshot: { item: { updated_at: string } } };
+  assert.equal(body.code, "STALE_REVISION");
+  assert.equal(body.snapshot.item.updated_at, "2026-08-14T14:01:00.000Z");
+  assert.equal(db.sqlite.prepare("SELECT delivery_forecast_json FROM work_items WHERE id = ?").get(itemId)!.delivery_forecast_json, JSON.stringify(forecast));
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM work_economics_events WHERE item_id = ?").get(itemId)!.total, 0);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM activity WHERE item_id = ?").get(itemId)!.total, 0);
 });
 
 test("FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic", async () => {
@@ -735,7 +756,7 @@ test("actuals normalize queryable delivery facts and replace client completion a
     telemetrySource: "provider plus workflow events", completeness: "complete", completionAt: "2030-01-01T00:00:00.000Z", likelyVarianceMinutes: 999999,
     correctedBy: "client", correctedAt: "2026-08-14T18:20:00.000Z", correctionReason: "Reconciled system facts", advisory: null, acceptanceState: "no proposal",
   };
-  const response = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", { section: "actualEconomics", value: actual, reason: "Record authoritative actual delivery facts" }), { DB: db });
+  const response = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", { expectedRevision: "2026-08-14T18:30:00.000Z", section: "actualEconomics", value: actual, reason: "Record authoritative actual delivery facts" }), { DB: db });
   assert.equal(response?.status, 200, await response?.text());
   const stored = JSON.parse(String(db.sqlite.prepare("SELECT actual_economics_json FROM work_items WHERE id = ?").get(itemId)!.actual_economics_json));
   assert.equal(stored.completionAt, "2026-08-14T18:30:00.000Z");

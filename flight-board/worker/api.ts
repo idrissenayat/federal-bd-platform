@@ -16,7 +16,7 @@ import { buildInitialQueuedEvent, ensureDispatchServiceSigner, handleDispatchSer
 
 type D1Result<T = Record<string, unknown>> = {
   results?: T[];
-  meta?: { last_row_id?: number };
+  meta?: { last_row_id?: number; changes?: number };
 };
 
 type Statement = {
@@ -1395,6 +1395,11 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
   const current = await scopedItemOrDenied(db, user, itemId, "item update");
   if (!current) return json({ error: "Work item not found in your POD." }, 404);
   const body = await request.json() as Record<string, unknown>;
+  const expectedRevision = String(body.expectedRevision ?? "");
+  if (!expectedRevision) return json({ error: "Refresh the work item before saving; the expected revision is required.", code: "REVISION_REQUIRED" }, 400);
+  if (expectedRevision !== String(current.updated_at)) {
+    return json({ error: "This work item changed after you opened it. Your input was preserved; review the authoritative state before retrying.", code: "STALE_REVISION", snapshot: await authoritativeItemSnapshot(db, user, itemId) }, 409);
+  }
   const allowed: Record<string, { column: string; values?: string[] }> = {
     phase: { column: "phase", values: phases },
     priority: { column: "priority", values: priorities },
@@ -1441,8 +1446,11 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
     values.push(requestedState === "blocked" ? current.blocked_since ?? now : null);
   }
   sets.push("updated_at = ?");
-  values.push(now, itemId);
-  await db.prepare(`UPDATE work_items SET ${sets.join(", ")} WHERE id = ?`).bind(...values).run();
+  values.push(now, itemId, expectedRevision);
+  const mutation = await db.prepare(`UPDATE work_items SET ${sets.join(", ")} WHERE id = ? AND updated_at = ?`).bind(...values).run();
+  if (Number(mutation.meta?.changes ?? 0) !== 1) {
+    return json({ error: "This work item changed while the save was in progress. Your input was preserved; review the authoritative state before retrying.", code: "STALE_REVISION", snapshot: await authoritativeItemSnapshot(db, user, itemId) }, 409);
+  }
   await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'updated', ?, ?)")
     .bind(itemId, user.id, changes.join(" · "), now).run();
   const forecastChange = materialForecastChange(entries.map(([key]) => key));
@@ -1608,7 +1616,12 @@ async function updateWorkEconomics(request: Request, db: Database, user: User, i
   const current = await scopedItemOrDenied(db, user, itemId, "Work Economics update");
   if (!current) return json({ error: "Permission denied. Ask the named record owner in this POD to review or edit this record." }, 403);
   const member = await db.prepare("SELECT id, kind, role, pod_id FROM members WHERE id = ?").bind(user.id).first<{ id: string; kind: string; role: string; pod_id: string | null }>();
-  const body = await request.json() as { section?: unknown; value?: unknown; reason?: unknown };
+  const body = await request.json() as { section?: unknown; value?: unknown; reason?: unknown; expectedRevision?: unknown };
+  const expectedRevision = String(body.expectedRevision ?? "");
+  if (!expectedRevision) return json({ error: "Refresh the work item before saving; the expected revision is required.", code: "REVISION_REQUIRED" }, 400);
+  if (expectedRevision !== String(current.updated_at)) {
+    return json({ error: "This governed record changed after you opened it. Your input was preserved; review the authoritative state before retrying.", code: "STALE_REVISION", snapshot: await authoritativeItemSnapshot(db, user, itemId) }, 409);
+  }
   const section = String(body.section ?? "") as WorkEconomicsSection;
   if (!(section in economicsColumns)) return json({ error: "Choose a valid Work Economics section." }, 400);
   if (!member || !workEconomicsNamedAuthority(section, member, current)) {
