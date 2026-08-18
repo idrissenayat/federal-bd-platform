@@ -838,6 +838,13 @@ test("service fencing, verified relay delivery, signed agent acknowledgement, an
       agent_claim_run_id: "claim-run-900", acknowledged_at: acknowledgedAt,
     };
     const acknowledgement = { member_id: "agent-a", key_id: "agent-a-key", key_version: 1, ...acknowledgementPayload, signature: await signBinding(acknowledgementPayload, agentSecret) };
+    const wrongSecret = new Uint8Array(32); wrongSecret[31] = 29;
+    const wrongKey = await handleApi(request("agent-a", `/api/dispatches/${intentId}/acknowledgements`, "POST", {
+      ...acknowledgement,
+      signature: await signBinding(acknowledgementPayload, wrongSecret),
+    }), { DB: db, ...dispatchEnv });
+    assert.equal(wrongKey?.status, 409, await wrongKey?.clone().text());
+    assert.equal((await wrongKey?.json() as { code: string }).code, "ACK_SIGNATURE_INVALID");
     const acknowledgementResponses = await Promise.all([
       handleApi(request("agent-a", `/api/dispatches/${intentId}/acknowledgements`, "POST", acknowledgement), { DB: db, ...dispatchEnv }),
       handleApi(request("agent-a", `/api/dispatches/${intentId}/acknowledgements`, "POST", acknowledgement), { DB: db, ...dispatchEnv }),
@@ -846,17 +853,27 @@ test("service fencing, verified relay delivery, signed agent acknowledgement, an
     const acknowledgementBodies = await Promise.all(acknowledgementResponses.map((response) => response?.json() as Promise<{ idempotent_replay: boolean }>));
     assert.deepEqual(acknowledgementBodies.map((body) => body.idempotent_replay).sort(), [false, true]);
 
+    const changedPayload = { ...acknowledgementPayload, agent_claim_run_id: "different-run-900", acknowledged_at: new Date().toISOString() };
+    const changedAcknowledgement = { member_id: "agent-a", key_id: "agent-a-key", key_version: 1, ...changedPayload, signature: await signBinding(changedPayload, agentSecret) };
+    const secondDifferent = await handleApi(request("agent-a", `/api/dispatches/${intentId}/acknowledgements`, "POST", changedAcknowledgement), { DB: db, ...dispatchEnv });
+    assert.equal(secondDifferent?.status, 409, await secondDifferent?.clone().text());
+
+    const authorizationReplay = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+    assert.equal(authorizationReplay?.status, 200, await authorizationReplay?.clone().text());
+    assert.equal((await authorizationReplay?.json() as { idempotent_replay: boolean }).idempotent_replay, true);
+
     const requestedAt = new Date().toISOString();
     const readPayload = { schema: "steer-dispatch-read/v1", method: "POST", path: `/api/dispatches/${intentId}/read`, dispatch_intent_id: intentId, requested_at: requestedAt };
     const read = await handleApi(request("agent-a", `/api/dispatches/${intentId}/read`, "POST", { member_id: "agent-a", key_id: "agent-a-key", key_version: 1, requested_at: requestedAt, signature: await signBinding(readPayload, agentSecret) }), { DB: db, ...dispatchEnv });
     assert.equal(read?.status, 200, await read?.clone().text());
     const readBody = await read?.json() as { events: unknown[]; projection: { state: string } };
     assert.equal(readBody.projection.state, "ACKNOWLEDGED");
-    assert.equal(readBody.events.length, 5);
+    assert.equal(readBody.events.length, 7);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_receipts").get()!.total, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_outbox").get()!.total, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_attempts").get()!.total, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE event_type = 'ACKNOWLEDGED'").get()!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE event_type = 'ACK_REJECTED'").get()!.total, 2);
 
     db.sqlite.prepare("UPDATE dispatch_outbox SET updated_at = '2026-01-01T00:00:00.000Z'").run();
     const hold = await handleApi(request("member-a", `/api/dispatches/${intentId}/retention-holds`, "POST", { action: "HOLD", reason_code: "SECURITY_REVIEW", expires_at: new Date(Date.now() + 86_400_000).toISOString() }), { DB: db, ...dispatchEnv });
