@@ -1,0 +1,411 @@
+{
+  "schema": "steer-str028-exact-rollback-evidence/v2",
+  "target_implementation_commit": "b928cba7e9d486c9f30f212c452814185f8025da",
+  "environment": {
+    "name": "owner-only STEER staging",
+    "project_id": "appgprj_6a83763dc1148191b439c0795aa86a1c",
+    "url": "https://steer-flight-board-staging.idriss-enayat.chatgpt.site/",
+    "database_binding": "DB",
+    "production_touched": false
+  },
+  "versions": {
+    "target": {
+      "number": 18,
+      "id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_a34f8378043c8191978ef9477cb86d06"
+    },
+    "rollback": {
+      "number": 17,
+      "id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_9125315aee688191861e7acb85be6ce5"
+    }
+  },
+  "deployment_sequence": [
+    {
+      "operation": "v18 to v17",
+      "deployment_id": "appgdep_6a84a91f4b9c8191a7e546f90b5123cf",
+      "requested_at": "2026-08-18T18:49:03.513Z",
+      "completed_at": "2026-08-18T18:49:10.883Z",
+      "status": "succeeded",
+      "rto_ms": 7370
+    },
+    {
+      "operation": "v17 to v18 initial restore request",
+      "deployment_id": "appgdep_6a84aa00cacc819189ff5d406f96f904",
+      "requested_at": "2026-08-18T18:52:48.999Z",
+      "completed_at": "2026-08-18T18:52:50.906Z",
+      "status": "failed_before_provider_deployment",
+      "failure": "Sites callback returned HTTP 400; provider_deployment_id remained null and the prior v17 deployment stayed healthy"
+    },
+    {
+      "operation": "v17 to v18 restore retry",
+      "deployment_id": "appgdep_6a84aa179d548191afc6128e12e7f5c8",
+      "requested_at": "2026-08-18T18:53:11.821Z",
+      "completed_at": "2026-08-18T18:53:19.131Z",
+      "status": "succeeded",
+      "rto_ms": 7310
+    }
+  ],
+  "closure_revalidation_deployment_sequence": [
+    {
+      "operation": "v18 to v17 with live action smoke",
+      "deployment_id": "appgdep_6a84b26fb81c81918e045dbdbf24a5c3",
+      "requested_at": "2026-08-18T19:28:47.920Z",
+      "completed_at": "2026-08-18T19:28:56.159Z",
+      "status": "succeeded",
+      "rto_ms": 8239
+    },
+    {
+      "operation": "v17 to v18 with repeated live action smoke",
+      "deployment_id": "appgdep_6a84b307b6f88191884c6b0a0cc2edfe",
+      "requested_at": "2026-08-18T19:31:19.981Z",
+      "completed_at": "2026-08-18T19:31:27.028Z",
+      "status": "succeeded",
+      "rto_ms": 7047
+    }
+  ],
+  "snapshots": {
+    "before_at": "2026-08-18T18:48:56.679Z",
+    "during_v17_at": "2026-08-18T18:52:40.042Z",
+    "after_restore_at": "2026-08-18T18:54:25.562Z",
+    "comparison_method": "All rows from every listed table were read in bounded pages, object keys and row order were canonicalized, and before/during/after canonical bytes were compared.",
+    "all_tables_identical_before_during_after": true,
+    "tables": {
+      "dispatch_receipts": 1,
+      "dispatch_outbox": 1,
+      "dispatch_events": 1,
+      "dispatch_attempts": 0,
+      "dispatch_authorization_audits": 1,
+      "dispatch_security_diagnostics": 0,
+      "dispatch_retention_authorizations": 0,
+      "dispatch_retention_holds": 0,
+      "dispatch_retention_runs": 0,
+      "activity": 320,
+      "notifications": 24,
+      "work_economics_events": 46,
+      "review_assignments": 4,
+      "review_events": 15,
+      "review_retention_authorizations": 0,
+      "review_retention_holds": 0,
+      "review_retention_runs": 0,
+      "dispatch_privacy_policies": 2
+    },
+    "checkpoint_hashes": {
+      "before": {
+        "dispatch_receipts": "464e9cfaf93953f9e41ce97a8a2779ec84374f264d8271ff441270087acc8d3e",
+        "dispatch_outbox": "eea823e257eed673c1b6c6f7e90afbd4c73b1390d4aef0b1b566fe26236aca32",
+        "dispatch_events": "87fa57e41b06a2067472e204642c9bb2357b14c87923f1d4d1ac1fef50b45f91",
+        "dispatch_attempts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_authorization_audits": "aa03d1eb8f3da85031e8d9848df2df6cb5a4bbdbb7696fc971f8190234b2da50",
+        "dispatch_security_diagnostics": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_authorizations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_holds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_runs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "activity": "a4f9a1aba8e80ee09a11929be92a054f50d17e2bf0e23fd65c4aed8927bc47bc",
+        "notifications": "1dfe43228a28f020297f99b4f4dbc302fe178ed7fb9f17b349c94f726861fe45",
+        "work_economics_events": "ad9f60d52645a44357e31bd94f619eabaaf21f9d3d5de50890df21d4e710098e",
+        "review_assignments": "0c6c44b6f333c228ac8b995c7760e0a09e62d59b66ee4248a58fb3308b2d8d1b",
+        "review_events": "978eaf1cf808d9560feb2bc582ae3105eda176a6369417e172cfd414fee6188a",
+        "review_retention_authorizations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "review_retention_holds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "review_retention_runs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_privacy_policies": "a9b63def9327d0452ff666567ffedd88e298ab3aa88dd269a8cfd4263910aff7"
+      },
+      "during_v17": {
+        "dispatch_receipts": "464e9cfaf93953f9e41ce97a8a2779ec84374f264d8271ff441270087acc8d3e",
+        "dispatch_outbox": "eea823e257eed673c1b6c6f7e90afbd4c73b1390d4aef0b1b566fe26236aca32",
+        "dispatch_events": "87fa57e41b06a2067472e204642c9bb2357b14c87923f1d4d1ac1fef50b45f91",
+        "dispatch_attempts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_authorization_audits": "aa03d1eb8f3da85031e8d9848df2df6cb5a4bbdbb7696fc971f8190234b2da50",
+        "dispatch_security_diagnostics": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_authorizations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_holds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_runs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "activity": "a4f9a1aba8e80ee09a11929be92a054f50d17e2bf0e23fd65c4aed8927bc47bc",
+        "notifications": "1dfe43228a28f020297f99b4f4dbc302fe178ed7fb9f17b349c94f726861fe45",
+        "work_economics_events": "ad9f60d52645a44357e31bd94f619eabaaf21f9d3d5de50890df21d4e710098e",
+        "review_assignments": "0c6c44b6f333c228ac8b995c7760e0a09e62d59b66ee4248a58fb3308b2d8d1b",
+        "review_events": "978eaf1cf808d9560feb2bc582ae3105eda176a6369417e172cfd414fee6188a",
+        "review_retention_authorizations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "review_retention_holds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "review_retention_runs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_privacy_policies": "a9b63def9327d0452ff666567ffedd88e298ab3aa88dd269a8cfd4263910aff7"
+      },
+      "after_restore": {
+        "dispatch_receipts": "464e9cfaf93953f9e41ce97a8a2779ec84374f264d8271ff441270087acc8d3e",
+        "dispatch_outbox": "eea823e257eed673c1b6c6f7e90afbd4c73b1390d4aef0b1b566fe26236aca32",
+        "dispatch_events": "87fa57e41b06a2067472e204642c9bb2357b14c87923f1d4d1ac1fef50b45f91",
+        "dispatch_attempts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_authorization_audits": "aa03d1eb8f3da85031e8d9848df2df6cb5a4bbdbb7696fc971f8190234b2da50",
+        "dispatch_security_diagnostics": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_authorizations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_holds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_runs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "activity": "a4f9a1aba8e80ee09a11929be92a054f50d17e2bf0e23fd65c4aed8927bc47bc",
+        "notifications": "1dfe43228a28f020297f99b4f4dbc302fe178ed7fb9f17b349c94f726861fe45",
+        "work_economics_events": "ad9f60d52645a44357e31bd94f619eabaaf21f9d3d5de50890df21d4e710098e",
+        "review_assignments": "0c6c44b6f333c228ac8b995c7760e0a09e62d59b66ee4248a58fb3308b2d8d1b",
+        "review_events": "978eaf1cf808d9560feb2bc582ae3105eda176a6369417e172cfd414fee6188a",
+        "review_retention_authorizations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "review_retention_holds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "review_retention_runs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_privacy_policies": "a9b63def9327d0452ff666567ffedd88e298ab3aa88dd269a8cfd4263910aff7"
+      }
+    },
+    "checkpoint_identity_projections": {
+      "before": {
+        "intent_id": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf",
+        "lineage_id": "82c01009a1a631b3cdb53ce9ca0fab67b38d0babac473472df9a2ca9c14b50b1",
+        "state": "QUEUED",
+        "event_version": 0,
+        "event_sha256": "fb92da62fc228a59c82aaada545a3fbf089072e9e91852a02a3f459a6be147e9",
+        "attempt_number": 0,
+        "attempt_rows": 0,
+        "send_started": 0,
+        "lease_id": null,
+        "reservation_fence": null,
+        "authorization_revision": "2026-08-18T17:01:20.852Z",
+        "created_at": "2026-08-18T17:01:35.905Z"
+      },
+      "during_v17": {
+        "intent_id": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf",
+        "lineage_id": "82c01009a1a631b3cdb53ce9ca0fab67b38d0babac473472df9a2ca9c14b50b1",
+        "state": "QUEUED",
+        "event_version": 0,
+        "event_sha256": "fb92da62fc228a59c82aaada545a3fbf089072e9e91852a02a3f459a6be147e9",
+        "attempt_number": 0,
+        "attempt_rows": 0,
+        "send_started": 0,
+        "lease_id": null,
+        "reservation_fence": null,
+        "authorization_revision": "2026-08-18T17:01:20.852Z",
+        "created_at": "2026-08-18T17:01:35.905Z"
+      },
+      "after_restore": {
+        "intent_id": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf",
+        "lineage_id": "82c01009a1a631b3cdb53ce9ca0fab67b38d0babac473472df9a2ca9c14b50b1",
+        "state": "QUEUED",
+        "event_version": 0,
+        "event_sha256": "fb92da62fc228a59c82aaada545a3fbf089072e9e91852a02a3f459a6be147e9",
+        "attempt_number": 0,
+        "attempt_rows": 0,
+        "send_started": 0,
+        "lease_id": null,
+        "reservation_fence": null,
+        "authorization_revision": "2026-08-18T17:01:20.852Z",
+        "created_at": "2026-08-18T17:01:35.905Z"
+      }
+    },
+    "rpo": "zero governed row or field changes across all 18 tables"
+  },
+  "in_flight_fail_closed": {
+    "intent_id": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf",
+    "state_before": "QUEUED",
+    "state_during_v17": "QUEUED",
+    "state_after_restore": "QUEUED",
+    "event_version_before_during_after": 0,
+    "attempt_number_before_during_after": 0,
+    "send_started_before_during_after": 0,
+    "lease_id_before_during_after": null,
+    "reservation_fence_before_during_after": null,
+    "delivered_event_id_before_during_after": null,
+    "accepted_acknowledgement_sha256_before_during_after": null,
+    "result": "PASS: the pre-existing in-flight queued operation did not claim, attempt, send, deliver, acknowledge, duplicate, or mutate while v17 was live or during restoration"
+  },
+  "post_restore_smoke": {
+    "hosted_v18": {
+      "page_loaded": true,
+      "str_028_drawer_opened": true,
+      "review_refresh_completed": true,
+      "unexpected_alerts": 0,
+      "durable_status": "QUEUED · event v0",
+      "receipt_prefix": "8329a2206554"
+    },
+    "connected_action_matrix": {
+      "ledger": "steer/evidence/0028-case-ledger-b928cba.json",
+      "generated_after_exact_rollback": true,
+      "generated_at": "2026-08-18T19:34:04.738Z",
+      "terminal_observations": 20,
+      "pending_semantics": "captured from the production InlineActionFeedback component in every connected case and repeated in the hosted post-rollback save/conflict smoke",
+      "success_observations": 15,
+      "failure_observations": 5,
+      "all_response_to_paint_observations_passed": true,
+      "save_feedback_p95_ms": 71,
+      "dispatch_feedback_p95_ms": 86
+    },
+    "hosted_pending_success_conflict_recovery": {
+      "success_attempted_at": "2026-08-18T19:14:52.492Z",
+      "success_pending": {
+        "role": "status",
+        "aria_live": "polite",
+        "message": "Saving… Waiting for the authoritative server response."
+      },
+      "success_terminal_observed_at": "2026-08-18T19:15:06.721Z",
+      "success_terminal": {
+        "role": "status",
+        "aria_live": "polite",
+        "message": "Saved — Next action saved from the authoritative response."
+      },
+      "success_activity_row": {
+        "id": 321,
+        "created_at": "2026-08-18T19:14:56.711Z"
+      },
+      "stale_conflict_attempted_at": "2026-08-18T19:15:22.447Z",
+      "stale_conflict_terminal_observed_at": "2026-08-18T19:15:31.800Z",
+      "stale_conflict_terminal": {
+        "role": "alert",
+        "aria_live": "assertive",
+        "focus_moved_to_alert": true,
+        "input_preserved": true,
+        "message": "Action not completed — This work item changed after you opened it. Your input was preserved; review the authoritative state before retrying."
+      },
+      "stale_conflict_durable_side_effects": 0,
+      "restore_attempted_at": "2026-08-18T19:16:38.359Z",
+      "restore_terminal_observed_at": "2026-08-18T19:16:47.769Z",
+      "restore_terminal": {
+        "role": "status",
+        "aria_live": "polite",
+        "message": "Saved — Next action saved from the authoritative response."
+      },
+      "restore_activity_row": {
+        "id": 322,
+        "created_at": "2026-08-18T19:16:42.524Z"
+      },
+      "authoritative_original_restored": true,
+      "authoritative_restore_reloaded_at": "2026-08-18T19:17:20.021Z",
+      "expected_activity_delta": 2,
+      "observed_activity_delta": 2,
+      "unexpected_activity_delta": 0
+    },
+    "reverted_v17_pending_success_conflict_recovery": {
+      "version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_9125315aee688191861e7acb85be6ce5",
+      "deployment_id": "appgdep_6a84b26fb81c81918e045dbdbf24a5c3",
+      "success_attempted_at": "2026-08-18T19:29:49.727Z",
+      "success_response": {
+        "status": 200,
+        "identity_kind": "authoritative_work_item_revision",
+        "identity": "2026-08-18T19:29:53.883Z"
+      },
+      "success_pending": {
+        "role": "status",
+        "aria_live": "polite",
+        "message": "Saving… Waiting for the authoritative server response."
+      },
+      "success_terminal_observed_at": "2026-08-18T19:29:59.226Z",
+      "success_terminal": {
+        "role": "status",
+        "aria_live": "polite",
+        "message": "Saved — Next action saved from the authoritative response."
+      },
+      "success_activity_row": {
+        "id": 323,
+        "created_at": "2026-08-18T19:29:53.883Z"
+      },
+      "stale_conflict_attempted_at": "2026-08-18T19:30:15.804Z",
+      "stale_conflict_response": {
+        "status": 409,
+        "typed_result": "STALE_REVISION",
+        "authoritative_revision": "2026-08-18T19:29:53.883Z"
+      },
+      "stale_conflict_terminal_observed_at": "2026-08-18T19:30:25.156Z",
+      "stale_conflict_terminal": {
+        "role": "alert",
+        "aria_live": "assertive",
+        "focus_moved_to_alert": true,
+        "input_preserved": true,
+        "message": "Action not completed — This work item changed after you opened it. Your input was preserved; review the authoritative state before retrying."
+      },
+      "stale_conflict_activity_delta": 0,
+      "restore_response": {
+        "status": 200,
+        "identity_kind": "authoritative_work_item_revision",
+        "identity": "2026-08-18T19:30:59.924Z"
+      },
+      "restore_activity_row": {
+        "id": 324,
+        "created_at": "2026-08-18T19:30:59.924Z"
+      },
+      "authoritative_original_restored": true,
+      "expected_activity_delta": 2,
+      "observed_activity_delta": 2,
+      "unexpected_activity_delta": 0
+    },
+    "restored_v18_revalidation_pending_success_conflict_recovery": {
+      "version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_a34f8378043c8191978ef9477cb86d06",
+      "deployment_id": "appgdep_6a84b307b6f88191884c6b0a0cc2edfe",
+      "success_attempted_at": "2026-08-18T19:32:22.400Z",
+      "success_response": {
+        "status": 200,
+        "identity_kind": "authoritative_work_item_revision",
+        "identity": "2026-08-18T19:32:27.547Z"
+      },
+      "success_pending": {
+        "role": "status",
+        "aria_live": "polite",
+        "message": "Saving… Waiting for the authoritative server response."
+      },
+      "success_terminal_observed_at": "2026-08-18T19:32:31.727Z",
+      "success_terminal": {
+        "role": "status",
+        "aria_live": "polite",
+        "message": "Saved — Next action saved from the authoritative response."
+      },
+      "success_activity_row": {
+        "id": 325,
+        "created_at": "2026-08-18T19:32:27.547Z"
+      },
+      "stale_conflict_attempted_at": "2026-08-18T19:32:40.343Z",
+      "stale_conflict_response": {
+        "status": 409,
+        "typed_result": "STALE_REVISION",
+        "authoritative_revision": "2026-08-18T19:32:27.547Z"
+      },
+      "stale_conflict_terminal_observed_at": "2026-08-18T19:32:49.718Z",
+      "stale_conflict_terminal": {
+        "role": "alert",
+        "aria_live": "assertive",
+        "focus_moved_to_alert": true,
+        "input_preserved": true,
+        "message": "Action not completed — This work item changed after you opened it. Your input was preserved; review the authoritative state before retrying."
+      },
+      "stale_conflict_activity_delta": 0,
+      "restore_response": {
+        "status": 200,
+        "identity_kind": "authoritative_work_item_revision",
+        "identity": "2026-08-18T19:33:00.369Z"
+      },
+      "restore_activity_row": {
+        "id": 326,
+        "created_at": "2026-08-18T19:33:00.369Z"
+      },
+      "authoritative_original_restored": true,
+      "expected_activity_delta": 2,
+      "observed_activity_delta": 2,
+      "unexpected_activity_delta": 0
+    },
+    "post_revalidation_dispatch_invariants": {
+      "dispatch_receipts": 1,
+      "dispatch_outbox": 1,
+      "dispatch_events": 1,
+      "dispatch_attempts": 0,
+      "dispatch_authorization_audits": 1,
+      "intent_id": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf",
+      "state": "QUEUED",
+      "event_version": 0,
+      "attempt_number": 0,
+      "send_started": 0,
+      "lease_id": null,
+      "reservation_fence": null,
+      "delivered_event_id": null,
+      "accepted_acknowledgement_sha256": null,
+      "duplicate_delta": 0,
+      "send_delta": 0,
+      "claim_delta": 0,
+      "run_delta": 0,
+      "authorization_audit_delta": 0
+    }
+  },
+  "result": "PASS",
+  "limitations": [
+    "The Sites database reader bounds long cell values in several tables. Equality was evaluated against the same deterministic bounded projection at all three checkpoints; untruncated identity and state columns for receipt, outbox, events, attempts, and authorization audit were included.",
+    "The live service claim endpoint requires a private service credential and was not invoked from the human browser session. Fail-closed behavior is evidenced by the unchanged queued identity and zero attempt/send fields throughout the live v17 interval, plus the exact connected service-fencing cases in the ledger."
+  ]
+}

@@ -1,0 +1,174 @@
+{
+  "schema": "steer-str028-agent-operated-staging-evidence/v1",
+  "captured_at": "2026-08-18T18:20:00.000Z",
+  "environment": {
+    "name": "STEER Flight Board — Staging",
+    "url": "https://steer-flight-board-staging.idriss-enayat.chatgpt.site/",
+    "access": "owner-only",
+    "project_id": "appgprj_6a83763dc1148191b439c0795aa86a1c",
+    "environment_revision": 2,
+    "version_number": 18,
+    "version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_a34f8378043c8191978ef9477cb86d06",
+    "sites_source_commit": "b704d84beaf9998cff0bd52d738e5924f57ae18f",
+    "implementation_commit": "b928cba7e9d486c9f30f212c452814185f8025da",
+    "implementation_mapping": "Sites source commit is a packaging commit containing the exact implementation change from b928cba7e9d486c9f30f212c452814185f8025da; the clean packaging diff check passed.",
+    "deployment_id": "appgdep_6a84a02587488191982b07c0fb7ed3d3",
+    "deployment_status": "succeeded",
+    "production_touched": false
+  },
+  "agent_operated_accessibility": {
+    "operator": "Codex",
+    "method": "Google Chrome on macOS accessibility tree plus real keyboard navigation; in-app Browser used for hosted narrow-layout inspection",
+    "voiceover_audio_session_claimed": false,
+    "result": "PASS",
+    "keyboard": {
+      "open_drawer_initial_focus": "Close item",
+      "tab_from_close": "Refresh review",
+      "shift_tab_from_refresh": "Close item",
+      "escape": "closed the drawer",
+      "focus_return": "Open STR-028 →"
+    },
+    "dialog": {
+      "native_element": "DIALOG",
+      "aria_modal": "true",
+      "labelled_by": "drawer-title-23",
+      "focus_outline": "solid 3px"
+    },
+    "accessible_names_observed": [
+      "Phase",
+      "State",
+      "Priority",
+      "Workflow",
+      "Work type",
+      "Decision readiness",
+      "Assignee",
+      "Evidence URL",
+      "Engineering record",
+      "Durable dispatch status"
+    ],
+    "narrow_viewport": {
+      "css_bundle": "layout.UsbY4g0q.css",
+      "viewport_css_pixels": "320x800",
+      "drawer_client_width": 290,
+      "drawer_scroll_width": 290,
+      "overflowing_descendants": 0
+    }
+  },
+  "eight_state_matrix": {
+    "test_file": "flight-board/tests/str028-agent-accessibility-matrix.test.ts",
+    "test_file_sha256": "099b27d49fef9527523e6268b0f41d5e27a3dbdd777d7962385481d0988d55d0",
+    "states": [
+      "success",
+      "validation",
+      "conflict",
+      "transport",
+      "blocked authorization",
+      "pending",
+      "empty or unavailable",
+      "reload failure"
+    ],
+    "passed": 8,
+    "failed": 0,
+    "serious_or_critical_axe_findings": 0,
+    "error_focus_asserted": true,
+    "live_region_semantics_asserted": true
+  },
+  "case_ledger": {
+    "path": "steer/evidence/0028-case-ledger-b928cba.json",
+    "sha256": "8efcd4f8068e7e33b37264fbca4e879751e22489e6b0c0ed66b591284c441a46",
+    "denominator": 20,
+    "passed": 20,
+    "terminal_ui_feedback_observations": 20,
+    "save_p95_ms": 24,
+    "handoff_p95_ms": 18,
+    "budget_ms": 250,
+    "hidden_validation_or_conflict_errors": 0,
+    "stale_response_overwrites": 0,
+    "duplicate_dispatches": 0,
+    "unresolved_critical_recurrences": 0
+  },
+  "verification_suite": {
+    "javascript_tests": 30,
+    "typescript_tests": 124,
+    "total_tests": 154,
+    "failures": 0,
+    "build": "PASS",
+    "typecheck": "PASS",
+    "lint": "PASS"
+  },
+  "rollback_rehearsal": {
+    "scope": "owner-only staging only",
+    "from_version": 18,
+    "rollback_version": 17,
+    "rollback_version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_9125315aee688191861e7acb85be6ce5",
+    "rollback_deployment_id": "appgdep_6a84a1e2b62881919d677f32aaab96ff",
+    "rollback_requested_at": "2026-08-18T18:18:08.742Z",
+    "rollback_succeeded_at": "2026-08-18T18:18:18.744Z",
+    "rollback_rto_seconds": 10.002,
+    "restore_version": 18,
+    "restore_deployment_id": "appgdep_6a84a221395c81918504d9c1f8c0247c",
+    "restore_requested_at": "2026-08-18T18:19:11.344Z",
+    "restore_succeeded_at": "2026-08-18T18:19:20.459Z",
+    "restore_rto_seconds": 9.115,
+    "rpo": "zero governed-record loss",
+    "post_restore_ui": "STR-028 drawer opened successfully with restored v18 dialog semantics",
+    "database_snapshots": {
+      "work_items": {
+        "row_count": 24,
+        "pre_sha256": "06cf7710c8747c5a745aa55ff485de8995fe44fdb65bc98e57da32f4f23358a5",
+        "rollback_sha256": "06cf7710c8747c5a745aa55ff485de8995fe44fdb65bc98e57da32f4f23358a5",
+        "restored_sha256": "06cf7710c8747c5a745aa55ff485de8995fe44fdb65bc98e57da32f4f23358a5"
+      },
+      "review_assignments": {
+        "row_count": 3,
+        "pre_sha256": "28377335e0ef69051465bdfd653e5a8527e4745bfd3a9f853c1cf506426b71f0",
+        "rollback_sha256": "28377335e0ef69051465bdfd653e5a8527e4745bfd3a9f853c1cf506426b71f0",
+        "restored_sha256": "28377335e0ef69051465bdfd653e5a8527e4745bfd3a9f853c1cf506426b71f0"
+      },
+      "review_events": {
+        "row_count": 11,
+        "pre_sha256": "13a116d76a6bad7abeda7fdf460949c363751cd08b68ca45459c40c39e154cdc",
+        "rollback_sha256": "13a116d76a6bad7abeda7fdf460949c363751cd08b68ca45459c40c39e154cdc",
+        "restored_sha256": "13a116d76a6bad7abeda7fdf460949c363751cd08b68ca45459c40c39e154cdc"
+      },
+      "dispatch_privacy_policies": {
+        "row_count": 2,
+        "pre_sha256": "e98cfdd457095a8c6983f493a6789c180a0360243e7ba2f771c041705b1502e7",
+        "rollback_sha256": "e98cfdd457095a8c6983f493a6789c180a0360243e7ba2f771c041705b1502e7",
+        "restored_sha256": "e98cfdd457095a8c6983f493a6789c180a0360243e7ba2f771c041705b1502e7"
+      },
+      "steer_telemetry": {
+        "pre_rows": 58,
+        "rollback_rows": 59,
+        "restored_rows": 60,
+        "pre_sha256": "f9c311c0599106fd672296534ad43a87da9772ad49e6f0e8643558e2f54b07f4",
+        "rollback_sha256": "0dffafa0fdfbcfe9b4e46e556e18bd4d2fc54f3773e60c38dd3e074ec0e76dd8",
+        "restored_sha256": "fdf3880b206bb4ce87f3b3ff83d911649a6af9a0fde689f11068024bcf40aed1",
+        "interpretation": "The 58-row prefix was preserved exactly. Two append-only fresh-reconciliation observations were added by the agent's rollback and restored-page loads."
+      }
+    }
+  },
+  "review_target": {
+    "path": "steer/evidence/0028-gate-3-review-target.json",
+    "packet_sha256": "b09c5bfa02385da53a0d29e6d69b731fdab4488d854eedfdb0700843cd375f11",
+    "target_git_commit_oid": "b928cba7e9d486c9f30f212c452814185f8025da",
+    "target_commit_object_sha256": "340d47a1f7825eec0c5e9b727d98f9afdf8b809d867f7f1d80273cb59b7f73a0",
+    "target_artifact_manifest_sha256": "3082e2a318f2a8c035217db677d3c12c52b91a1d3d0ba4c80d54e85b744150b3",
+    "artifact_count": 20,
+    "verifier_member_id": "agent-test",
+    "verifier_key_id": "buzz-roster-v3:test",
+    "signature_verified_by_test": true
+  },
+  "staging_review_assignment": {
+    "created_at": "2026-08-18T18:25:04.175Z",
+    "assignment_id": "a84a6e440734cb6ddc136a610de32fda136264abecaca00bf842fb0a904406a5",
+    "current_state": "REQUESTED",
+    "current_event_version": 2,
+    "target_artifact_manifest_sha256": "3082e2a318f2a8c035217db677d3c12c52b91a1d3d0ba4c80d54e85b744150b3",
+    "older_assignments": {
+      "count": 3,
+      "state": "SUPERSEDED"
+    },
+    "parallel_active_assignments": 0
+  }
+}
