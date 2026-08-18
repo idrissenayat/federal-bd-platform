@@ -785,6 +785,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reviewingIds, setReviewingIds] = useState<number[]>([]);
+  const [reviewTargetItemId, setReviewTargetItemId] = useState<number | null>(null);
+  const [reviewTargetJson, setReviewTargetJson] = useState("");
   const [decisionChoice, setDecisionChoice] = useState("");
   const [decisionReasoning, setDecisionReasoning] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -986,13 +988,23 @@ export default function Home() {
     }
   }
 
-  async function requestAgentReview(itemId: number) {
+  async function requestAgentReview(itemId: number, packetJson: string) {
     setReviewingIds((current) => current.includes(itemId) ? current : [...current, itemId]);
+    setError(null);
     try {
-      await api(`/api/items/${itemId}/reviews`, { method: "POST", body: "{}" });
+      const packet = JSON.parse(packetJson) as { target?: unknown; prior_binding_digests?: unknown };
+      const target = packet.target ?? packet;
+      const priorBindingDigests = Array.isArray(packet.prior_binding_digests) ? packet.prior_binding_digests : [];
+      await api(`/api/items/${itemId}/reviews`, {
+        method: "POST",
+        body: JSON.stringify({ target, prior_binding_digests: priorBindingDigests }),
+      });
+      setReviewTargetItemId(null);
+      setReviewTargetJson("");
+      setNotice("The signed Critic assignment was created for the exact immutable target.");
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The Critic Agent could not complete the review.");
+      setError(caught instanceof Error ? caught.message : "The signed Critic assignment could not be created.");
     } finally {
       setReviewingIds((current) => current.filter((id) => id !== itemId));
     }
@@ -1003,8 +1015,8 @@ export default function Home() {
     try {
       await api(`/api/items/${item.id}/workflow`, { method: "POST", body: JSON.stringify({ action }) });
       if (action === "RESUBMIT") {
-        setReviewingIds((current) => current.includes(item.id) ? current : [...current, item.id]);
-        await api(`/api/items/${item.id}/reviews`, { method: "POST", body: "{}" });
+        setReviewTargetItemId(item.id);
+        setReviewTargetJson("");
       }
       await load();
     } catch (caught) {
@@ -1090,17 +1102,11 @@ export default function Home() {
     }
   }
 
-  function reviewNeedsRefresh(item: WorkItem) {
-    const review = data?.reviews.find((candidate) => candidate.item_id === item.id);
-    return !review || review.reviewed_item_updated_at !== item.updated_at;
-  }
-
   function openDecisionWorkspace(item: WorkItem) {
     setSelectedId(item.id);
     setDecisionChoice("");
     setDecisionReasoning("");
     setDecisionOpen(true);
-    if (reviewNeedsRefresh(item) && !reviewingIds.includes(item.id)) void requestAgentReview(item.id);
   }
 
   function closeDecisionWorkspace() {
@@ -1121,11 +1127,6 @@ export default function Home() {
   function navigateTo(nextView: View) {
     setView(nextView);
     setMobileNav(false);
-    if (nextView === "decisions") {
-      for (const item of decisionItems) {
-        if (reviewNeedsRefresh(item) && !reviewingIds.includes(item.id)) void requestAgentReview(item.id);
-      }
-    }
   }
 
   function openItem(item: WorkItem) {
@@ -1344,7 +1345,7 @@ export default function Home() {
                 </div>
               )}
 
-              <AgentReviewBrief item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => void requestAgentReview(selected.id)} />
+              <AgentReviewBrief item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => { setReviewTargetItemId(selected.id); setReviewTargetJson(""); setError(null); }} />
 
               <section className="detail-section">
                 <h3>Work controls</h3>
@@ -1403,6 +1404,17 @@ export default function Home() {
         </div>
       )}
 
+      {reviewTargetItemId && data.items.find((item) => item.id === reviewTargetItemId) && (
+        <div className="modal-scrim">
+          <form className="modal-card review-target-modal" role="dialog" aria-modal="true" aria-labelledby="review-target-title" onSubmit={(event) => { event.preventDefault(); void requestAgentReview(reviewTargetItemId, reviewTargetJson); }}>
+            <header><div><span>Signed independent review</span><h2 id="review-target-title">Attach the exact immutable target</h2></div><button type="button" aria-label="Close signed review target" onClick={() => { setReviewTargetItemId(null); setReviewTargetJson(""); }}>×</button></header>
+            <p className="modal-intro">Paste the agent-prepared review target packet. The server validates the commit, every immutable GitHub artifact, the canonical manifest digest, the current gate, and the enrolled Critic identity before it creates one signed assignment.</p>
+            <label>Exact review target packet JSON<textarea required value={reviewTargetJson} onChange={(event) => setReviewTargetJson(event.target.value)} spellCheck={false} placeholder={'{"target":{"target_git_object_format":"sha1",…},"prior_binding_digests":[…]}'}/></label>
+            <footer><button type="button" className="secondary-button" onClick={() => { setReviewTargetItemId(null); setReviewTargetJson(""); }}>Cancel</button><button type="submit" className="decision-button" disabled={reviewingIds.includes(reviewTargetItemId) || !reviewTargetJson.trim()}>{reviewingIds.includes(reviewTargetItemId) ? "Creating signed assignment…" : "Create signed Critic assignment"}</button></footer>
+          </form>
+        </div>
+      )}
+
       {selectedId !== null && !selected && (
         <div className="drawer-scrim">
           <aside className="item-drawer item-drawer-unavailable" aria-label="Work item unavailable">
@@ -1456,7 +1468,7 @@ export default function Home() {
             <input type="hidden" name="reviewId" value={freshSelectedReview?.id ?? ""} />
             <header><div><span>◆ Authenticated human ruling</span><h2>{selected.gate}</h2></div><button type="button" onClick={closeDecisionWorkspace}>×</button></header>
             <div className="decision-item-summary"><span>{selected.key}</span><strong>{selected.title}</strong><p>{selected.description}</p></div>
-            <AgentReviewBrief compact item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => void requestAgentReview(selected.id)} />
+            <AgentReviewBrief compact item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => { setReviewTargetItemId(selected.id); setReviewTargetJson(""); setError(null); }} />
             {gateRecommendation && <section className={`gate-ai-recommendation recommendation-${gateRecommendation.action === "APPROVED" && gateOneValueReady ? "approve" : "changes"}`}><header><span>◇ AI recommendation</span><strong>{gateRecommendation.action === "APPROVED" && !gateOneValueReady ? "Complete one prerequisite" : gateRecommendation.label}</strong></header><p>{gateRecommendation.action === "APPROVED" && !gateOneValueReady ? "The evidence supports approval, but Gate 1 remains locked until you accept the AI-prepared Value Hypothesis. Nothing needs to be written from scratch." : gateRecommendation.reason}</p><small>Advisory only. You must select a ruling, review or edit its reasoning, and record it yourself.</small></section>}
             {freshSelectedReview?.evidence_sha256 ? <div className="decision-evidence-bound"><span>✓ Exact evidence captured</span><strong>{freshSelectedReview.evidence_revision ? freshSelectedReview.evidence_revision.slice(0, 12) : freshSelectedReview.evidence_sha256.slice(0, 12)}</strong><small>This ruling will retain the Critic review and content fingerprint.</small></div> : <div className="review-stale">A fresh review with resolvable evidence is required before this ruling can be recorded.</div>}
             {!gateOneValueReady && <section className="decision-prerequisite" role="alert"><div><span>Required before Gate 1 approval</span><strong>Accept the AI-prepared Value Hypothesis</strong><p>The proposal is already filled. Review it, accept it unchanged or edit it, then return here. The app will confirm the save and refresh this item.</p></div><button type="button" onClick={reviewGateOneValuePrerequisite}>Review prepared proposal</button></section>}
