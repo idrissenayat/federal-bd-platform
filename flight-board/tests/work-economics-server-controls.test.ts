@@ -21,16 +21,27 @@ class D1Statement {
   bind(...values: unknown[]) { return new D1Statement(this.db, this.sql, values); }
   async first<T>() { return (this.db.prepare(this.sql).get(...this.values as never[]) as T | undefined) ?? null; }
   async all<T>() { return { results: this.db.prepare(this.sql).all(...this.values as never[]) as T[] }; }
-  async run<T>() {
+  runSync<T>() {
     const result = this.db.prepare(this.sql).run(...this.values as never[]);
     return { results: [] as T[], meta: { last_row_id: Number(result.lastInsertRowid), changes: Number(result.changes) } };
   }
+  async run<T>() { return this.runSync<T>(); }
 }
 
 class D1Database {
   readonly sqlite = new DatabaseSync(":memory:");
   prepare(sql: string) { return new D1Statement(this.sqlite, sql); }
-  async batch(statements: D1Statement[]) { return Promise.all(statements.map((statement) => statement.run())); }
+  async batch(statements: D1Statement[]) {
+    this.sqlite.exec("BEGIN IMMEDIATE");
+    try {
+      const results = statements.map((statement) => statement.runSync());
+      this.sqlite.exec("COMMIT");
+      return results;
+    } catch (error) {
+      this.sqlite.exec("ROLLBACK");
+      throw error;
+    }
+  }
 }
 
 function request(user: string, path: string, method = "GET", body?: unknown) {
@@ -355,6 +366,32 @@ test("successful dispatch creates one immutable receipt, outbox identity, and QU
   }
 });
 
+test("REC-02 concurrent dispatch submissions commit one identity and return one idempotent replay", async () => {
+  const { db, itemId } = await setup();
+  prepareDispatchAuthorizationSeed(db, itemId, "b".repeat(40));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => String(input).includes("0028-dispatch-data-inventory.md")
+    ? new Response(privacyInventory, { status: 200 })
+    : String(input).includes("raw.githubusercontent.com") ? new Response("# exact approved exam\n", { status: 200 })
+    : originalFetch(input);
+  try {
+    const responses = await Promise.all([
+      handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv }),
+      handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv }),
+    ]);
+    assert.deepEqual(responses.map((response) => response?.status).sort(), [200, 200], JSON.stringify(await Promise.all(responses.map((response) => response?.clone().text()))));
+    const bodies = await Promise.all(responses.map((response) => response?.json() as Promise<{ idempotent_replay: boolean }>));
+    assert.deepEqual(bodies.map((body) => body.idempotent_replay).sort(), [false, true]);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_receipts").get()!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_authorization_audits").get()!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_outbox").get()!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE event_type = 'QUEUED'").get()!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM activity WHERE item_id = ? AND action = 'dispatch_authorized'").get(itemId)!.total, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("REC-04 route invalidation fences the old intent and explicit reauthorization creates one same-lineage successor", async () => {
   const { db, itemId } = await setup();
   const revision = "d".repeat(40);
@@ -657,11 +694,13 @@ test("service fencing, verified relay delivery, signed agent acknowledgement, an
       agent_claim_run_id: "claim-run-900", acknowledged_at: acknowledgedAt,
     };
     const acknowledgement = { member_id: "agent-a", key_id: "agent-a-key", key_version: 1, ...acknowledgementPayload, signature: await signBinding(acknowledgementPayload, agentSecret) };
-    const accepted = await handleApi(request("agent-a", `/api/dispatches/${intentId}/acknowledgements`, "POST", acknowledgement), { DB: db, ...dispatchEnv });
-    assert.equal(accepted?.status, 201, await accepted?.text());
-    const replay = await handleApi(request("agent-a", `/api/dispatches/${intentId}/acknowledgements`, "POST", acknowledgement), { DB: db, ...dispatchEnv });
-    assert.equal(replay?.status, 200, await replay?.clone().text());
-    assert.equal((await replay?.json() as { idempotent_replay: boolean }).idempotent_replay, true);
+    const acknowledgementResponses = await Promise.all([
+      handleApi(request("agent-a", `/api/dispatches/${intentId}/acknowledgements`, "POST", acknowledgement), { DB: db, ...dispatchEnv }),
+      handleApi(request("agent-a", `/api/dispatches/${intentId}/acknowledgements`, "POST", acknowledgement), { DB: db, ...dispatchEnv }),
+    ]);
+    assert.deepEqual(acknowledgementResponses.map((response) => response?.status).sort(), [200, 201], JSON.stringify(await Promise.all(acknowledgementResponses.map((response) => response?.clone().text()))));
+    const acknowledgementBodies = await Promise.all(acknowledgementResponses.map((response) => response?.json() as Promise<{ idempotent_replay: boolean }>));
+    assert.deepEqual(acknowledgementBodies.map((body) => body.idempotent_replay).sort(), [false, true]);
 
     const requestedAt = new Date().toISOString();
     const readPayload = { schema: "steer-dispatch-read/v1", method: "POST", path: `/api/dispatches/${intentId}/read`, dispatch_intent_id: intentId, requested_at: requestedAt };

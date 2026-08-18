@@ -597,22 +597,19 @@ async function ensureSchema(db: Database) {
   await ensureColumn(db, "dispatch_outbox", "accepted_acknowledgement_sha256", "accepted_acknowledgement_sha256 text");
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_receipts_no_update
     BEFORE UPDATE ON dispatch_receipts BEGIN SELECT RAISE(ABORT, 'dispatch receipts are immutable'); END`).run();
-  await db.prepare("DROP TRIGGER IF EXISTS dispatch_receipts_no_delete").run();
-  await db.prepare(`CREATE TRIGGER dispatch_receipts_no_delete
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_receipts_no_delete
     BEFORE DELETE ON dispatch_receipts WHEN NOT EXISTS (
       SELECT 1 FROM dispatch_retention_authorizations a WHERE a.intent_id = OLD.intent_id AND unixepoch(a.expires_at) > unixepoch('now')
     ) BEGIN SELECT RAISE(ABORT, 'dispatch receipts require the governed retention path'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_events_no_update
     BEFORE UPDATE ON dispatch_events BEGIN SELECT RAISE(ABORT, 'dispatch events are append-only'); END`).run();
-  await db.prepare("DROP TRIGGER IF EXISTS dispatch_events_no_delete").run();
-  await db.prepare(`CREATE TRIGGER dispatch_events_no_delete
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_events_no_delete
     BEFORE DELETE ON dispatch_events WHEN NOT EXISTS (
       SELECT 1 FROM dispatch_retention_authorizations a WHERE a.intent_id = OLD.intent_id AND unixepoch(a.expires_at) > unixepoch('now')
     ) BEGIN SELECT RAISE(ABORT, 'dispatch events require the governed retention path'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_authorization_audits_no_update
     BEFORE UPDATE ON dispatch_authorization_audits BEGIN SELECT RAISE(ABORT, 'dispatch authorization audits are immutable'); END`).run();
-  await db.prepare("DROP TRIGGER IF EXISTS dispatch_authorization_audits_no_delete").run();
-  await db.prepare(`CREATE TRIGGER dispatch_authorization_audits_no_delete
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_authorization_audits_no_delete
     BEFORE DELETE ON dispatch_authorization_audits WHEN NOT EXISTS (
       SELECT 1 FROM dispatch_retention_authorizations a WHERE a.intent_id = OLD.intent_id AND unixepoch(a.expires_at) > unixepoch('now')
     ) BEGIN SELECT RAISE(ABORT, 'dispatch authorization audits require the governed retention path'); END`).run();
@@ -1228,45 +1225,51 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
     routing_configuration_version: route.configurationVersion,
     occurred_at: now,
   };
-  await db.batch([
-    ...predecessorStatements,
-    db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'dispatch_authorized', ?, ?)")
-      .bind(itemId, user.id, `authorized agent handoff receipt ${identity.intentId} to ${String(item.assignee_name)} in ${route.channelName} (${route.channelId})`, now),
-    db.prepare(`INSERT INTO dispatch_authorization_audits
+  try {
+    await db.batch([
+      ...predecessorStatements,
+      db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'dispatch_authorized', ?, ?)")
+        .bind(itemId, user.id, `authorized agent handoff receipt ${identity.intentId} to ${String(item.assignee_name)} in ${route.channelName} (${route.channelId})`, now),
+      db.prepare(`INSERT INTO dispatch_authorization_audits
       (audit_event_id, intent_id, item_id, pod_id, authorization_revision, authorization_json, actor_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(authorizationAuditEventId, identity.intentId, itemId, podId, authorizationRevision, JSON.stringify(authorizationAudit), user.id, now),
-    db.prepare(`INSERT INTO dispatch_receipts
+      db.prepare(`INSERT INTO dispatch_receipts
       (intent_id, lineage_id, item_id, pod_id, authorization_revision, channel_id, configuration_version, receipt_json, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(identity.intentId, identity.lineageId, itemId, podId, authorizationRevision, route.channelId, route.configurationVersion, JSON.stringify(receipt), now),
-    db.prepare(`INSERT INTO dispatch_outbox
+      db.prepare(`INSERT INTO dispatch_outbox
       (intent_id, receipt_id, member_id, channel_id, channel_name, status, current_state, current_event_version,
        current_event_sha256, attempt_number, send_started, reconciliation_required, terminalization_requested,
        relay_url, routing_configuration_version, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, 'QUEUED', 'QUEUED', 0, ?, 0, 0, 0, 0, ?, ?, ?, ?)`)
       .bind(identity.intentId, identity.intentId, assigneeId, route.channelId, route.channelName, queuedEvent.eventSha256, route.relayUrl, route.configurationVersion, now, now),
-    db.prepare(`INSERT INTO dispatch_events
+      db.prepare(`INSERT INTO dispatch_events
       (intent_id, event_version, expected_event_version, event_type, prior_state, resulting_state, payload_json,
        previous_event_sha256, event_sha256, service_key_id, service_key_version, service_signature,
        agent_key_id, agent_key_version, agent_signature, acknowledgement_sha256, actor_id, created_at)
       VALUES (?, 0, -1, 'QUEUED', NULL, 'QUEUED', ?, NULL, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?)`)
       .bind(identity.intentId, canonicalJson(queuedEvent.envelope), queuedEvent.eventSha256, dispatchSigner.keyId, dispatchSigner.keyVersion, queuedEvent.envelope.service_signature, user.id, now),
-    db.prepare(
-      `INSERT OR IGNORE INTO notifications
+      db.prepare(
+        `INSERT OR IGNORE INTO notifications
        (dedupe_key, item_id, member_id, recipient_role, kind, title, body, channel, status, created_at)
        VALUES (?, ?, ?, ?, 'agent_handoff', ?, ?, ?, 'queued', ?)`,
-    ).bind(
-      `dispatch-${identity.intentId}`,
-      itemId,
-      String(item.assignee_id),
-      String(item.assignee_role ?? "Assigned agent"),
-      `${String(item.key)} authorized for agent handoff`,
-      handoffMessage,
-      route.channelName,
-      now,
-    ),
-  ]);
+      ).bind(
+        `dispatch-${identity.intentId}`,
+        itemId,
+        String(item.assignee_id),
+        String(item.assignee_role ?? "Assigned agent"),
+        `${String(item.key)} authorized for agent handoff`,
+        handoffMessage,
+        route.channelName,
+        now,
+      ),
+    ]);
+  } catch (error) {
+    const raced = await db.prepare("SELECT receipt_json FROM dispatch_receipts WHERE intent_id = ?").bind(identity.intentId).first<{ receipt_json: string }>();
+    if (!raced) throw error;
+    return json({ ok: true, idempotent_replay: true, receipt: JSON.parse(raced.receipt_json), authorization: { ...authorization, channel: route.channelName }, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
+  }
   return json({ ok: true, idempotent_replay: false, authorization: { ...authorization, channel: route.channelName }, receipt, message: handoffMessage, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
 }
 

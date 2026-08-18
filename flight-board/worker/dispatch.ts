@@ -94,25 +94,35 @@ export function dispatchServiceSigner(env: DispatchServiceEnv) {
 
 export async function ensureDispatchServiceSigner(db: Database, podId: string, actorId: string, env: DispatchServiceEnv, now: string) {
   const signer = dispatchServiceSigner(env);
-  const existing = await db.prepare(`SELECT public_key, status, service_role, allowed_event_types_json, valid_from, valid_until
+  const readExisting = () => db.prepare(`SELECT public_key, status, service_role, allowed_event_types_json, valid_from, valid_until
     FROM dispatch_event_signers WHERE pod_id = ? AND key_id = ? AND key_version = ?`)
     .bind(podId, signer.keyId, signer.keyVersion).first<Record<string, unknown>>();
-  if (existing) {
+  const validateExisting = (existing: Record<string, unknown>) => {
     if (String(existing.public_key) !== signer.publicKey || String(existing.status) !== "ACTIVE" || String(existing.service_role) !== serviceRole
       || String(existing.valid_from) > now || (existing.valid_until !== null && String(existing.valid_until) <= now)) {
       throw new Error("The configured dispatch signer conflicts with the audited signer registry.");
     }
     const allowed = JSON.parse(String(existing.allowed_event_types_json)) as string[];
     if (!serviceEventTypes.every((eventType) => allowed.includes(eventType))) throw new Error("The dispatch signer registry does not authorize the required event matrix.");
+  };
+  const existing = await readExisting();
+  if (existing) {
+    validateExisting(existing);
     return signer;
   }
   const registry = await db.prepare("SELECT COALESCE(MAX(registry_version), 0) AS version FROM dispatch_event_signers WHERE pod_id = ?")
     .bind(podId).first<{ version: number }>();
-  await db.prepare(`INSERT INTO dispatch_event_signers
-    (pod_id, registry_version, service_role, allowed_event_types_json, key_id, key_version, public_key,
-     valid_from, valid_until, status, changed_by, change_reason, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'ACTIVE', ?, 'Initial STR-028 dispatch signer enrollment under the approved Gate 2 implementation.', ?)`)
-    .bind(podId, Number(registry?.version ?? 0) + 1, serviceRole, JSON.stringify(serviceEventTypes), signer.keyId, signer.keyVersion, signer.publicKey, now, actorId, now).run();
+  try {
+    await db.prepare(`INSERT INTO dispatch_event_signers
+      (pod_id, registry_version, service_role, allowed_event_types_json, key_id, key_version, public_key,
+       valid_from, valid_until, status, changed_by, change_reason, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'ACTIVE', ?, 'Initial STR-028 dispatch signer enrollment under the approved Gate 2 implementation.', ?)`)
+      .bind(podId, Number(registry?.version ?? 0) + 1, serviceRole, JSON.stringify(serviceEventTypes), signer.keyId, signer.keyVersion, signer.publicKey, now, actorId, now).run();
+  } catch (error) {
+    const raced = await readExisting();
+    if (!raced) throw error;
+    validateExisting(raced);
+  }
   return signer;
 }
 
@@ -583,14 +593,22 @@ async function handleAcknowledgement(request: Request, db: Database, env: Dispat
     await appendAckRejected(db, env, dispatch, "ACK_SECOND_DIFFERENT");
     return json({ error: "A different acknowledgement is already accepted for this intent.", code: "ACK_SECOND_DIFFERENT" }, 409);
   }
-  const result = await signedTransition({
-    db, env, receipt: dispatch.receipt, outbox: dispatch.outbox, command: "ACKNOWLEDGE",
-    actorId: "dispatch-authorization-service", authority: serviceRole,
-    payload: { acknowledgement_sha256: acknowledgementSha256, delivered_event_id: acknowledgementPayload.delivered_event_id, agent_claim_run_id: acknowledgementPayload.agent_claim_run_id },
-    agentKeyId: String(agent?.agent_key_id), agentKeyVersion: Number(agent?.agent_key_version), agentSignature: String(body?.signature),
-    acknowledgementSha256, outboxFields: { acceptedAcknowledgementSha256: acknowledgementSha256 },
-  });
-  return json({ ok: true, idempotent_replay: false, event: result.event.envelope, projection: result.projection }, 201);
+  try {
+    const result = await signedTransition({
+      db, env, receipt: dispatch.receipt, outbox: dispatch.outbox, command: "ACKNOWLEDGE",
+      actorId: "dispatch-authorization-service", authority: serviceRole,
+      payload: { acknowledgement_sha256: acknowledgementSha256, delivered_event_id: acknowledgementPayload.delivered_event_id, agent_claim_run_id: acknowledgementPayload.agent_claim_run_id },
+      agentKeyId: String(agent?.agent_key_id), agentKeyVersion: Number(agent?.agent_key_version), agentSignature: String(body?.signature),
+      acknowledgementSha256, outboxFields: { acceptedAcknowledgementSha256: acknowledgementSha256 },
+    });
+    return json({ ok: true, idempotent_replay: false, event: result.event.envelope, projection: result.projection }, 201);
+  } catch (error) {
+    const raced = await loadDispatch(db, intentId);
+    if (!raced || raced.outbox.accepted_acknowledgement_sha256 !== acknowledgementSha256) throw error;
+    const existing = await db.prepare("SELECT payload_json FROM dispatch_events WHERE intent_id = ? AND acknowledgement_sha256 = ?")
+      .bind(intentId, acknowledgementSha256).first<{ payload_json: string }>();
+    return json({ ok: true, idempotent_replay: true, event: existing ? JSON.parse(existing.payload_json) : null, projection: projection(raced.outbox) });
+  }
 }
 
 export async function handleDispatchServiceApi(request: Request, db: Database, env: DispatchServiceEnv) {
