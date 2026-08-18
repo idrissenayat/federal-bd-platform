@@ -388,7 +388,7 @@ function Empty({ title, copy }: { title: string; copy: string }) {
   return <div className="empty-panel"><span>✓</span><h3>{title}</h3><p>{copy}</p></div>;
 }
 
-function InlineActionFeedback({ feedback }: { feedback: ActionFeedback | null }) {
+export function InlineActionFeedback({ feedback }: { feedback: ActionFeedback | null }) {
   const region = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (feedback?.state === "error") region.current?.focus();
@@ -787,6 +787,7 @@ export default function Home() {
   const [decisionChoice, setDecisionChoice] = useState("");
   const [decisionReasoning, setDecisionReasoning] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [reloadError, setReloadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [buzzOpen, setBuzzOpen] = useState(false);
@@ -816,12 +817,15 @@ export default function Home() {
         emitTelemetry({ metric_name: "steer_post_write_reconciliation_total", label_name: "result", label_value: bootstrapReconciliationResult(current, payload), value: 1, case_id: activeStr028CaseId() });
         return current ? mergeBootstrapPreservingNewerItems(current, payload) : payload;
       });
+      setReloadError(null);
       if (!options.quiet) setError(null);
       return true;
     } catch (caught) {
       if (sequence === loadSequence.current) {
         emitTelemetry({ metric_name: "steer_post_write_reconciliation_total", label_name: "result", label_value: "error", value: 1, case_id: activeStr028CaseId() });
-        if (!options.quiet) setError(caught instanceof Error ? caught.message : "The workspace could not be loaded.");
+        const message = caught instanceof Error ? caught.message : "The workspace could not be loaded.";
+        if (options.quiet) setReloadError(message);
+        else setError(message);
       }
       return false;
     } finally {
@@ -840,6 +844,7 @@ export default function Home() {
           emitTelemetry({ metric_name: "steer_post_write_reconciliation_total", label_name: "result", label_value: bootstrapReconciliationResult(current, incoming), value: 1, case_id: activeStr028CaseId() });
           return current ? mergeBootstrapPreservingNewerItems(current, incoming) : incoming;
         });
+        setReloadError(null);
         setError(null);
       })
       .catch((caught: unknown) => {
@@ -1246,6 +1251,7 @@ export default function Home() {
         </header>
 
         {error && <div className="action-feedback action-feedback-error" role="alert" aria-live="assertive"><div><strong>Action not completed</strong><span>{error}</span></div><button onClick={() => setError(null)}>Dismiss</button></div>}
+        {reloadError && <div className="action-feedback action-feedback-error workspace-reload-error" role="alert" aria-live="assertive" aria-label="Workspace refresh failed"><div><strong>Workspace refresh failed</strong><span>{reloadError} The drawer still shows the last authoritative action result; retry the refresh without repeating the action.</span></div><button onClick={() => void load({ quiet: true })}>Try refresh again</button></div>}
         {notice && <div className="action-feedback action-feedback-success" role="status" aria-live="polite"><div><strong>Saved</strong><span>{notice}</span></div><button onClick={() => setNotice(null)}>Dismiss</button></div>}
 
         <div className="content-area">
@@ -1368,6 +1374,15 @@ export default function Home() {
                 {itemActivity.length ? itemActivity.map((event) => <div className="activity-row" key={event.id}><Avatar name={event.actor_name} /><div><p><strong>{event.actor_name ?? "Contributor"}</strong> {event.detail}</p><span>{formatDate(event.created_at)}</span></div></div>) : <p className="muted">No activity recorded.</p>}
               </section>
             </div>
+          </aside>
+        </div>
+      )}
+
+      {selectedId !== null && !selected && (
+        <div className="drawer-scrim">
+          <aside className="item-drawer item-drawer-unavailable" aria-label="Work item unavailable">
+            <header className="drawer-header"><div><span>Unavailable</span></div><button aria-label="Close unavailable work item" onClick={() => setSelectedId(null)}>×</button></header>
+            <div className="drawer-body"><div className="empty-panel" role="alert" aria-live="assertive" aria-label="Authoritative work item unavailable"><span>!</span><h2>Work item unavailable</h2><p>The authoritative item is not present in the latest workspace response. No durable value was fabricated. Refresh the workspace or close this drawer.</p><button onClick={() => void load()}>Refresh workspace</button></div></div>
           </aside>
         </div>
       )}

@@ -20,6 +20,11 @@ const dispatchEnv = {
 };
 
 const privacyInventory = await readFile(new URL("../../steer/evidence/0028-dispatch-data-inventory.md", import.meta.url), "utf8");
+const privacyRuling = await readFile(new URL("../../steer/evidence/0028-gate-3-case-evidence.md", import.meta.url), "utf8");
+const privacyInventoryUrl = "https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md";
+const privacyInventorySha256 = "c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d";
+const privacyRulingUrl = "https://github.com/idrissenayat/federal-bd-platform/blob/d9dbe0b70e812f680ae23fad2ce4ffafc6e65229/steer/evidence/0028-gate-3-case-evidence.md";
+const privacyRulingSha256 = "12522b22dca4ade812288a2bf47cb6c71405e89275a0db234d20ed8decafe83d";
 
 class D1Statement {
   constructor(private readonly db: DatabaseSync, private readonly sql: string, private readonly values: unknown[] = []) {}
@@ -123,8 +128,8 @@ async function setup() {
     VALUES ('STR-900','Server controls','Exercise every server control','Engineer','Now','STEER','active','Gate 2 passed','Rework','Tech Lead','agent-a','Run the exact independent retest evidence.','https://github.com/idrissenayat/federal-bd-platform/blob/main/README.md','https://github.com/idrissenayat/federal-bd-platform/issues/31','pod-a','member-a',?,'member-a','2026-08-14T14:00:00.000Z','2026-08-14T14:00:00.000Z')`).run(JSON.stringify(forecast));
   db.sqlite.prepare(`INSERT INTO dispatch_privacy_policies
     (pod_id, policy_version, inventory_url, inventory_sha256, terminal_retention_days, provider_recovery_days, status, changed_by, change_reason, created_at)
-    VALUES ('pod-a', 1, 'https://github.com/idrissenayat/federal-bd-platform/blob/382dba4b08abc94196f26f77c14f232e6e32d3b7/steer/evidence/0028-dispatch-data-inventory.md',
-      '882afa8a3385b4ae596cc03656eb2173504b513e5a368959f4608ad5d48aaa24', 90, 30, 'BLOCKED_BACKUP_RULING', 'member-a', 'Test fixture', '2026-08-18T00:00:00.000Z')`).run();
+    VALUES ('pod-a', 1, 'https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md',
+      'c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d', 90, 30, 'BLOCKED_BACKUP_RULING', 'member-a', 'Test fixture', '2026-08-18T00:00:00.000Z')`).run();
   db.sqlite.prepare(`INSERT INTO buzz_channel_registry
     (pod_id, registry_version, channel_id, channel_name, relay_url, status, changed_by, change_reason, created_at)
     VALUES ('pod-a', 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'ACTIVE', 'member-a', 'Test fixture', '2026-08-18T00:00:00.000Z')`).run();
@@ -181,6 +186,81 @@ test("general item mutation and dispatch enforce same-POD scope and retain paylo
   assert.equal(denials.length, 3);
   assert.ok(denials.every((event) => event.previous_json === null && event.replacement_json === null));
   assert.ok(denials.every((event) => !String(event.reason).includes("sensitive payload")));
+});
+
+test("privacy activation is authenticated, ruling-bound, immutable, CAS-safe, and removes the runtime bypass", async () => {
+  const { db, itemId } = await setup();
+  db.sqlite.prepare("INSERT INTO members (id, display_name, kind, role, authority, status, accent, pod_id) VALUES ('member-owner', 'Named owner', 'human', 'Product Lead', 'Gate authority', 'available', 'aqua', 'pod-a')").run();
+  const activation = {
+    expected_policy_version: 1,
+    idempotency_key: "str028-provider-ruling-2026-08-18",
+    inventory_url: privacyInventoryUrl,
+    inventory_sha256: privacyInventorySha256,
+    ruling_url: privacyRulingUrl,
+    ruling_sha256: privacyRulingSha256,
+    terminal_retention_days: 90,
+    provider_recovery_days: 30,
+    status: "ACTIVE",
+    reason_code: "STR-028_PROVIDER_RECOVERY_RULING_APPROVED",
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("0028-dispatch-data-inventory.md")) return new Response(privacyInventory, { status: 200 });
+    if (url.includes("0028-gate-3-case-evidence.md")) return new Response(privacyRuling, { status: 200 });
+    if (url.includes("raw.githubusercontent.com")) return new Response("# exact approved exam\n", { status: 200 });
+    return originalFetch(input);
+  };
+  try {
+    const unauthorized = await handleApi(request("member-a", "/api/privacy-policy/activate", "POST", activation), { DB: db });
+    assert.equal(unauthorized?.status, 403);
+    assert.equal((await unauthorized?.json() as { code: string }).code, "PRIVACY_POLICY_AUTHORITY_INVALID");
+
+    db.sqlite.prepare("UPDATE members SET role = 'Product Lead · interim Tech Lead' WHERE id = 'member-a'").run();
+    const contradictory = await handleApi(request("member-a", "/api/privacy-policy/activate", "POST", { ...activation, provider_recovery_days: 7 }), { DB: db });
+    assert.equal(contradictory?.status, 409);
+    assert.equal((await contradictory?.json() as { code: string }).code, "PRIVACY_POLICY_RULING_MISMATCH");
+    const crossPodField = await handleApi(request("member-a", "/api/privacy-policy/activate", "POST", { ...activation, pod_id: "pod-b" }), { DB: db });
+    assert.equal(crossPodField?.status, 400);
+
+    const activated = await handleApi(request("member-a", "/api/privacy-policy/activate", "POST", activation), { DB: db });
+    assert.equal(activated?.status, 201, await activated?.clone().text());
+    const activatedBody = await activated?.json() as { policy_version: number; idempotent_replay: boolean; authorization_event_id: string; activation_receipt_sha256: string };
+    assert.equal(activatedBody.policy_version, 2);
+    assert.equal(activatedBody.idempotent_replay, false);
+    assert.match(activatedBody.authorization_event_id, /^[0-9a-f]{64}$/);
+    assert.match(activatedBody.activation_receipt_sha256, /^[0-9a-f]{64}$/);
+
+    const replay = await handleApi(request("member-a", "/api/privacy-policy/activate", "POST", activation), { DB: db });
+    assert.equal(replay?.status, 200, await replay?.clone().text());
+    assert.equal((await replay?.json() as { idempotent_replay: boolean }).idempotent_replay, true);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_privacy_policies WHERE pod_id = 'pod-a'").get()!.total, 2);
+
+    db.sqlite.prepare("UPDATE members SET role = 'Security Owner' WHERE id = 'member-a'").run();
+    const replayMismatch = await handleApi(request("member-a", "/api/privacy-policy/activate", "POST", activation), { DB: db });
+    assert.equal(replayMismatch?.status, 409);
+    assert.equal((await replayMismatch?.json() as { code: string }).code, "PRIVACY_POLICY_REPLAY_MISMATCH");
+    db.sqlite.prepare("UPDATE members SET role = 'Product Lead · interim Tech Lead' WHERE id = 'member-a'").run();
+    const stale = await handleApi(request("member-a", "/api/privacy-policy/activate", "POST", { ...activation, idempotency_key: "str028-provider-ruling-stale" }), { DB: db });
+    assert.equal(stale?.status, 409);
+    assert.equal((await stale?.json() as { code: string }).code, "PRIVACY_POLICY_VERSION_STALE");
+    assert.throws(() => db.sqlite.prepare("UPDATE dispatch_privacy_policies SET status = 'BLOCKED' WHERE pod_id = 'pod-a' AND policy_version = 2").run(), /immutable/);
+
+    prepareDispatchAuthorizationSeed(db, itemId, "b".repeat(40));
+    const dispatched = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv, DISPATCH_ALLOW_TEST_PRIVACY_POLICY: undefined });
+    assert.equal(dispatched?.status, 200, await dispatched?.clone().text());
+
+    const criticSecret = new Uint8Array(32); criticSecret[31] = 17;
+    db.sqlite.prepare(`UPDATE members SET pod_id = 'pod-a', agent_key_id = 'critic-key',
+      agent_key_version = 1, agent_public_key = ?, agent_public_key_fingerprint = ?
+      WHERE id = 'agent-critic'`).run(hex(schnorr.getPublicKey(criticSecret)), "c".repeat(64));
+    const reviewCreated = await handleApi(request("member-a", `/api/items/${itemId}/reviews`, "POST", {
+      stage: "GATE_3_BUILD", target: await reviewTarget(), prior_binding_digests: [],
+    }), { DB: db, ...dispatchEnv, DISPATCH_ALLOW_TEST_PRIVACY_POLICY: undefined });
+    assert.equal(reviewCreated?.status, 201, await reviewCreated?.clone().text());
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("STR-028 telemetry accepts only bounded labels and rejects PII-shaped extra fields", async () => {

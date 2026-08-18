@@ -54,8 +54,13 @@ const buzzRelayHttpUrl = "https://blockbuzzmain-production-5bcb.up.railway.app";
 const buzzRelayWsUrl = "wss://blockbuzzmain-production-5bcb.up.railway.app";
 const allowedGitHubRepository = "idrissenayat/federal-bd-platform";
 const gateTwoExamNextAction = "Design a falsifiable Gate 2 Exam from the approved Intent Brief, attach the exact Exam revision, run a fresh Critic review, and present Gate 2 to the Interim Tech Lead. Do not implement before Gate 2 passes.";
-const dispatchPrivacyInventoryUrl = "https://github.com/idrissenayat/federal-bd-platform/blob/382dba4b08abc94196f26f77c14f232e6e32d3b7/steer/evidence/0028-dispatch-data-inventory.md";
-const dispatchPrivacyInventorySha256 = "882afa8a3385b4ae596cc03656eb2173504b513e5a368959f4608ad5d48aaa24";
+const dispatchPrivacyInventoryRevision = "4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14";
+const dispatchPrivacyInventoryUrl = `https://github.com/idrissenayat/federal-bd-platform/blob/${dispatchPrivacyInventoryRevision}/steer/evidence/0028-dispatch-data-inventory.md`;
+const dispatchPrivacyInventorySha256 = "c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d";
+const dispatchPrivacyRulingRevision = "d9dbe0b70e812f680ae23fad2ce4ffafc6e65229";
+const dispatchPrivacyRulingUrl = `https://github.com/idrissenayat/federal-bd-platform/blob/${dispatchPrivacyRulingRevision}/steer/evidence/0028-gate-3-case-evidence.md`;
+const dispatchPrivacyRulingSha256 = "12522b22dca4ade812288a2bf47cb6c71405e89275a0db234d20ed8decafe83d";
+const dispatchPrivacyActivationReason = "STR-028_PROVIDER_RECOVERY_RULING_APPROVED";
 
 type PullRequestReference = { owner: string; repo: string; repository: string; number: number };
 
@@ -565,7 +570,10 @@ async function ensureSchema(db: Database) {
       pod_id text NOT NULL, policy_version integer NOT NULL, inventory_url text NOT NULL,
       inventory_sha256 text NOT NULL, terminal_retention_days integer NOT NULL,
       provider_recovery_days integer NOT NULL, status text NOT NULL, changed_by text NOT NULL,
-      change_reason text NOT NULL, created_at text NOT NULL, UNIQUE(pod_id, policy_version)
+      change_reason text NOT NULL, created_at text NOT NULL, ruling_url text,
+      ruling_sha256 text, authority_role text, authorization_event_id text,
+      idempotency_key text, activation_receipt_sha256 text,
+      UNIQUE(pod_id, policy_version)
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_privacy_policy_active ON dispatch_privacy_policies (pod_id, status, policy_version)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_security_diagnostics (
@@ -621,6 +629,14 @@ async function ensureSchema(db: Database) {
   await ensureColumn(db, "agent_reviews", "review_assignment_id", "review_assignment_id text");
   await ensureColumn(db, "activity", "review_assignment_id", "review_assignment_id text");
   await ensureColumn(db, "notifications", "review_assignment_id", "review_assignment_id text");
+  await ensureColumn(db, "dispatch_privacy_policies", "ruling_url", "ruling_url text");
+  await ensureColumn(db, "dispatch_privacy_policies", "ruling_sha256", "ruling_sha256 text");
+  await ensureColumn(db, "dispatch_privacy_policies", "authority_role", "authority_role text");
+  await ensureColumn(db, "dispatch_privacy_policies", "authorization_event_id", "authorization_event_id text");
+  await ensureColumn(db, "dispatch_privacy_policies", "idempotency_key", "idempotency_key text");
+  await ensureColumn(db, "dispatch_privacy_policies", "activation_receipt_sha256", "activation_receipt_sha256 text");
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_dispatch_privacy_policy_event ON dispatch_privacy_policies (authorization_event_id) WHERE authorization_event_id IS NOT NULL").run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_dispatch_privacy_policy_idempotency ON dispatch_privacy_policies (pod_id, idempotency_key) WHERE idempotency_key IS NOT NULL").run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_assignments_no_update
     BEFORE UPDATE ON review_assignments BEGIN SELECT RAISE(ABORT, 'review assignments are immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_assignments_no_delete
@@ -1090,22 +1106,10 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
     return json({ error: "The assigned agent has no active versioned acknowledgement key enrollment.", code: "AGENT_KEY_NOT_ENROLLED", authorization }, 409);
   }
 
-  const privacyPolicy = await db.prepare(`SELECT * FROM dispatch_privacy_policies
-    WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`).bind(podId).first<Record<string, unknown>>();
-  if (!privacyPolicy || Number(privacyPolicy.terminal_retention_days) !== 90
-    || ![7, 30].includes(Number(privacyPolicy.provider_recovery_days))
-    || String(privacyPolicy.inventory_url) !== dispatchPrivacyInventoryUrl
-    || String(privacyPolicy.inventory_sha256) !== dispatchPrivacyInventorySha256) {
-    return json({ error: "The required dispatch privacy inventory and retention policy are missing or version-mismatched.", code: "PRIVACY_POLICY_MISSING", authorization }, 409);
-  }
-  const privacyEvidence = await readEvidence(privacyPolicy.inventory_url);
-  if (privacyEvidence.sha256 !== privacyPolicy.inventory_sha256 || privacyEvidence.revision !== "382dba4b08abc94196f26f77c14f232e6e32d3b7") {
-    return json({ error: "The immutable dispatch privacy inventory did not resolve to its audited digest.", code: "PRIVACY_INVENTORY_UNRESOLVED", authorization }, 409);
-  }
+  const privacyPolicyCheck = await validateLatestPrivacyPolicy(db, podId, env.DISPATCH_ALLOW_TEST_PRIVACY_POLICY === "true");
+  if (!privacyPolicyCheck.ok) return json({ error: privacyPolicyCheck.error, code: privacyPolicyCheck.code, authorization }, 409);
+  const privacyPolicy = privacyPolicyCheck.policy!;
   const privacyPolicyStatus = String(privacyPolicy.status);
-  if (privacyPolicyStatus !== "ACTIVE" && !(privacyPolicyStatus === "BLOCKED_BACKUP_RULING" && env.DISPATCH_ALLOW_TEST_PRIVACY_POLICY === "true")) {
-    return json({ error: "Dispatch is blocked until Privacy/Security resolves provider backup deletion. Non-production tests require an explicit test-only setting.", code: "PRIVACY_BACKUP_RULING_REQUIRED", authorization }, 409);
-  }
 
   const evidence = await readEvidence(item.evidence_url);
   const exactEvidence = exactGitEvidence(item.evidence_url);
@@ -1210,6 +1214,9 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
     relay_publisher_public_key: relayPublisherPublicKey,
     privacy_policy_version: Number(privacyPolicy.policy_version), privacy_policy_status: privacyPolicyStatus,
     privacy_inventory_url: String(privacyPolicy.inventory_url), privacy_inventory_sha256: String(privacyPolicy.inventory_sha256),
+    privacy_ruling_url: String(privacyPolicy.ruling_url ?? ""), privacy_ruling_sha256: String(privacyPolicy.ruling_sha256 ?? ""),
+    privacy_policy_authorization_event_id: String(privacyPolicy.authorization_event_id ?? ""),
+    privacy_policy_activation_receipt_sha256: String(privacyPolicy.activation_receipt_sha256 ?? ""),
     authorized_next_action_sha256: identity.nextActionDigest,
     authorized_handoff_sha256: authorizedHandoffSha256,
     authorized_handoff_message: handoffMessage,
@@ -1856,6 +1863,133 @@ async function readEvidence(urlValue: unknown): Promise<EvidenceRead> {
   }
 }
 
+type PrivacyPolicyCheck = {
+  ok: boolean;
+  code?: string;
+  error?: string;
+  policy?: Record<string, unknown>;
+};
+
+async function validateLatestPrivacyPolicy(db: Database, podId: string, allowTestBypass = false): Promise<PrivacyPolicyCheck> {
+  const policy = await db.prepare(`SELECT * FROM dispatch_privacy_policies
+    WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`).bind(podId).first<Record<string, unknown>>();
+  if (!policy || Number(policy.terminal_retention_days) !== 90
+    || Number(policy.provider_recovery_days) !== 30
+    || String(policy.inventory_url) !== dispatchPrivacyInventoryUrl
+    || String(policy.inventory_sha256) !== dispatchPrivacyInventorySha256) {
+    return { ok: false, code: "PRIVACY_POLICY_MISSING", error: "The required dispatch and review privacy inventory or retention policy is missing or version-mismatched.", policy: policy ?? undefined };
+  }
+  const inventoryEvidence = await readEvidence(policy.inventory_url);
+  if (inventoryEvidence.sha256 !== dispatchPrivacyInventorySha256 || inventoryEvidence.revision !== dispatchPrivacyInventoryRevision) {
+    return { ok: false, code: "PRIVACY_INVENTORY_UNRESOLVED", error: "The immutable dispatch and review privacy inventory did not resolve to its audited digest.", policy };
+  }
+  const status = String(policy.status);
+  if (status === "BLOCKED_BACKUP_RULING" && allowTestBypass) return { ok: true, policy };
+  if (status !== "ACTIVE") {
+    return { ok: false, code: "PRIVACY_BACKUP_RULING_REQUIRED", error: "Dispatch and signed review are blocked until the approved provider-recovery ruling is activated.", policy };
+  }
+  if (String(policy.ruling_url ?? "") !== dispatchPrivacyRulingUrl
+    || String(policy.ruling_sha256 ?? "") !== dispatchPrivacyRulingSha256
+    || !String(policy.authorization_event_id ?? "").match(/^[0-9a-f]{64}$/)
+    || !String(policy.activation_receipt_sha256 ?? "").match(/^[0-9a-f]{64}$/)
+    || !String(policy.idempotency_key ?? "").match(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/)
+    || !String(policy.authority_role ?? "")
+    || String(policy.change_reason) !== dispatchPrivacyActivationReason) {
+    return { ok: false, code: "PRIVACY_POLICY_ACTIVATION_INVALID", error: "The active policy is not bound to the named authority, immutable ruling, and activation receipt.", policy };
+  }
+  const rulingEvidence = await readEvidence(policy.ruling_url);
+  if (rulingEvidence.sha256 !== dispatchPrivacyRulingSha256 || rulingEvidence.revision !== dispatchPrivacyRulingRevision) {
+    return { ok: false, code: "PRIVACY_RULING_UNRESOLVED", error: "The immutable provider-recovery ruling did not resolve to its audited digest.", policy };
+  }
+  return { ok: true, policy };
+}
+
+function privacyPolicyAuthority(role: string) {
+  return /Privacy|Security/.test(role) || (/Product Lead/.test(role) && /Tech Lead/.test(role));
+}
+
+async function activatePrivacyPolicy(request: Request, db: Database, user: User) {
+  const actor = await memberContext(db, user);
+  if (!actor || actor.kind !== "human" || !actor.pod_id || !privacyPolicyAuthority(actor.role)) {
+    return json({ error: "A named same-POD Privacy, Security, or combined Product and Tech authority must activate this policy.", code: "PRIVACY_POLICY_AUTHORITY_INVALID" }, 403);
+  }
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  const allowedKeys = ["expected_policy_version", "idempotency_key", "inventory_url", "inventory_sha256", "ruling_url", "ruling_sha256", "terminal_retention_days", "provider_recovery_days", "status", "reason_code"];
+  if (!body || Object.keys(body).some((key) => !allowedKeys.includes(key))) {
+    return json({ error: "Policy activation accepts only the exact bounded ruling contract.", code: "PRIVACY_POLICY_REQUEST_INVALID" }, 400);
+  }
+  const expectedVersion = Number(body.expected_policy_version);
+  const idempotencyKey = String(body.idempotency_key ?? "");
+  const exactRequest = Number.isSafeInteger(expectedVersion) && expectedVersion >= 1
+    && /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(idempotencyKey)
+    && String(body.inventory_url ?? "") === dispatchPrivacyInventoryUrl
+    && String(body.inventory_sha256 ?? "") === dispatchPrivacyInventorySha256
+    && String(body.ruling_url ?? "") === dispatchPrivacyRulingUrl
+    && String(body.ruling_sha256 ?? "") === dispatchPrivacyRulingSha256
+    && Number(body.terminal_retention_days) === 90
+    && Number(body.provider_recovery_days) === 30
+    && String(body.status ?? "") === "ACTIVE"
+    && String(body.reason_code ?? "") === dispatchPrivacyActivationReason;
+  if (!exactRequest) {
+    return json({ error: "The activation request contradicts or omits the approved immutable 90-day live / 30-day recovery ruling.", code: "PRIVACY_POLICY_RULING_MISMATCH" }, 409);
+  }
+  const [inventoryEvidence, rulingEvidence] = await Promise.all([
+    readEvidence(dispatchPrivacyInventoryUrl), readEvidence(dispatchPrivacyRulingUrl),
+  ]);
+  if (inventoryEvidence.revision !== dispatchPrivacyInventoryRevision || inventoryEvidence.sha256 !== dispatchPrivacyInventorySha256
+    || rulingEvidence.revision !== dispatchPrivacyRulingRevision || rulingEvidence.sha256 !== dispatchPrivacyRulingSha256) {
+    return json({ error: "The immutable inventory or ruling could not be resolved to its exact audited digest.", code: "PRIVACY_POLICY_EVIDENCE_UNRESOLVED" }, 409);
+  }
+  const eventPayload = {
+    schema: "steer-privacy-policy-activation/v1", pod_id: actor.pod_id, actor_id: user.id,
+    authority_role: actor.role, expected_policy_version: expectedVersion,
+    inventory_url: dispatchPrivacyInventoryUrl, inventory_sha256: dispatchPrivacyInventorySha256,
+    ruling_url: dispatchPrivacyRulingUrl, ruling_sha256: dispatchPrivacyRulingSha256,
+    terminal_retention_days: 90, provider_recovery_days: 30, status: "ACTIVE",
+    reason_code: dispatchPrivacyActivationReason, idempotency_key: idempotencyKey,
+  };
+  const authorizationEventId = await sha256Hex(canonicalJson(eventPayload));
+  const existing = await db.prepare(`SELECT * FROM dispatch_privacy_policies
+    WHERE pod_id = ? AND idempotency_key = ? LIMIT 1`).bind(actor.pod_id, idempotencyKey).first<Record<string, unknown>>();
+  if (existing) {
+    if (Number(existing.policy_version) === expectedVersion + 1
+      && String(existing.authorization_event_id) === authorizationEventId
+      && String(existing.activation_receipt_sha256).match(/^[0-9a-f]{64}$/)) {
+      return json({ ok: true, idempotent_replay: true, policy_version: Number(existing.policy_version), authorization_event_id: authorizationEventId, activation_receipt_sha256: existing.activation_receipt_sha256 });
+    }
+    return json({ error: "The idempotency key is already bound to a different activation.", code: "PRIVACY_POLICY_REPLAY_MISMATCH" }, 409);
+  }
+  const latest = await db.prepare(`SELECT policy_version FROM dispatch_privacy_policies
+    WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`).bind(actor.pod_id).first<{ policy_version: number }>();
+  if (Number(latest?.policy_version ?? 0) !== expectedVersion) {
+    return json({ error: "The expected policy version is stale.", code: "PRIVACY_POLICY_VERSION_STALE", current_policy_version: Number(latest?.policy_version ?? 0) }, 409);
+  }
+  const createdAt = new Date().toISOString();
+  const policyVersion = expectedVersion + 1;
+  const receipt = { ...eventPayload, schema: "steer-privacy-policy-activation-receipt/v1", policy_version: policyVersion, authorization_event_id: authorizationEventId, created_at: createdAt };
+  const activationReceiptSha256 = await sha256Hex(canonicalJson(receipt));
+  const inserted = await db.prepare(`INSERT INTO dispatch_privacy_policies
+    (pod_id, policy_version, inventory_url, inventory_sha256, terminal_retention_days,
+     provider_recovery_days, status, changed_by, change_reason, created_at, ruling_url,
+     ruling_sha256, authority_role, authorization_event_id, idempotency_key, activation_receipt_sha256)
+    SELECT ?, ?, ?, ?, 90, 30, 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?
+    WHERE (SELECT COALESCE(MAX(policy_version), 0) FROM dispatch_privacy_policies WHERE pod_id = ?) = ?`).bind(
+      actor.pod_id, policyVersion, dispatchPrivacyInventoryUrl, dispatchPrivacyInventorySha256,
+      user.id, dispatchPrivacyActivationReason, createdAt, dispatchPrivacyRulingUrl,
+      dispatchPrivacyRulingSha256, actor.role, authorizationEventId, idempotencyKey,
+      activationReceiptSha256, actor.pod_id, expectedVersion,
+    ).run();
+  if (Number(inserted.meta?.changes ?? 0) !== 1) {
+    const raced = await db.prepare(`SELECT * FROM dispatch_privacy_policies WHERE pod_id = ? AND idempotency_key = ?`)
+      .bind(actor.pod_id, idempotencyKey).first<Record<string, unknown>>();
+    if (raced && String(raced.authorization_event_id) === authorizationEventId) {
+      return json({ ok: true, idempotent_replay: true, policy_version: Number(raced.policy_version), authorization_event_id: authorizationEventId, activation_receipt_sha256: raced.activation_receipt_sha256 });
+    }
+    return json({ error: "A newer policy version won the activation race.", code: "PRIVACY_POLICY_VERSION_STALE" }, 409);
+  }
+  return json({ ok: true, idempotent_replay: false, policy_version: policyVersion, authorization_event_id: authorizationEventId, activation_receipt_sha256: activationReceiptSha256, receipt }, 201);
+}
+
 function reviewSigner(env: Env) {
   const privateKey = String(env.REVIEW_SERVICE_PRIVATE_KEY ?? "");
   const keyId = String(env.REVIEW_SERVICE_KEY_ID ?? "");
@@ -1912,11 +2046,8 @@ async function requestSignedCriticReview(request: Request, db: Database, env: En
   if (!primary || !reviewer || !reviewer.agent_key_id || !reviewer.agent_key_version || !/^[0-9a-f]{64}$/.test(reviewer.agent_public_key)) {
     return json({ error: "The primary owner or exact enrolled Critic signing identity is unavailable.", code: "REVIEW_IDENTITY_UNAVAILABLE" }, 409);
   }
-  const privacyPolicy = await db.prepare(`SELECT * FROM dispatch_privacy_policies WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`)
-    .bind(item.pod_id).first<Record<string, unknown>>();
-  const privacyAllowed = privacyPolicy && Number(privacyPolicy.terminal_retention_days) === 90
-    && (String(privacyPolicy.status) === "ACTIVE" || env.DISPATCH_ALLOW_TEST_PRIVACY_POLICY === "true");
-  if (!privacyAllowed) return json({ error: "Review records are blocked until the 90-day privacy, deletion, and recovery policy is active.", code: "REVIEW_PRIVACY_POLICY_BLOCKED" }, 409);
+  const privacyPolicyCheck = await validateLatestPrivacyPolicy(db, String(item.pod_id), env.DISPATCH_ALLOW_TEST_PRIVACY_POLICY === "true");
+  if (!privacyPolicyCheck.ok) return json({ error: privacyPolicyCheck.error, code: privacyPolicyCheck.code ?? "REVIEW_PRIVACY_POLICY_BLOCKED" }, 409);
   try {
     const target = body.target as ReviewAssignmentPayload["target"];
     const targetManifestSha256 = String(target?.target_artifact_manifest_sha256 ?? "");
@@ -2813,6 +2944,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "GET" && url.pathname === "/api/buzz-status") return getBuzzStatus();
     if (request.method === "GET" && url.pathname === "/api/bootstrap") return json(await bootstrap(env.DB, user));
     if (request.method === "POST" && url.pathname === "/api/telemetry") return recordBoundedTelemetry(request, env.DB, env);
+    if (request.method === "POST" && url.pathname === "/api/privacy-policy/activate") return activatePrivacyPolicy(request, env.DB, user);
     if (request.method === "POST" && url.pathname === "/api/items") return createItem(request, env.DB, user);
     const itemMatch = url.pathname.match(/^\/api\/items\/(\d+)$/);
     if (request.method === "PATCH" && itemMatch) return updateItem(request, env.DB, user, Number(itemMatch[1]));

@@ -519,9 +519,17 @@ export const dispatchPrivacyPolicies = sqliteTable(
     changedBy: text("changed_by").notNull(),
     changeReason: text("change_reason").notNull(),
     createdAt: text("created_at").notNull(),
+    rulingUrl: text("ruling_url"),
+    rulingSha256: text("ruling_sha256"),
+    authorityRole: text("authority_role"),
+    authorizationEventId: text("authorization_event_id"),
+    idempotencyKey: text("idempotency_key"),
+    activationReceiptSha256: text("activation_receipt_sha256"),
   },
   (table) => [
     uniqueIndex("uq_dispatch_privacy_policy_version").on(table.podId, table.policyVersion),
+    uniqueIndex("uq_dispatch_privacy_policy_event").on(table.authorizationEventId),
+    uniqueIndex("uq_dispatch_privacy_policy_idempotency").on(table.podId, table.idempotencyKey),
     index("idx_dispatch_privacy_policy_active").on(table.podId, table.status, table.policyVersion),
   ],
 );

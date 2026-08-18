@@ -72,3 +72,30 @@ test("Work Economics migration and rollback preserve existing work", () => {
   assert.equal(rolledBack.title, "Existing work");
   assert.equal(rolledBack.next_action, "Keep building");
 });
+
+test("privacy activation migration preserves the blocked version and adds append-only authority bindings", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(`CREATE TABLE dispatch_privacy_policies (
+    pod_id text NOT NULL, policy_version integer NOT NULL, inventory_url text NOT NULL,
+    inventory_sha256 text NOT NULL, terminal_retention_days integer NOT NULL,
+    provider_recovery_days integer NOT NULL, status text NOT NULL, changed_by text NOT NULL,
+    change_reason text NOT NULL, created_at text NOT NULL, UNIQUE(pod_id, policy_version)
+  );`);
+  db.prepare(`INSERT INTO dispatch_privacy_policies
+    (pod_id, policy_version, inventory_url, inventory_sha256, terminal_retention_days,
+     provider_recovery_days, status, changed_by, change_reason, created_at)
+    VALUES ('pod-a', 1, 'inventory', ?, 90, 30, 'BLOCKED_BACKUP_RULING', 'member-a', 'seed', '2026-08-18')`).run("a".repeat(64));
+  const migration = readFileSync(new URL("../drizzle/0019_dispatch_privacy_activation.sql", import.meta.url), "utf8").replaceAll("--> statement-breakpoint", "");
+  db.exec(migration);
+  const preserved = db.prepare("SELECT policy_version, status, ruling_url, authorization_event_id FROM dispatch_privacy_policies").get()!;
+  assert.deepEqual({ ...preserved }, { policy_version: 1, status: "BLOCKED_BACKUP_RULING", ruling_url: null, authorization_event_id: null });
+  const insert = db.prepare(`INSERT INTO dispatch_privacy_policies
+    (pod_id, policy_version, inventory_url, inventory_sha256, terminal_retention_days,
+     provider_recovery_days, status, changed_by, change_reason, created_at, ruling_url,
+     ruling_sha256, authority_role, authorization_event_id, idempotency_key, activation_receipt_sha256)
+    VALUES ('pod-a', 2, 'inventory', ?, 90, 30, 'ACTIVE', 'member-a', 'approved', '2026-08-18',
+      'ruling', ?, 'Product Lead · interim Tech Lead', ?, 'activation-key', ?)`);
+  insert.run("a".repeat(64), "b".repeat(64), "c".repeat(64), "d".repeat(64));
+  assert.equal(db.prepare("SELECT status FROM dispatch_privacy_policies WHERE policy_version = 2").get()!.status, "ACTIVE");
+  assert.throws(() => insert.run("a".repeat(64), "b".repeat(64), "c".repeat(64), "d".repeat(64)), /UNIQUE/);
+});

@@ -57,3 +57,24 @@ test("dispatch copy failure does not invite a duplicate authorization", () => {
   assert.match(page, /The handoff was authorized once, but the message could not be copied/);
   assert.match(page, /Do not authorize it again/);
 });
+
+test("AT-04 preserves action-local truth across reload failure and missing authoritative items", () => {
+  assert.match(page, /setReloadError\(message\)/);
+  assert.match(page, /aria-label="Workspace refresh failed"/);
+  assert.match(page, /drawer still shows the last authoritative action result/);
+  assert.match(page, /retry the refresh without repeating the action/);
+  assert.match(page, /selectedId !== null && !selected/);
+  assert.match(page, /aria-label="Authoritative work item unavailable"/);
+  assert.match(page, /No durable value was fabricated/);
+});
+
+test("AT-17 exposes transport, blocked, pending, empty, and reload outcomes without banner-only feedback", () => {
+  assert.match(page, /failureOutcome\(caught\)/);
+  assert.match(page, /"transport"/);
+  assert.match(page, /"blocked" : "error"/);
+  assert.match(page, /scope, state: "pending"/);
+  assert.match(page, /role=\{feedback\.state === "error" \? "alert" : "status"\}/);
+  assert.match(page, /tabIndex=\{feedback\.state === "error" \? -1 : undefined\}/);
+  assert.match(page, /Workspace unavailable/);
+  assert.match(page, /Work item unavailable/);
+});

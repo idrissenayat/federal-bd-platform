@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import { JSDOM } from "jsdom";
 import axe from "axe-core";
-import { AgentDispatchControl, WorkEconomicsPanel } from "../app/page";
+import { AgentDispatchControl, InlineActionFeedback, WorkEconomicsPanel } from "../app/page";
 import { evaluateForecast, type DeliveryForecast } from "../lib/work-economics";
 
 const forecast: DeliveryForecast = {
@@ -68,4 +68,23 @@ test("DISP-04 dispatch control has a named atomic live region and one focus-stab
 
 test("DISP-04 dispatch action contrast meets WCAG AA", () => {
   assert.ok(contrast("963553", "ffffff") >= 4.5);
+});
+
+test("AT-17 local pending, success, and failure regions have named live semantics", async () => {
+  const states = [
+    { id: 1, scope: "economics" as const, state: "pending" as const, message: "Waiting for the authoritative response." },
+    { id: 2, scope: "economics" as const, state: "success" as const, message: "The authoritative record is visible." },
+    { id: 3, scope: "economics" as const, state: "error" as const, message: "The transport failed; input is preserved for explicit retry." },
+  ];
+  for (const feedback of states) {
+    const html = renderToStaticMarkup(createElement(InlineActionFeedback, { feedback }));
+    const dom = new JSDOM(`<main>${html}</main>`, { runScripts: "dangerously" });
+    dom.window.eval(axe.source);
+    const region = dom.window.document.querySelector(feedback.state === "error" ? '[role="alert"]' : '[role="status"]')!;
+    assert.equal(region.getAttribute("aria-live"), feedback.state === "error" ? "assertive" : "polite");
+    assert.ok(region.textContent?.includes(feedback.message));
+    if (feedback.state === "error") assert.equal(region.getAttribute("tabindex"), "-1");
+    const results = await (dom.window as unknown as { axe: typeof axe }).axe.run(dom.window.document.querySelector("main")!, { rules: { "color-contrast": { enabled: false } } });
+    assert.equal(results.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? "")).length, 0);
+  }
 });
