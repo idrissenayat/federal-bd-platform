@@ -32,6 +32,15 @@ function isNewer(left: TimestampedItem, right: TimestampedItem) {
   return freshness(left) > freshness(right);
 }
 
+export function bootstrapReconciliationResult<Item extends TimestampedItem>(current: { items: Item[] } | null, incoming: { items: Item[] }) {
+  if (!current) return "fresh" as const;
+  const incomingById = new Map(incoming.items.map((item) => [item.id, item]));
+  return current.items.some((item) => {
+    const replacement = incomingById.get(item.id);
+    return replacement ? isNewer(item, replacement) : false;
+  }) ? "stale_suppressed" as const : "authoritative_reload" as const;
+}
+
 export function isLatestItemAction(latestActionId: number | undefined, resultActionId: number) {
   return latestActionId === resultActionId;
 }

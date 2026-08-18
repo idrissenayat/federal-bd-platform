@@ -1376,7 +1376,7 @@ const telemetryContract: Record<string, { labelName: string; values: string[]; h
   steer_duplicate_dispatch_total: { labelName: "", values: [] },
 };
 
-async function recordBoundedTelemetry(request: Request, db: Database) {
+async function recordBoundedTelemetry(request: Request, db: Database, env: Env) {
   const body = await request.json() as Record<string, unknown>;
   if (Object.keys(body).some((key) => !["metric_name", "label_name", "label_value", "value", "case_id"].includes(key))) {
     return json({ error: "Telemetry accepts only the bounded STR-028 contract fields." }, 400);
@@ -1395,6 +1395,9 @@ async function recordBoundedTelemetry(request: Request, db: Database) {
   }
   if (caseId && !isStr028CaseId(caseId)) {
     return json({ error: "Only a pre-enrolled bounded matrix case ID may label telemetry." }, 400);
+  }
+  if (caseId && env.DISPATCH_ALLOW_TEST_PRIVACY_POLICY !== "true") {
+    return json({ error: "Fixed-matrix case labels are accepted only in the explicit non-production test environment." }, 409);
   }
   await db.prepare(`INSERT INTO steer_telemetry
     (metric_name, label_name, label_value, value, case_id, observed_at) VALUES (?, ?, ?, ?, ?, ?)`)
@@ -2795,7 +2798,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     await ensureCurrentUser(env.DB, user);
     if (request.method === "GET" && url.pathname === "/api/buzz-status") return getBuzzStatus();
     if (request.method === "GET" && url.pathname === "/api/bootstrap") return json(await bootstrap(env.DB, user));
-    if (request.method === "POST" && url.pathname === "/api/telemetry") return recordBoundedTelemetry(request, env.DB);
+    if (request.method === "POST" && url.pathname === "/api/telemetry") return recordBoundedTelemetry(request, env.DB, env);
     if (request.method === "POST" && url.pathname === "/api/items") return createItem(request, env.DB, user);
     const itemMatch = url.pathname.match(/^\/api\/items\/(\d+)$/);
     if (request.method === "PATCH" && itemMatch) return updateItem(request, env.DB, user, Number(itemMatch[1]));

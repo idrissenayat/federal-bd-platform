@@ -6,7 +6,8 @@ import { WORK_TYPES } from "../lib/work-economics";
 import { buildForecastProposal } from "../lib/forecast-proposal";
 import { buildValueHypothesisProposal } from "../lib/value-hypothesis-proposal";
 import { acceptedValueHypothesisReady } from "../lib/work-economics-validation";
-import { applyAuthoritativeSnapshot, isLatestItemAction, mergeBootstrapPreservingNewerItems, type AuthoritativeItemSnapshot } from "../lib/post-write";
+import { applyAuthoritativeSnapshot, bootstrapReconciliationResult, isLatestItemAction, mergeBootstrapPreservingNewerItems, type AuthoritativeItemSnapshot } from "../lib/post-write";
+import { isStr028CaseId } from "../lib/str028-manifest";
 import type {
   ActualEconomics,
   AiAdvisory,
@@ -339,6 +340,12 @@ function feedbackClock() { return performance.now(); }
 
 type TelemetryObservation = { metric_name: string; label_name?: string; label_value?: string; value: number; case_id?: string };
 
+function activeStr028CaseId() {
+  if (typeof window === "undefined") return undefined;
+  const value = new URLSearchParams(window.location.search).get("str028_case") ?? "";
+  return isStr028CaseId(value) ? value : undefined;
+}
+
 function emitTelemetry(observation: TelemetryObservation) {
   void fetch("/api/telemetry", {
     method: "POST",
@@ -350,8 +357,9 @@ function emitTelemetry(observation: TelemetryObservation) {
 
 function emitFeedbackAfterPaint(receivedAt: number, histogram: string, outcomeMetric: string, outcome: string) {
   requestAnimationFrame(() => {
-    emitTelemetry({ metric_name: histogram, value: Math.max(0, Math.round(performance.now() - receivedAt)) });
-    emitTelemetry({ metric_name: outcomeMetric, label_name: "outcome", label_value: outcome, value: 1 });
+    const case_id = activeStr028CaseId();
+    emitTelemetry({ metric_name: histogram, value: Math.max(0, Math.round(performance.now() - receivedAt)), case_id });
+    emitTelemetry({ metric_name: outcomeMetric, label_name: "outcome", label_value: outcome, value: 1, case_id });
   });
 }
 
@@ -796,11 +804,17 @@ export default function Home() {
     try {
       const payload = await api("/api/bootstrap") as Bootstrap;
       if (sequence !== loadSequence.current) return false;
-      setData((current) => current ? mergeBootstrapPreservingNewerItems(current, payload) : payload);
+      setData((current) => {
+        emitTelemetry({ metric_name: "steer_post_write_reconciliation_total", label_name: "result", label_value: bootstrapReconciliationResult(current, payload), value: 1, case_id: activeStr028CaseId() });
+        return current ? mergeBootstrapPreservingNewerItems(current, payload) : payload;
+      });
       if (!options.quiet) setError(null);
       return true;
     } catch (caught) {
-      if (sequence === loadSequence.current && !options.quiet) setError(caught instanceof Error ? caught.message : "The workspace could not be loaded.");
+      if (sequence === loadSequence.current) {
+        emitTelemetry({ metric_name: "steer_post_write_reconciliation_total", label_name: "result", label_value: "error", value: 1, case_id: activeStr028CaseId() });
+        if (!options.quiet) setError(caught instanceof Error ? caught.message : "The workspace could not be loaded.");
+      }
       return false;
     } finally {
       if (sequence === loadSequence.current) setLoading(false);
@@ -813,11 +827,18 @@ export default function Home() {
     api("/api/bootstrap")
       .then((payload) => {
         if (!active || sequence !== loadSequence.current) return;
-        setData((current) => current ? mergeBootstrapPreservingNewerItems(current, payload as Bootstrap) : payload as Bootstrap);
+        setData((current) => {
+          const incoming = payload as Bootstrap;
+          emitTelemetry({ metric_name: "steer_post_write_reconciliation_total", label_name: "result", label_value: bootstrapReconciliationResult(current, incoming), value: 1, case_id: activeStr028CaseId() });
+          return current ? mergeBootstrapPreservingNewerItems(current, incoming) : incoming;
+        });
         setError(null);
       })
       .catch((caught: unknown) => {
-        if (active && sequence === loadSequence.current) setError(caught instanceof Error ? caught.message : "The workspace could not be loaded.");
+        if (active && sequence === loadSequence.current) {
+          emitTelemetry({ metric_name: "steer_post_write_reconciliation_total", label_name: "result", label_value: "error", value: 1, case_id: activeStr028CaseId() });
+          setError(caught instanceof Error ? caught.message : "The workspace could not be loaded.");
+        }
       })
       .finally(() => {
         if (active && sequence === loadSequence.current) setLoading(false);

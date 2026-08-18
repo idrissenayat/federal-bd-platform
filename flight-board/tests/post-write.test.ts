@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyAuthoritativeSnapshot, isLatestItemAction, mergeBootstrapPreservingNewerItems } from "../lib/post-write";
+import { applyAuthoritativeSnapshot, bootstrapReconciliationResult, isLatestItemAction, mergeBootstrapPreservingNewerItems } from "../lib/post-write";
 
 type Item = { id: number; updated_at: string; dispatch_updated_at?: string | null; next_action: string };
 type Event = { id: number; detail: string };
@@ -41,6 +41,7 @@ test("ORDER-01 an older bootstrap response cannot overwrite a newer confirmed mu
   const reconciled = mergeBootstrapPreservingNewerItems<State, Item, Event, Event>(confirmed, staleBootstrap);
   assert.equal(reconciled.items[0].next_action, "newest");
   assert.ok(reconciled.activity.some((event) => event.id === 3));
+  assert.equal(bootstrapReconciliationResult(confirmed, staleBootstrap), "stale_suppressed");
 });
 
 test("a genuinely newer bootstrap response is accepted", () => {
@@ -50,6 +51,7 @@ test("a genuinely newer bootstrap response is accepted", () => {
     items: [{ id: 28, updated_at: "2026-08-17T12:03:00.000Z", next_action: "server newer" }],
   };
   assert.equal(mergeBootstrapPreservingNewerItems<State, Item, Event, Event>(original, incoming).items[0].next_action, "server newer");
+  assert.equal(bootstrapReconciliationResult(original, incoming), "authoritative_reload");
 });
 
 test("ORDER-03 an older dispatch projection cannot overwrite a newer receipt lifecycle event", () => {
