@@ -32,6 +32,32 @@ test("human Gate decisions use the governed package, session, and pending receip
   assert.match(page, /Record governed intent/);
 });
 
+test("governed decisions bind the exact solo policy and recover from terminal proof failure", () => {
+  assert.match(page, /operating_mode === "SOLO_CALIBRATION"/);
+  assert.match(page, /required_countersignatures === 0/);
+  assert.match(page, /cooling_hours === 24/);
+  assert.match(page, /ruling_url === approvedSoloPolicyRulingUrl/);
+  assert.match(page, /ruling_sha256 === approvedSoloPolicyRulingSha256/);
+  assert.match(page, /visibleDecisionReceipt\?\.state === "PROOF_FAILED"/);
+  assert.match(page, /This attempt is terminal and remains ineffective/);
+  assert.match(page, /Start governed replacement/);
+  assert.match(page, /setReplacingFailedDecision\(true\)/);
+  assert.match(page, /decisionSession && !decisionSessionExpired/);
+  assert.match(page, /setTimeout\(\(\) => setDecisionSessionExpired\(true\), remaining \+ 25\)/);
+  assert.match(page, /setDecisionSession\(null\)/);
+});
+
+test("governed decision dialog contains focus, closes on Escape, and restores its opener", () => {
+  assert.match(page, /<dialog ref=\{decisionDialogRef\} open[^>]*aria-modal="true"/);
+  assert.match(page, /ref=\{decisionCloseRef\}/);
+  assert.match(page, /decisionReturnFocus\.current = document\.activeElement/);
+  assert.match(page, /decisionCloseRef\.current\?\.focus\(\)/);
+  assert.match(page, /event\.key === "Escape"/);
+  assert.match(page, /event\.key === "Tab" && event\.currentTarget === decisionDialogRef\.current/);
+  assert.match(page, /cycleDrawerFocus\(event\.currentTarget, event\.shiftKey\)/);
+  assert.match(page, /decisionReturnFocus\.current\?\.focus\(\)/);
+});
+
 test("drawer mutations use authoritative snapshots and action-local feedback", () => {
   assert.match(page, /applyAuthoritativeSnapshot/);
   assert.match(page, /mergeBootstrapPreservingNewerItems/);

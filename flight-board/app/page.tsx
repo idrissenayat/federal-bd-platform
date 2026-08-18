@@ -915,6 +915,8 @@ export default function Home() {
   const [submittedDecision, setSubmittedDecision] = useState<DecisionIntentResponse | null>(null);
   const [decisionStepError, setDecisionStepError] = useState<string | null>(null);
   const [policyActivating, setPolicyActivating] = useState(false);
+  const [replacingFailedDecision, setReplacingFailedDecision] = useState(false);
+  const [decisionSessionExpired, setDecisionSessionExpired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadError, setReloadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -939,6 +941,9 @@ export default function Home() {
   const drawerRef = useRef<HTMLDialogElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const drawerReturnFocus = useRef<HTMLElement | null>(null);
+  const decisionDialogRef = useRef<HTMLDialogElement>(null);
+  const decisionCloseRef = useRef<HTMLButtonElement>(null);
+  const decisionReturnFocus = useRef<HTMLElement | null>(null);
 
   async function load(options: { quiet?: boolean } = {}) {
     const sequence = ++loadSequence.current;
@@ -1009,7 +1014,14 @@ export default function Home() {
   const approvalPrerequisiteMissing = decisionChoice === "APPROVED" && !gateOneValueReady;
   const activeDecisionDraft = decisionChoice === "APPROVED" ? approvalReasoningDraft : decisionChoice === "CHANGES_REQUESTED" ? changeRequestDraft : "";
   const decisionItems = data?.items.filter((item) => ["Needed now", "Resubmitted"].includes(item.decision_status)) ?? [];
-  const decisionPolicyActive = data?.decision_policy?.status === "ACTIVE";
+  const decisionPolicyActive = Boolean(
+    data?.decision_policy?.status === "ACTIVE" &&
+    data.decision_policy.operating_mode === "SOLO_CALIBRATION" &&
+    data.decision_policy.required_countersignatures === 0 &&
+    data.decision_policy.cooling_hours === 24 &&
+    data.decision_policy.ruling_url === approvedSoloPolicyRulingUrl &&
+    data.decision_policy.ruling_sha256 === approvedSoloPolicyRulingSha256,
+  );
   const selectedDecisionReceipt = data?.decision_receipts.find((receipt) => receipt.item_id === selectedId) ?? null;
   const visibleDecisionReceipt = submittedDecision ? {
     intent_id: submittedDecision.intent.intent_id,
@@ -1017,9 +1029,11 @@ export default function Home() {
     state: submittedDecision.state,
     effective_not_before: submittedDecision.intent.effective_not_before,
     signer_policy_version: submittedDecision.intent.signer_policy_version,
-  } : selectedDecisionReceipt;
+  } : replacingFailedDecision ? null : selectedDecisionReceipt;
+  const decisionProofFailed = visibleDecisionReceipt?.state === "PROOF_FAILED";
   const decisionSubmissionLocked = Boolean(visibleDecisionReceipt && visibleDecisionReceipt.state !== "EFFECTIVE");
-  const decisionControlsReady = Boolean(decisionPolicyActive && decisionPackage && decisionSession && !decisionSubmissionLocked);
+  const decisionSessionCurrent = Boolean(decisionSession && !decisionSessionExpired);
+  const decisionControlsReady = Boolean(decisionPolicyActive && decisionPackage && decisionSessionCurrent && !decisionSubmissionLocked);
   const blockedItems = data?.items.filter((item) => item.state === "blocked") ?? [];
   const activeItems = data?.items.filter((item) => item.state === "active") ?? [];
   const activeDrawerId = selected?.id ?? null;
@@ -1029,6 +1043,20 @@ export default function Home() {
     const frame = requestAnimationFrame(() => drawerCloseRef.current?.focus());
     return () => cancelAnimationFrame(frame);
   }, [activeDrawerId, decisionOpen, codeReviewOpen, reviewTargetItemId]);
+
+  useEffect(() => {
+    if (!decisionOpen) return;
+    const frame = requestAnimationFrame(() => decisionCloseRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [decisionOpen]);
+
+  useEffect(() => {
+    if (!decisionSession) return;
+    const now = Date.now();
+    const remaining = Math.max(0, Date.parse(decisionSession.expires_at) - now);
+    const timeout = window.setTimeout(() => setDecisionSessionExpired(true), remaining + 25);
+    return () => window.clearTimeout(timeout);
+  }, [decisionSession]);
 
   function beginItemAction(id: number, scope: ActionScope, message: string) {
     const actionId = ++mutationSequence.current;
@@ -1158,6 +1186,7 @@ export default function Home() {
         method: "POST",
         body: JSON.stringify({ reason: "I reread the exact evidence and started a fresh decision session for this Gate." }),
       }) as DecisionSession;
+      setDecisionSessionExpired(false);
       setDecisionSession(session);
     } catch (caught) {
       setDecisionStepError(caught instanceof Error ? caught.message : "A fresh decision session could not be started.");
@@ -1187,6 +1216,7 @@ export default function Home() {
       setNotice(`${selected.gate} intent recorded. It remains pending and has not moved the Gate.`);
       await load({ quiet: true });
     } catch (caught) {
+      if (caught instanceof Error && /fresh, unexpired decision session/i.test(caught.message)) setDecisionSession(null);
       setDecisionStepError(caught instanceof Error ? caught.message : "The governed decision intent could not be recorded.");
     } finally {
       setSaving(false);
@@ -1308,17 +1338,33 @@ export default function Home() {
   }
 
   function openDecisionWorkspace(item: WorkItem) {
+    if (document.activeElement instanceof HTMLElement) decisionReturnFocus.current = document.activeElement;
     setSelectedId(item.id);
     setDecisionChoice("");
     setDecisionReasoning("");
     setDecisionPackage(null);
     setDecisionSession(null);
+    setDecisionSessionExpired(false);
     setSubmittedDecision(null);
     setDecisionStepError(null);
+    setReplacingFailedDecision(false);
     setDecisionOpen(true);
     if (!data?.decision_receipts.some((receipt) => receipt.item_id === item.id && receipt.state !== "EFFECTIVE")) {
       void prepareGovernedDecision(item.id);
     }
+  }
+
+  function replaceFailedDecision() {
+    if (!selected || !decisionProofFailed) return;
+    setReplacingFailedDecision(true);
+    setDecisionChoice("");
+    setDecisionReasoning("");
+    setDecisionPackage(null);
+    setDecisionSession(null);
+    setDecisionSessionExpired(false);
+    setSubmittedDecision(null);
+    setDecisionStepError(null);
+    void prepareGovernedDecision(selected.id);
   }
 
   function closeDecisionWorkspace() {
@@ -1327,8 +1373,22 @@ export default function Home() {
     setDecisionReasoning("");
     setDecisionPackage(null);
     setDecisionSession(null);
+    setDecisionSessionExpired(false);
     setSubmittedDecision(null);
     setDecisionStepError(null);
+    setReplacingFailedDecision(false);
+    requestAnimationFrame(() => decisionReturnFocus.current?.focus());
+  }
+
+  function handleDecisionKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeDecisionWorkspace();
+      return;
+    }
+    if (event.key === "Tab" && event.currentTarget === decisionDialogRef.current && cycleDrawerFocus(event.currentTarget, event.shiftKey)) {
+      event.preventDefault();
+    }
   }
 
   function reviewGateOneValuePrerequisite() {
@@ -1697,14 +1757,16 @@ export default function Home() {
 
       {decisionOpen && selected && (
         <div className="modal-scrim decision-scrim">
-          <form className="modal-card decision-modal" role="dialog" aria-modal="true" aria-labelledby="decision-dialog-title" onSubmit={recordDecision}>
-            <header><div><span>◆ Governed human decision</span><h2 id="decision-dialog-title">{selected.gate}</h2></div><button type="button" aria-label="Close governed decision" onClick={closeDecisionWorkspace}>×</button></header>
+          <dialog ref={decisionDialogRef} open className="decision-dialog-shell" aria-modal="true" aria-labelledby="decision-dialog-title" onKeyDown={handleDecisionKeyDown}>
+          <form className="modal-card decision-modal" onSubmit={recordDecision}>
+            <header><div><span>◆ Governed human decision</span><h2 id="decision-dialog-title">{selected.gate}</h2></div><button ref={decisionCloseRef} type="button" aria-label="Close governed decision" onClick={closeDecisionWorkspace}>×</button></header>
             <div className="decision-item-summary"><span>{selected.key}</span><strong>{selected.title}</strong><p>{selected.description}</p></div>
-            {visibleDecisionReceipt && <section className={`decision-receipt-status ${visibleDecisionReceipt.state === "EFFECTIVE" ? "effective" : "pending"}`} role="status" aria-live="polite">
-              <span>{visibleDecisionReceipt.state === "EFFECTIVE" ? "✓ Effective ruling" : "◷ Pending receipt · no Gate effect"}</span>
+            {visibleDecisionReceipt && <section className={`decision-receipt-status ${visibleDecisionReceipt.state === "EFFECTIVE" ? "effective" : decisionProofFailed ? "failed" : "pending"}`} role={decisionProofFailed ? "alert" : "status"} aria-live={decisionProofFailed ? "assertive" : "polite"}>
+              <span>{visibleDecisionReceipt.state === "EFFECTIVE" ? "✓ Effective ruling" : decisionProofFailed ? "! Proof failed · no Gate effect" : "◷ Pending receipt · no Gate effect"}</span>
               <strong>{visibleDecisionReceipt.state.replaceAll("_", " ")}</strong>
-              <p>{visibleDecisionReceipt.state === "EFFECTIVE" ? "The verified ruling is effective." : `The receipt stays pending until issuer proof, the cooling period ending ${formatDate(visibleDecisionReceipt.effective_not_before)}, and final verification pass.`}</p>
+              <p>{visibleDecisionReceipt.state === "EFFECTIVE" ? "The verified ruling is effective." : decisionProofFailed ? "This attempt is terminal and remains ineffective. Start a replacement with a fresh exact package and a new human session." : `The receipt stays pending until issuer proof, the cooling period ending ${formatDate(visibleDecisionReceipt.effective_not_before)}, and final verification pass.`}</p>
               <dl><div><dt>Receipt</dt><dd>{visibleDecisionReceipt.receipt_id.slice(0, 12)}</dd></div><div><dt>Policy</dt><dd>v{visibleDecisionReceipt.signer_policy_version}</dd></div></dl>
+              {decisionProofFailed && <button type="button" onClick={replaceFailedDecision}>Start governed replacement</button>}
             </section>}
             {!decisionSubmissionLocked && <>
             <section className="decision-governance" aria-label="Governed decision readiness">
@@ -1720,11 +1782,11 @@ export default function Home() {
                 <p>{decisionPackage ? `Bound to ${decisionPackage.package.target.commit.slice(0, 12)} · ${decisionPackage.package_sha256.slice(0, 12)}` : decisionPackageLoading ? "Binding the current Critic review to immutable evidence." : "A fresh exact-evidence package is required."}</p>
                 {!decisionPackage && !decisionPackageLoading && <button type="button" onClick={() => void prepareGovernedDecision(selected.id)}>Prepare exact package</button>}
               </article>
-              <article className={decisionSession ? "ready" : "blocked"}>
-                <span>{decisionSession ? "3 · Ready" : "3 · Human action"}</span>
+              <article className={decisionSessionCurrent ? "ready" : "blocked"}>
+                <span>{decisionSessionCurrent ? "3 · Ready" : "3 · Human action"}</span>
                 <strong>Fresh decision session</strong>
-                <p>{decisionSession ? `One-intent session expires ${formatDate(decisionSession.expires_at)}.` : "Confirm you reread this exact evidence in a fresh session."}</p>
-                {!decisionSession && <button type="button" disabled={saving || !decisionPolicyActive || !decisionPackage} onClick={() => void startGovernedDecisionSession()}>{saving ? "Starting…" : "Start fresh decision session"}</button>}
+                <p>{decisionSessionCurrent ? `One-intent session expires ${formatDate(decisionSession!.expires_at)}.` : decisionSession ? "The previous session expired. Start a new session after rereading the evidence." : "Confirm you reread this exact evidence in a fresh session."}</p>
+                {!decisionSessionCurrent && <button type="button" disabled={saving || !decisionPolicyActive || !decisionPackage} onClick={() => void startGovernedDecisionSession()}>{saving ? "Starting…" : decisionSession ? "Start replacement session" : "Start fresh decision session"}</button>}
               </article>
             </section>
             {decisionStepError && <div className="decision-step-error" role="alert"><strong>Decision step not completed</strong><p>{decisionStepError}</p></div>}
@@ -1742,6 +1804,7 @@ export default function Home() {
             </>}
             <footer><button type="button" className="secondary-button" onClick={closeDecisionWorkspace}>{decisionSubmissionLocked ? "Close" : "Cancel"}</button>{!decisionSubmissionLocked && <button className="decision-button" disabled={saving || !decisionControlsReady || !freshSelectedReview?.evidence_sha256 || approvalPrerequisiteMissing || decisionReasoning.trim().length < 12}>{saving ? "Recording…" : approvalPrerequisiteMissing ? "Complete prerequisite first" : !decisionControlsReady ? "Complete readiness steps" : "Record governed intent"}</button>}</footer>
           </form>
+          </dialog>
         </div>
       )}
 
