@@ -26,6 +26,8 @@ const states = ["queued", "active", "blocked", "complete"] as const;
 const githubRoot = "https://github.com/idrissenayat/federal-bd-platform";
 const buzzRelayUrl = "wss://blockbuzzmain-production-5bcb.up.railway.app";
 const buzzDownloadUrl = "https://buzz.xyz";
+const approvedSoloPolicyRulingUrl = "https://github.com/idrissenayat/federal-bd-platform/blob/b7e8c9a8d2a5c0abe3e76a037f053043178ce02b/steer/evidence/0027-solo-calibration-signer-ruling.md";
+const approvedSoloPolicyRulingSha256 = "4f18e737f943b34ddeb9c50b6f679675211b0d84c4d2a86758e33cb22e7e7388";
 
 type View = "my-work" | "overview" | "board" | "backlog" | "decisions" | "team";
 type RoleContext = "product" | "tech" | "design" | "platform" | "security" | "contributor";
@@ -131,6 +133,79 @@ type Decision = {
   created_at: string;
 };
 
+type DecisionPolicy = {
+  policy_version: number;
+  operating_mode: "SOLO_CALIBRATION" | "TEAM";
+  required_countersignatures: number;
+  cooling_hours: number;
+  status: string;
+  ruling_url: string;
+  ruling_sha256: string;
+  created_at: string;
+};
+
+type DecisionReceipt = {
+  intent_id: string;
+  receipt_id: string;
+  item_id: number;
+  item_key: string;
+  item_title: string;
+  state: string;
+  sequence: number;
+  latest_event_sha256: string;
+  decision_kind: string;
+  decision: string;
+  operating_mode: string;
+  signer_policy_version: number;
+  required_countersignatures: number;
+  effective_not_before: string;
+  submitted_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type PreparedDecisionPackageResponse = {
+  package: {
+    package_id: string;
+    item_key: string;
+    decision_kind: string;
+    recommendation: "APPROVED" | "CHANGES_REQUESTED";
+    summary: string;
+    proposed_reasoning: string;
+    target: { commit: string; body_sha256: string };
+  };
+  package_sha256: string;
+  advisory: true;
+  decision_created: false;
+};
+
+type DecisionSession = {
+  session_id: string;
+  item_key: string;
+  decision_kind: string;
+  expires_at: string;
+  one_intent_only: true;
+};
+
+type DecisionIntentResponse = {
+  intent: {
+    intent_id: string;
+    receipt_id: string;
+    item_key: string;
+    decision_kind: string;
+    decision: string;
+    operating_mode: string;
+    signer_policy_version: number;
+    required_countersignatures: number;
+    effective_not_before: string;
+    submitted_at: string;
+  };
+  state: string;
+  effective: boolean;
+  latest_event_sha256: string;
+  notice: string;
+};
+
 type AgentFinding = {
   severity: "blocker" | "should-fix" | "note";
   title: string;
@@ -190,6 +265,8 @@ type Bootstrap = {
   pull_forecast: PullForecast;
   service_level_distributions: ServiceLevelDistribution[];
   privacy_policy: { policy_version: number; status: string; inventory_url: string; inventory_sha256: string; ruling_url: string | null; ruling_sha256: string | null; authorization_event_id: string | null; activation_receipt_sha256: string | null } | null;
+  decision_policy: DecisionPolicy | null;
+  decision_receipts: DecisionReceipt[];
 };
 
 type ItemMutationSnapshot = AuthoritativeItemSnapshot<WorkItem, Activity, WorkEconomicsEvent>;
@@ -259,6 +336,19 @@ const phaseCues: Record<string, string> = {
 function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Recently" : new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
+}
+
+function clientUuidV7(now = Date.now()) {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  let timestamp = now;
+  for (let index = 5; index >= 0; index -= 1) {
+    bytes[index] = timestamp % 256;
+    timestamp = Math.floor(timestamp / 256);
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x70;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 export function formatCreatedDate(value: string) {
@@ -819,6 +909,12 @@ export default function Home() {
   const [reviewTargetJson, setReviewTargetJson] = useState("");
   const [decisionChoice, setDecisionChoice] = useState("");
   const [decisionReasoning, setDecisionReasoning] = useState("");
+  const [decisionPackage, setDecisionPackage] = useState<PreparedDecisionPackageResponse | null>(null);
+  const [decisionPackageLoading, setDecisionPackageLoading] = useState(false);
+  const [decisionSession, setDecisionSession] = useState<DecisionSession | null>(null);
+  const [submittedDecision, setSubmittedDecision] = useState<DecisionIntentResponse | null>(null);
+  const [decisionStepError, setDecisionStepError] = useState<string | null>(null);
+  const [policyActivating, setPolicyActivating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadError, setReloadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -913,6 +1009,17 @@ export default function Home() {
   const approvalPrerequisiteMissing = decisionChoice === "APPROVED" && !gateOneValueReady;
   const activeDecisionDraft = decisionChoice === "APPROVED" ? approvalReasoningDraft : decisionChoice === "CHANGES_REQUESTED" ? changeRequestDraft : "";
   const decisionItems = data?.items.filter((item) => ["Needed now", "Resubmitted"].includes(item.decision_status)) ?? [];
+  const decisionPolicyActive = data?.decision_policy?.status === "ACTIVE";
+  const selectedDecisionReceipt = data?.decision_receipts.find((receipt) => receipt.item_id === selectedId) ?? null;
+  const visibleDecisionReceipt = submittedDecision ? {
+    intent_id: submittedDecision.intent.intent_id,
+    receipt_id: submittedDecision.intent.receipt_id,
+    state: submittedDecision.state,
+    effective_not_before: submittedDecision.intent.effective_not_before,
+    signer_policy_version: submittedDecision.intent.signer_policy_version,
+  } : selectedDecisionReceipt;
+  const decisionSubmissionLocked = Boolean(visibleDecisionReceipt && visibleDecisionReceipt.state !== "EFFECTIVE");
+  const decisionControlsReady = Boolean(decisionPolicyActive && decisionPackage && decisionSession && !decisionSubmissionLocked);
   const blockedItems = data?.items.filter((item) => item.state === "blocked") ?? [];
   const activeItems = data?.items.filter((item) => item.state === "active") ?? [];
   const activeDrawerId = selected?.id ?? null;
@@ -1005,24 +1112,82 @@ export default function Home() {
     }
   }
 
+  async function prepareGovernedDecision(itemId: number) {
+    setDecisionPackageLoading(true);
+    setDecisionStepError(null);
+    try {
+      const prepared = await api(`/api/items/${itemId}/decision-packages`, { method: "POST", body: "{}" }) as PreparedDecisionPackageResponse;
+      setDecisionPackage(prepared);
+    } catch (caught) {
+      setDecisionPackage(null);
+      setDecisionStepError(caught instanceof Error ? caught.message : "The exact decision package could not be prepared.");
+    } finally {
+      setDecisionPackageLoading(false);
+    }
+  }
+
+  async function activateApprovedSoloPolicy() {
+    setPolicyActivating(true);
+    setDecisionStepError(null);
+    try {
+      const result = await api("/api/decision-signer-policies/activate", {
+        method: "POST",
+        body: JSON.stringify({
+          operating_mode: "SOLO_CALIBRATION",
+          required_countersignatures: 0,
+          reason: "Approved bounded STR-027 solo-calibration signer policy.",
+          ruling_url: approvedSoloPolicyRulingUrl,
+          ruling_sha256: approvedSoloPolicyRulingSha256,
+        }),
+      }) as { policy_version: number; cooling_hours: number };
+      await load({ quiet: true });
+      setNotice(`Solo signer policy v${result.policy_version} is active with the required ${result.cooling_hours}-hour cooling period.`);
+    } catch (caught) {
+      setDecisionStepError(caught instanceof Error ? caught.message : "The approved signer policy could not be activated.");
+    } finally {
+      setPolicyActivating(false);
+    }
+  }
+
+  async function startGovernedDecisionSession() {
+    if (!selected) return;
+    setSaving(true);
+    setDecisionStepError(null);
+    try {
+      const session = await api(`/api/items/${selected.id}/decision-sessions`, {
+        method: "POST",
+        body: JSON.stringify({ reason: "I reread the exact evidence and started a fresh decision session for this Gate." }),
+      }) as DecisionSession;
+      setDecisionSession(session);
+    } catch (caught) {
+      setDecisionStepError(caught instanceof Error ? caught.message : "A fresh decision session could not be started.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function recordDecision(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selected) return;
-    const form = new FormData(event.currentTarget);
+    if (!selected || !decisionPackage || !decisionSession || decisionSubmissionLocked) return;
     setSaving(true);
-    setError(null);
+    setDecisionStepError(null);
     setNotice(null);
     try {
-      const result = await api(`/api/items/${selected.id}/decisions`, {
+      const result = await api(`/api/items/${selected.id}/decision-intents`, {
         method: "POST",
-        body: JSON.stringify(Object.fromEntries(form.entries())),
-      }) as ItemMutationResult;
-      applySnapshot(result.snapshot);
-      closeDecisionWorkspace();
-      setNotice(`${selected.gate} ruling recorded from the authoritative response. The work item is refreshed.`);
-      void load({ quiet: true });
+        body: JSON.stringify({
+          package_id: decisionPackage.package.package_id,
+          decision: decisionChoice,
+          final_reasoning: decisionReasoning,
+          decision_session_id: decisionSession.session_id,
+          idempotency_key: clientUuidV7(),
+        }),
+      }) as DecisionIntentResponse;
+      setSubmittedDecision(result);
+      setNotice(`${selected.gate} intent recorded. It remains pending and has not moved the Gate.`);
+      await load({ quiet: true });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The ruling could not be recorded.");
+      setDecisionStepError(caught instanceof Error ? caught.message : "The governed decision intent could not be recorded.");
     } finally {
       setSaving(false);
     }
@@ -1146,13 +1311,24 @@ export default function Home() {
     setSelectedId(item.id);
     setDecisionChoice("");
     setDecisionReasoning("");
+    setDecisionPackage(null);
+    setDecisionSession(null);
+    setSubmittedDecision(null);
+    setDecisionStepError(null);
     setDecisionOpen(true);
+    if (!data?.decision_receipts.some((receipt) => receipt.item_id === item.id && receipt.state !== "EFFECTIVE")) {
+      void prepareGovernedDecision(item.id);
+    }
   }
 
   function closeDecisionWorkspace() {
     setDecisionOpen(false);
     setDecisionChoice("");
     setDecisionReasoning("");
+    setDecisionPackage(null);
+    setDecisionSession(null);
+    setSubmittedDecision(null);
+    setDecisionStepError(null);
   }
 
   function reviewGateOneValuePrerequisite() {
@@ -1521,21 +1697,50 @@ export default function Home() {
 
       {decisionOpen && selected && (
         <div className="modal-scrim decision-scrim">
-          <form className="modal-card decision-modal" onSubmit={recordDecision}>
-            <input type="hidden" name="reviewId" value={freshSelectedReview?.id ?? ""} />
-            <header><div><span>◆ Authenticated human ruling</span><h2>{selected.gate}</h2></div><button type="button" onClick={closeDecisionWorkspace}>×</button></header>
+          <form className="modal-card decision-modal" role="dialog" aria-modal="true" aria-labelledby="decision-dialog-title" onSubmit={recordDecision}>
+            <header><div><span>◆ Governed human decision</span><h2 id="decision-dialog-title">{selected.gate}</h2></div><button type="button" aria-label="Close governed decision" onClick={closeDecisionWorkspace}>×</button></header>
             <div className="decision-item-summary"><span>{selected.key}</span><strong>{selected.title}</strong><p>{selected.description}</p></div>
+            {visibleDecisionReceipt && <section className={`decision-receipt-status ${visibleDecisionReceipt.state === "EFFECTIVE" ? "effective" : "pending"}`} role="status" aria-live="polite">
+              <span>{visibleDecisionReceipt.state === "EFFECTIVE" ? "✓ Effective ruling" : "◷ Pending receipt · no Gate effect"}</span>
+              <strong>{visibleDecisionReceipt.state.replaceAll("_", " ")}</strong>
+              <p>{visibleDecisionReceipt.state === "EFFECTIVE" ? "The verified ruling is effective." : `The receipt stays pending until issuer proof, the cooling period ending ${formatDate(visibleDecisionReceipt.effective_not_before)}, and final verification pass.`}</p>
+              <dl><div><dt>Receipt</dt><dd>{visibleDecisionReceipt.receipt_id.slice(0, 12)}</dd></div><div><dt>Policy</dt><dd>v{visibleDecisionReceipt.signer_policy_version}</dd></div></dl>
+            </section>}
+            {!decisionSubmissionLocked && <>
+            <section className="decision-governance" aria-label="Governed decision readiness">
+              <article className={decisionPolicyActive ? "ready" : "blocked"}>
+                <span>{decisionPolicyActive ? "1 · Ready" : "1 · Required"}</span>
+                <strong>Approved solo signer policy</strong>
+                <p>{decisionPolicyActive ? `Policy v${data.decision_policy?.policy_version} is active: zero extra signers, ${data.decision_policy?.cooling_hours}-hour cooling.` : "Activate the exact approved STR-027 solo-calibration ruling before recording intent."}</p>
+                {!decisionPolicyActive && <button type="button" disabled={policyActivating} onClick={() => void activateApprovedSoloPolicy()}>{policyActivating ? "Activating…" : "Activate approved solo policy"}</button>}
+              </article>
+              <article className={decisionPackage ? "ready" : decisionPackageLoading ? "pending" : "blocked"}>
+                <span>{decisionPackage ? "2 · Ready" : decisionPackageLoading ? "2 · Preparing" : "2 · Required"}</span>
+                <strong>Exact evidence package</strong>
+                <p>{decisionPackage ? `Bound to ${decisionPackage.package.target.commit.slice(0, 12)} · ${decisionPackage.package_sha256.slice(0, 12)}` : decisionPackageLoading ? "Binding the current Critic review to immutable evidence." : "A fresh exact-evidence package is required."}</p>
+                {!decisionPackage && !decisionPackageLoading && <button type="button" onClick={() => void prepareGovernedDecision(selected.id)}>Prepare exact package</button>}
+              </article>
+              <article className={decisionSession ? "ready" : "blocked"}>
+                <span>{decisionSession ? "3 · Ready" : "3 · Human action"}</span>
+                <strong>Fresh decision session</strong>
+                <p>{decisionSession ? `One-intent session expires ${formatDate(decisionSession.expires_at)}.` : "Confirm you reread this exact evidence in a fresh session."}</p>
+                {!decisionSession && <button type="button" disabled={saving || !decisionPolicyActive || !decisionPackage} onClick={() => void startGovernedDecisionSession()}>{saving ? "Starting…" : "Start fresh decision session"}</button>}
+              </article>
+            </section>
+            {decisionStepError && <div className="decision-step-error" role="alert"><strong>Decision step not completed</strong><p>{decisionStepError}</p></div>}
             <AgentReviewBrief compact item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => { setReviewTargetItemId(selected.id); setReviewTargetJson(""); setError(null); }} />
             {gateRecommendation && <section className={`gate-ai-recommendation recommendation-${gateRecommendation.action === "APPROVED" && gateOneValueReady ? "approve" : "changes"}`}><header><span>◇ AI recommendation</span><strong>{gateRecommendation.action === "APPROVED" && !gateOneValueReady ? "Complete one prerequisite" : gateRecommendation.label}</strong></header><p>{gateRecommendation.action === "APPROVED" && !gateOneValueReady ? "The evidence supports approval, but Gate 1 remains locked until you accept the AI-prepared Value Hypothesis. Nothing needs to be written from scratch." : gateRecommendation.reason}</p><small>Advisory only. You must select a ruling, review or edit its reasoning, and record it yourself.</small></section>}
             {freshSelectedReview?.evidence_sha256 ? <div className="decision-evidence-bound"><span>✓ Exact evidence captured</span><strong>{freshSelectedReview.evidence_revision ? freshSelectedReview.evidence_revision.slice(0, 12) : freshSelectedReview.evidence_sha256.slice(0, 12)}</strong><small>This ruling will retain the Critic review and content fingerprint.</small></div> : <div className="review-stale">A fresh review with resolvable evidence is required before this ruling can be recorded.</div>}
             {!gateOneValueReady && <section className="decision-prerequisite" role="alert"><div><span>Required before Gate 1 approval</span><strong>Accept the AI-prepared Value Hypothesis</strong><p>The proposal is already filled. Review it, accept it unchanged or edit it, then return here. The app will confirm the save and refresh this item.</p></div><button type="button" onClick={reviewGateOneValuePrerequisite}>Review prepared proposal</button></section>}
             <div className="authority-warning"><strong>You are acting as {selected.decision_authority}.</strong><p>This ruling is attributed to {data.user.email ?? data.user.name}. Agents cannot submit this form without an authenticated human identity.</p></div>
-            <fieldset><legend>Ruling</legend><label className={`radio-card ${gateRecommendation?.action === "APPROVED" && gateOneValueReady ? "ai-recommended" : ""}`}><input aria-label="Approve this gate" type="radio" name="decision" value="APPROVED" required checked={decisionChoice === "APPROVED"} onChange={() => { setDecisionChoice("APPROVED"); setDecisionReasoning(approvalReasoningDraft); }} /><span>{gateRecommendation?.action === "APPROVED" && gateOneValueReady && <em>◇ AI recommends</em>}<strong>Approve</strong><small>{gateOneValueReady ? "Evidence is sufficient for this gate. Advance the work." : "Available after the prepared Value Hypothesis is accepted."}</small></span></label><label className={`radio-card ${gateRecommendation?.action === "CHANGES_REQUESTED" ? "ai-recommended" : ""}`}><input aria-label="Request changes for this gate" type="radio" name="decision" value="CHANGES_REQUESTED" required checked={decisionChoice === "CHANGES_REQUESTED"} onChange={() => { setDecisionChoice("CHANGES_REQUESTED"); setDecisionReasoning(changeRequestDraft); }} /><span>{gateRecommendation?.action === "CHANGES_REQUESTED" && <em>◇ AI recommends</em>}<strong>Request changes</strong><small>Keep the gate pending and block work until the named gaps are resolved.</small></span></label></fieldset>
+            <fieldset disabled={!decisionControlsReady}><legend>Ruling</legend><label className={`radio-card ${gateRecommendation?.action === "APPROVED" && gateOneValueReady ? "ai-recommended" : ""}`}><input aria-label="Approve this gate" type="radio" name="decision" value="APPROVED" required checked={decisionChoice === "APPROVED"} onChange={() => { setDecisionChoice("APPROVED"); setDecisionReasoning(approvalReasoningDraft); }} /><span>{gateRecommendation?.action === "APPROVED" && gateOneValueReady && <em>◇ AI recommends</em>}<strong>Approve</strong><small>{gateOneValueReady ? "Evidence is sufficient for this gate. Advance the work." : "Available after the prepared Value Hypothesis is accepted."}</small></span></label><label className={`radio-card ${gateRecommendation?.action === "CHANGES_REQUESTED" ? "ai-recommended" : ""}`}><input aria-label="Request changes for this gate" type="radio" name="decision" value="CHANGES_REQUESTED" required checked={decisionChoice === "CHANGES_REQUESTED"} onChange={() => { setDecisionChoice("CHANGES_REQUESTED"); setDecisionReasoning(changeRequestDraft); }} /><span>{gateRecommendation?.action === "CHANGES_REQUESTED" && <em>◇ AI recommends</em>}<strong>Request changes</strong><small>Keep the gate pending and block work until the named gaps are resolved.</small></span></label></fieldset>
             {decisionChoice === "APPROVED" && approvalReasoningDraft && <section className="ai-reasoning-draft"><header><div><span>◇ Critic-drafted approval reasoning</span><strong>Ready for your review</strong></div><button type="button" disabled={decisionReasoning === approvalReasoningDraft} onClick={() => setDecisionReasoning(approvalReasoningDraft)}>{decisionReasoning === approvalReasoningDraft ? "Draft applied" : "Restore AI draft"}</button></header><p>AI prepared this from the exact Critic review. Edit it as needed; recording the ruling remains your decision.</p><pre>{approvalReasoningDraft}</pre></section>}
             {decisionChoice === "CHANGES_REQUESTED" && changeRequestDraft && <section className="ai-reasoning-draft"><header><div><span>◇ Critic-drafted instructions</span><strong>Ready for your reasoning</strong></div><button type="button" disabled={decisionReasoning === changeRequestDraft} onClick={() => setDecisionReasoning(changeRequestDraft)}>{decisionReasoning === changeRequestDraft ? "Draft applied" : decisionReasoning.trim() ? "Restore AI draft" : "Use AI draft"}</button></header><p>Editable advice from the current review. You remain the author and decision authority.</p><pre>{changeRequestDraft}</pre></section>}
             {decisionChoice === "CHANGES_REQUESTED" && !changeRequestDraft && reviewingIds.includes(selected.id) && <div className="draft-waiting"><span>◇</span><p><strong>Critic is preparing proposed instructions.</strong> You can write now or apply the draft when the review finishes.</p></div>}
-            <label><span className="reasoning-label-row"><span>Reasoning</span>{activeDecisionDraft && decisionReasoning === activeDecisionDraft && <em>AI draft applied · editable</em>}</span><textarea name="reasoning" required minLength={12} value={decisionReasoning} onChange={(event) => setDecisionReasoning(event.target.value)} placeholder="State why this evidence is or is not sufficient. This becomes part of the audit trail." /></label>
-            <footer><button type="button" className="secondary-button" onClick={closeDecisionWorkspace}>Cancel</button><button className="decision-button" disabled={saving || !freshSelectedReview?.evidence_sha256 || approvalPrerequisiteMissing}>{saving ? "Recording…" : approvalPrerequisiteMissing ? "Complete prerequisite first" : "Record human ruling"}</button></footer>
+            <label><span className="reasoning-label-row"><span>Reasoning</span>{activeDecisionDraft && decisionReasoning === activeDecisionDraft && <em>AI draft applied · editable</em>}</span><textarea name="reasoning" required minLength={12} disabled={!decisionControlsReady} value={decisionReasoning} onChange={(event) => setDecisionReasoning(event.target.value)} placeholder="State why this evidence is or is not sufficient. This becomes part of the audit trail." /></label>
+            <p className="decision-effect-note">This records your intent. It does not move the Gate yet. Issuer proof, the 24-hour cooling period, and final verification remain required.</p>
+            </>}
+            <footer><button type="button" className="secondary-button" onClick={closeDecisionWorkspace}>{decisionSubmissionLocked ? "Close" : "Cancel"}</button>{!decisionSubmissionLocked && <button className="decision-button" disabled={saving || !decisionControlsReady || !freshSelectedReview?.evidence_sha256 || approvalPrerequisiteMissing || decisionReasoning.trim().length < 12}>{saving ? "Recording…" : approvalPrerequisiteMissing ? "Complete prerequisite first" : !decisionControlsReady ? "Complete readiness steps" : "Record governed intent"}</button>}</footer>
           </form>
         </div>
       )}

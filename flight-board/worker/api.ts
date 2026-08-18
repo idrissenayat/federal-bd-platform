@@ -1130,6 +1130,16 @@ async function bootstrap(db: Database, user: User) {
       ruling_url, ruling_sha256, authorization_event_id, activation_receipt_sha256
     FROM dispatch_privacy_policies WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").first<Record<string, unknown>>();
+  const decisionPolicy = await db.prepare(`SELECT policy_version, operating_mode, required_countersignatures,
+      cooling_hours, status, ruling_url, ruling_sha256, created_at
+    FROM decision_signer_policies WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`)
+    .bind(currentMember?.pod_id ?? "steer-flight-team").first<Record<string, unknown>>();
+  const decisionReceipts = await db.prepare(`SELECT i.intent_id, i.receipt_id, i.item_id, i.current_state,
+      i.current_sequence, i.current_event_sha256, i.intent_json, i.created_at, i.updated_at,
+      w.key AS item_key, w.title AS item_title
+    FROM decision_intents i JOIN work_items w ON w.id = i.item_id
+    WHERE i.pod_id = ? ORDER BY i.created_at DESC LIMIT 80`)
+    .bind(currentMember?.pod_id ?? "steer-flight-team").all<Record<string, unknown>>();
   return {
     generated_at: generatedAt,
     user: { ...user, role: currentMember?.role ?? "Contributor", authority: currentMember?.authority ?? "May own work", role_contexts: roleContexts(currentMember?.role ?? "Contributor") },
@@ -1143,6 +1153,20 @@ async function bootstrap(db: Database, user: User) {
     pull_forecast: buildPullForecast(authorizedItems, 2, generatedAt),
     service_level_distributions: buildServiceLevelDistributions(authorizedItems),
     privacy_policy: privacyPolicy ?? null,
+    decision_policy: decisionPolicy ?? null,
+    decision_receipts: (decisionReceipts.results ?? []).map((receipt) => {
+      const intent = JSON.parse(String(receipt.intent_json)) as DecisionIntentPayload;
+      return {
+        intent_id: receipt.intent_id, receipt_id: receipt.receipt_id, item_id: receipt.item_id,
+        item_key: receipt.item_key, item_title: receipt.item_title, state: receipt.current_state,
+        sequence: receipt.current_sequence, latest_event_sha256: receipt.current_event_sha256,
+        decision_kind: intent.decision_kind, decision: intent.decision,
+        operating_mode: intent.operating_mode, signer_policy_version: intent.signer_policy_version,
+        required_countersignatures: intent.required_countersignatures,
+        effective_not_before: intent.effective_not_before, submitted_at: intent.submitted_at,
+        created_at: receipt.created_at, updated_at: receipt.updated_at,
+      };
+    }),
   };
 }
 

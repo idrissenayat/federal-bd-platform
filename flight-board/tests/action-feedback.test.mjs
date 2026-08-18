@@ -18,12 +18,18 @@ test("Gate 1 approval exposes and enforces the value prerequisite", () => {
   assert.match(page, /Complete prerequisite first/);
 });
 
-test("successful decisions apply the authoritative response before the ruling workspace closes", () => {
+test("human Gate decisions use the governed package, session, and pending receipt flow", () => {
   const start = page.indexOf("async function recordDecision");
-  const refresh = page.indexOf("applySnapshot(result.snapshot);", start);
-  const close = page.indexOf("closeDecisionWorkspace();", start);
-  assert.ok(refresh >= 0 && close > refresh);
-  assert.match(page, /ruling recorded from the authoritative response/);
+  const end = page.indexOf("async function requestAgentReview", start);
+  const flow = page.slice(start, end);
+  assert.match(page, /\/decision-packages/);
+  assert.match(page, /\/decision-sessions/);
+  assert.match(flow, /\/decision-intents/);
+  assert.doesNotMatch(flow, /\/decisions/);
+  assert.match(flow, /setSubmittedDecision\(result\)/);
+  assert.match(page, /Pending receipt · no Gate effect/);
+  assert.match(page, /This records your intent\. It does not move the Gate yet\./);
+  assert.match(page, /Record governed intent/);
 });
 
 test("drawer mutations use authoritative snapshots and action-local feedback", () => {
