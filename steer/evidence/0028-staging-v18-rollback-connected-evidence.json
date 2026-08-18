@@ -1,0 +1,114 @@
+{
+  "schema": "steer-str028-exact-rollback-evidence/v2",
+  "target_implementation_commit": "b928cba7e9d486c9f30f212c452814185f8025da",
+  "environment": {
+    "name": "owner-only STEER staging",
+    "project_id": "appgprj_6a83763dc1148191b439c0795aa86a1c",
+    "url": "https://steer-flight-board-staging.idriss-enayat.chatgpt.site/",
+    "database_binding": "DB",
+    "production_touched": false
+  },
+  "versions": {
+    "target": {
+      "number": 18,
+      "id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_a34f8378043c8191978ef9477cb86d06"
+    },
+    "rollback": {
+      "number": 17,
+      "id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_9125315aee688191861e7acb85be6ce5"
+    }
+  },
+  "deployment_sequence": [
+    {
+      "operation": "v18 to v17",
+      "deployment_id": "appgdep_6a84a91f4b9c8191a7e546f90b5123cf",
+      "requested_at": "2026-08-18T18:49:03.513Z",
+      "completed_at": "2026-08-18T18:49:10.883Z",
+      "status": "succeeded",
+      "rto_ms": 7370
+    },
+    {
+      "operation": "v17 to v18 initial restore request",
+      "deployment_id": "appgdep_6a84aa00cacc819189ff5d406f96f904",
+      "requested_at": "2026-08-18T18:52:48.999Z",
+      "completed_at": "2026-08-18T18:52:50.906Z",
+      "status": "failed_before_provider_deployment",
+      "failure": "Sites callback returned HTTP 400; provider_deployment_id remained null and the prior v17 deployment stayed healthy"
+    },
+    {
+      "operation": "v17 to v18 restore retry",
+      "deployment_id": "appgdep_6a84aa179d548191afc6128e12e7f5c8",
+      "requested_at": "2026-08-18T18:53:11.821Z",
+      "completed_at": "2026-08-18T18:53:19.131Z",
+      "status": "succeeded",
+      "rto_ms": 7310
+    }
+  ],
+  "snapshots": {
+    "before_at": "2026-08-18T18:48:56.679Z",
+    "during_v17_at": "2026-08-18T18:52:40.042Z",
+    "after_restore_at": "2026-08-18T18:54:25.562Z",
+    "comparison_method": "All rows from every listed table were read in bounded pages, object keys and row order were canonicalized, and before/during/after canonical bytes were compared.",
+    "all_tables_identical_before_during_after": true,
+    "tables": {
+      "dispatch_receipts": 1,
+      "dispatch_outbox": 1,
+      "dispatch_events": 1,
+      "dispatch_attempts": 0,
+      "dispatch_authorization_audits": 1,
+      "dispatch_security_diagnostics": 0,
+      "dispatch_retention_authorizations": 0,
+      "dispatch_retention_holds": 0,
+      "dispatch_retention_runs": 0,
+      "activity": 320,
+      "notifications": 24,
+      "work_economics_events": 46,
+      "review_assignments": 4,
+      "review_events": 15,
+      "review_retention_authorizations": 0,
+      "review_retention_holds": 0,
+      "review_retention_runs": 0,
+      "dispatch_privacy_policies": 2
+    },
+    "rpo": "zero governed row or field changes across all 18 tables"
+  },
+  "in_flight_fail_closed": {
+    "intent_id": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf",
+    "state_before": "QUEUED",
+    "state_during_v17": "QUEUED",
+    "state_after_restore": "QUEUED",
+    "event_version_before_during_after": 0,
+    "attempt_number_before_during_after": 0,
+    "send_started_before_during_after": 0,
+    "lease_id_before_during_after": null,
+    "reservation_fence_before_during_after": null,
+    "delivered_event_id_before_during_after": null,
+    "accepted_acknowledgement_sha256_before_during_after": null,
+    "result": "PASS: the pre-existing in-flight queued operation did not claim, attempt, send, deliver, acknowledge, duplicate, or mutate while v17 was live or during restoration"
+  },
+  "post_restore_smoke": {
+    "hosted_v18": {
+      "page_loaded": true,
+      "str_028_drawer_opened": true,
+      "review_refresh_completed": true,
+      "unexpected_alerts": 0,
+      "durable_status": "QUEUED · event v0",
+      "receipt_prefix": "8329a2206554"
+    },
+    "connected_action_matrix": {
+      "ledger": "steer/evidence/0028-case-ledger-b928cba.json",
+      "terminal_observations": 20,
+      "pending_semantics": "covered by the executable eight-state matrix and production InlineActionFeedback component",
+      "success_observations": 15,
+      "failure_observations": 5,
+      "all_response_to_paint_observations_passed": true,
+      "save_feedback_p95_ms": 74,
+      "dispatch_feedback_p95_ms": 70
+    }
+  },
+  "result": "PASS",
+  "limitations": [
+    "The Sites database reader bounds long cell values in several tables. Equality was evaluated against the same deterministic bounded projection at all three checkpoints; untruncated identity and state columns for receipt, outbox, events, attempts, and authorization audit were included.",
+    "The live service claim endpoint requires a private service credential and was not invoked from the human browser session. Fail-closed behavior is evidenced by the unchanged queued identity and zero attempt/send fields throughout the live v17 interval, plus the exact connected service-fencing cases in the ledger."
+  ]
+}

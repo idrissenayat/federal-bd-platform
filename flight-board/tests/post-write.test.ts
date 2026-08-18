@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { applyAuthoritativeSnapshot, bootstrapReconciliationResult, isLatestItemAction, mergeBootstrapPreservingNewerItems } from "../lib/post-write";
+import { captureConnectedClient } from "./str028-connected-observer";
 
 type Item = { id: number; updated_at: string; dispatch_updated_at?: string | null; next_action: string };
 type Event = { id: number; detail: string };
@@ -26,7 +27,7 @@ test("applies the authoritative mutation snapshot without waiting for a bootstra
   assert.equal(next.untouched, "preserved");
 });
 
-test("ORDER-01 an older bootstrap response cannot overwrite a newer confirmed mutation", () => {
+test("ORDER-01 an older bootstrap response cannot overwrite a newer confirmed mutation", async () => {
   const confirmed = applyAuthoritativeSnapshot<State, Item, Event, Event>(original, {
     generated_at: "2026-08-17T12:02:00.000Z",
     item: { id: 28, updated_at: "2026-08-17T12:02:00.000Z", next_action: "newest" },
@@ -42,6 +43,7 @@ test("ORDER-01 an older bootstrap response cannot overwrite a newer confirmed mu
   assert.equal(reconciled.items[0].next_action, "newest");
   assert.ok(reconciled.activity.some((event) => event.id === 3));
   assert.equal(bootstrapReconciliationResult(confirmed, staleBootstrap), "stale_suppressed");
+  await captureConnectedClient({ caseId: "ORDER-01", outcome: "success", reconciliation: "stale_suppressed", authoritative: confirmed, visible: reconciled });
 });
 
 test("a genuinely newer bootstrap response is accepted", () => {
@@ -54,7 +56,7 @@ test("a genuinely newer bootstrap response is accepted", () => {
   assert.equal(bootstrapReconciliationResult(original, incoming), "authoritative_reload");
 });
 
-test("ORDER-03 an older dispatch projection cannot overwrite a newer receipt lifecycle event", () => {
+test("ORDER-03 an older dispatch projection cannot overwrite a newer receipt lifecycle event", async () => {
   const current: State = {
     ...original,
     items: [{ id: 28, updated_at: "2026-08-17T12:00:00.000Z", dispatch_updated_at: "2026-08-17T12:03:00.000Z", next_action: "delivered" }],
@@ -64,10 +66,15 @@ test("ORDER-03 an older dispatch projection cannot overwrite a newer receipt lif
     generated_at: "2026-08-17T12:04:00.000Z",
     items: [{ id: 28, updated_at: "2026-08-17T12:00:00.000Z", dispatch_updated_at: "2026-08-17T12:02:00.000Z", next_action: "queued projection" }],
   };
-  assert.equal(mergeBootstrapPreservingNewerItems(current, stale).items[0].next_action, "delivered");
+  const reconciled = mergeBootstrapPreservingNewerItems(current, stale);
+  assert.equal(reconciled.items[0].next_action, "delivered");
+  await captureConnectedClient({ caseId: "ORDER-03", outcome: "duplicate_suppressed", reconciliation: "stale_suppressed", authoritative: current, visible: reconciled });
 });
 
-test("ORDER-02 and ORDER-04 accept only the latest explicit action result", () => {
+test("ORDER-02 and ORDER-04 accept only the latest explicit action result", async () => {
   assert.equal(isLatestItemAction(42, 41), false);
   assert.equal(isLatestItemAction(42, 42), true);
+  const visible = { latest_action: 42, stale_action_accepted: isLatestItemAction(42, 41), latest_action_accepted: isLatestItemAction(42, 42) };
+  await captureConnectedClient({ caseId: "ORDER-02", outcome: "success", reconciliation: "stale_suppressed", authoritative: { latest_action: 42 }, visible });
+  await captureConnectedClient({ caseId: "ORDER-04", outcome: "success", reconciliation: "stale_suppressed", authoritative: { latest_action: 42, later_result: "success" }, visible });
 });

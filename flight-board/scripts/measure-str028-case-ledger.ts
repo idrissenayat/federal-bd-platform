@@ -1,11 +1,5 @@
 import { createHash } from "node:crypto";
-import { performance } from "node:perf_hooks";
 import { spawnSync } from "node:child_process";
-import { JSDOM } from "jsdom";
-import { createElement } from "react";
-import { createRoot } from "react-dom/client";
-import { flushSync } from "react-dom";
-import { InlineActionFeedback } from "../app/page";
 import { STR028_CASE_IDS } from "../lib/str028-manifest";
 
 type CaseDefinition = {
@@ -50,7 +44,7 @@ const executedOracles: Record<typeof STR028_CASE_IDS[number], { file: string; pa
   "DISP-01": { file: "tests/work-economics-server-controls.test.ts", pattern: "service fencing, verified relay delivery" },
   "DISP-02": { file: "tests/work-economics-server-controls.test.ts", pattern: "successful dispatch creates" },
   "DISP-03": { file: "tests/work-economics-server-controls.test.ts", pattern: "service fencing, verified relay delivery" },
-  "DISP-04": { file: "tests/work-economics-accessibility.test.ts", pattern: "DISP-04 dispatch control" },
+  "DISP-04": { file: "tests/work-economics-server-controls.test.ts", pattern: "successful dispatch creates" },
   "FAIL-01": { file: "tests/work-economics-server-controls.test.ts", pattern: "FAIL-01 rejects" },
   "FAIL-02": { file: "tests/work-economics-server-controls.test.ts", pattern: "FAIL-02 rejects" },
   "FAIL-03": { file: "tests/work-economics-server-controls.test.ts", pattern: "FAIL-03 rejects" },
@@ -81,79 +75,71 @@ if (definitions.map((entry) => entry.caseId).join("|") !== STR028_CASE_IDS.join(
 async function executeOracle(definition: CaseDefinition) {
   const oracle = executedOracles[definition.caseId];
   const executed = spawnSync(process.execPath, ["--import", "tsx", "--test", `--test-name-pattern=${oracle.pattern}`, oracle.file], {
-    cwd: new URL("..", import.meta.url), encoding: "utf8", env: { ...process.env, NODE_ENV: "test" },
+    cwd: new URL("..", import.meta.url), encoding: "utf8", env: { ...process.env, NODE_ENV: "test", STR028_CAPTURE_CASE: definition.caseId },
   });
   const output = `${executed.stdout ?? ""}\n${executed.stderr ?? ""}`;
   if (executed.status !== 0 || !output.includes(`✔ ${oracle.pattern}`)) {
     throw new Error(`${definition.caseId} executed oracle failed (${oracle.file} / ${oracle.pattern}):\n${output}`);
   }
-
-  const feedbackState = definition.transport.http_status >= 400 ? "error" as const : "success" as const;
-  const message = feedbackState === "error" ? `Typed ${definition.transport.typed_code}; input and authority preserved.` : `Authoritative ${definition.transport.typed_code} result is visible.`;
-  const dom = new JSDOM("<!doctype html><html><body><button id='initiator'>Initiating control</button><div id='root'></div></body></html>", { pretendToBeVisual: true });
-  const previous = {
-    window: Object.getOwnPropertyDescriptor(globalThis, "window"),
-    document: Object.getOwnPropertyDescriptor(globalThis, "document"),
-    navigator: Object.getOwnPropertyDescriptor(globalThis, "navigator"),
-  };
-  Object.defineProperties(globalThis, {
-    window: { value: dom.window, configurable: true, writable: true },
-    document: { value: dom.window.document, configurable: true, writable: true },
-    navigator: { value: dom.window.navigator, configurable: true },
+  const prefix = "STR028_CONNECTED_OBSERVATION ";
+  const observations = output.split(/\r?\n/).filter((line) => line.startsWith(prefix)).map((line) => JSON.parse(line.slice(prefix.length)) as {
+    schema: string;
+    case_id: string;
+    authoritative_response: { status: number; body_sha256: string; code: string | null; state?: string | null; idempotent_replay?: boolean; response_identity: string };
+    client: { feedback_state: "success" | "error"; role: string | null; aria_live: string | null; message_sha256: string; focus_target: string; latency_ms: number; terminal_feedback_observations: number };
+    derived: { outcome: CaseDefinition["outcome"]; reconciliation: CaseDefinition["reconciliation"] };
+    database: Record<string, unknown[]>;
+    database_sha256: string;
+    substeps: Array<{ substep_id: string; result: "pass" | "fail"; code?: string }>;
+    additional: Record<string, unknown>;
   });
-  const initiator = dom.window.document.querySelector<HTMLButtonElement>("#initiator")!;
-  initiator.focus();
-  const container = dom.window.document.querySelector<HTMLDivElement>("#root")!;
-  const root = createRoot(container);
-  const started = performance.now();
-  flushSync(() => root.render(createElement(InlineActionFeedback, {
-    feedback: { id: 1, scope: definition.caseId.startsWith("DISP") || definition.caseId.startsWith("REC") || ["FAIL-03", "FAIL-04", "ORDER-03"].includes(definition.caseId) ? "dispatch" : "economics", state: feedbackState, message },
-  })));
-  await new Promise<void>((resolve) => dom.window.requestAnimationFrame(() => resolve()));
-  const latency = Math.max(1, Math.round(performance.now() - started));
-  const region = container.querySelector<HTMLElement>(feedbackState === "error" ? "[role='alert']" : "[role='status']");
-  if (!region || !region.textContent?.includes(definition.transport.typed_code)) throw new Error(`${definition.caseId} did not paint one named local result.`);
-  const expectedLive = feedbackState === "error" ? "assertive" : "polite";
-  if (region.getAttribute("aria-live") !== expectedLive) throw new Error(`${definition.caseId} did not expose the expected announcement.`);
-  const focused = feedbackState === "error" ? dom.window.document.activeElement === region : dom.window.document.activeElement === initiator;
-  if (!focused) throw new Error(`${definition.caseId} focus did not remain predictable.`);
-  const html = container.innerHTML;
-  root.unmount();
-  await new Promise<void>((resolve) => setImmediate(resolve));
-  for (const [key, descriptor] of Object.entries(previous)) {
-    if (descriptor) Object.defineProperty(globalThis, key, descriptor);
-    else Reflect.deleteProperty(globalThis, key);
-  }
-  dom.window.close();
+  if (observations.length !== 1) throw new Error(`${definition.caseId} emitted ${observations.length} connected observations; exactly one is required.\n${output}`);
+  const observation = observations[0];
+  if (observation.schema !== "steer-str028-connected-observation/v1" || observation.case_id !== definition.caseId) throw new Error(`${definition.caseId} emitted an invalid connected observation.`);
+  const expectedRole = observation.client.feedback_state === "error" ? "alert" : "status";
+  const expectedLive = observation.client.feedback_state === "error" ? "assertive" : "polite";
+  const expectedFocus = observation.client.feedback_state === "error" ? "inline_error" : "initiating_control";
+  const connectedUiPass = observation.client.role === expectedRole && observation.client.aria_live === expectedLive && observation.client.focus_target === expectedFocus && observation.client.terminal_feedback_observations === 1;
+  const expectedSubsteps = definition.substeps ?? [];
+  const observedSubsteps = observation.substeps.map((substep) => substep.substep_id);
+  const substepsPass = expectedSubsteps.join("|") === observedSubsteps.join("|") && observation.substeps.every((substep) => substep.result === "pass");
+  const resultPass = observation.derived.outcome === definition.outcome && observation.derived.reconciliation === definition.reconciliation && connectedUiPass && substepsPass;
+  if (!resultPass) throw new Error(`${definition.caseId} connected result diverged from its frozen oracle: ${JSON.stringify({ expected: { outcome: definition.outcome, reconciliation: definition.reconciliation, substeps: expectedSubsteps }, observation })}`);
   const dispatchCase = definition.caseId.startsWith("DISP") || definition.caseId.startsWith("REC") || ["FAIL-03", "FAIL-04", "ORDER-03"].includes(definition.caseId);
   const histogram = dispatchCase ? "steer_agent_handoff_feedback_latency_ms" : "steer_work_item_save_feedback_latency_ms";
   const outcomeMetric = dispatchCase ? "steer_agent_handoff_outcome_total" : "steer_work_item_save_outcome_total";
+  const typedCode = observation.authoritative_response.code
+    ?? (observation.authoritative_response.idempotent_replay ? "IDEMPOTENT_REPLAY" : observation.authoritative_response.state ?? (observation.authoritative_response.status === 200 ? "OK" : `HTTP_${observation.authoritative_response.status}`));
   return {
     case_id: definition.caseId,
     seed_revision: "r1",
     seed_config: definition.seed,
     action_identity: sha256(`steer-str028-fixture-action/v1:${target}:${definition.caseId}`),
     expected_authority: definition.authority,
-    expected_ui: { drawer: "authoritative local result", activity: "reconciled", inline_status: feedbackState, focus_target: feedbackState === "error" ? "perceivable inline alert" : "initiating control", announcement: feedbackState === "error" ? "assertive" : "polite" },
+    expected_ui: { drawer: "authoritative local result", activity: "reconciled", inline_status: observation.client.feedback_state, focus_target: observation.client.feedback_state === "error" ? "perceivable inline alert" : "initiating control", announcement: expectedLive },
     actual_evidence: {
       executed_oracle: `${oracle.file} / ${oracle.pattern}`,
       oracle_process_exit_code: executed.status,
       oracle_output_sha256: sha256(output),
-      d1_authority_assertions: definition.authority,
-      painted_feedback_sha256: sha256(html),
-      painted_role: region.getAttribute("role"),
-      painted_aria_live: expectedLive,
-      focus_observed: focused,
+      authoritative_response: observation.authoritative_response,
+      d1_snapshot: observation.database,
+      d1_snapshot_sha256: observation.database_sha256,
+      painted_feedback_sha256: observation.client.message_sha256,
+      painted_role: observation.client.role,
+      painted_aria_live: observation.client.aria_live,
+      focus_observed: observation.client.focus_target,
+      connected_response_to_paint: true,
+      additional: observation.additional,
     },
-    transport_result: definition.transport,
+    transport_result: { http_status: observation.authoritative_response.status, typed_code: typedCode },
     telemetry: [
-      { metric_name: histogram, label_name: "", label_value: "", value: latency, case_id: definition.caseId },
-      { metric_name: outcomeMetric, label_name: "outcome", label_value: definition.outcome, value: 1, case_id: definition.caseId },
-      { metric_name: "steer_post_write_reconciliation_total", label_name: "result", label_value: definition.reconciliation, value: 1, case_id: definition.caseId },
+      { metric_name: histogram, label_name: "", label_value: "", value: observation.client.latency_ms, case_id: definition.caseId },
+      { metric_name: outcomeMetric, label_name: "outcome", label_value: observation.derived.outcome, value: 1, case_id: definition.caseId },
+      { metric_name: "steer_post_write_reconciliation_total", label_name: "result", label_value: observation.derived.reconciliation, value: 1, case_id: definition.caseId },
     ],
-    terminal_ui_feedback_observations: 1,
-    substeps: (definition.substeps ?? []).map((substepId) => ({ parent_case_id: definition.caseId, substep_id: substepId, seed_reset: true, result: "pass", evidence_ref: `flight-board/tests:${definition.evidence}` })),
-    result: executed.status === 0 && focused ? "pass" : "fail",
+    terminal_ui_feedback_observations: observation.client.terminal_feedback_observations,
+    substeps: observation.substeps.map((substep) => ({ parent_case_id: definition.caseId, ...substep, seed_reset: true, evidence_ref: `${oracle.file}:${oracle.pattern}` })),
+    result: resultPass ? "pass" : "fail",
   };
 }
 
@@ -162,10 +148,14 @@ for (const definition of definitions) cases.push(await executeOracle(definition)
 
 const saveLatencies = cases.flatMap((entry) => entry.telemetry.filter((metric) => metric.metric_name === "steer_work_item_save_feedback_latency_ms").map((metric) => metric.value));
 const dispatchLatencies = cases.flatMap((entry) => entry.telemetry.filter((metric) => metric.metric_name === "steer_agent_handoff_feedback_latency_ms").map((metric) => metric.value));
+const hiddenValidationOrConflictErrors = cases.filter((entry) => entry.transport_result.http_status >= 400 && entry.actual_evidence.painted_role !== "alert").length;
+const staleResponseOverwrites = cases.filter((entry) => entry.case_id.startsWith("ORDER-") && entry.result !== "pass").length;
+const duplicateDispatches = cases.filter((entry) => ["DISP-02", "REC-01", "REC-02"].includes(entry.case_id) && entry.result !== "pass").length;
+const unresolvedCriticalRecurrences = cases.flatMap((entry) => entry.substeps).filter((substep) => substep.result !== "pass").length;
 const output = {
   schema: "steer-str028-case-ledger/v1",
   target_commit: target,
-  environment: "executed non-production Node D1 emulator plus JSDOM React client-paint harness",
+  environment: "one connected execution per frozen case through the real API/client authority function, actual D1 emulator state, and the production InlineActionFeedback component",
   generated_at: new Date().toISOString(),
   denominator: 20,
   missing_case_ids: [],
@@ -173,10 +163,10 @@ const output = {
   telemetry_summary: {
     steer_work_item_save_feedback_latency_ms: { sample_count: saveLatencies.length, missing_count: 0, p95_ms: percentile95(saveLatencies), budget_ms: 250 },
     steer_agent_handoff_feedback_latency_ms: { sample_count: dispatchLatencies.length, missing_count: 0, p95_ms: percentile95(dispatchLatencies), budget_ms: 250 },
-    hidden_validation_or_conflict_errors: 0,
-    stale_response_overwrites: 0,
-    duplicate_dispatches: 0,
-    unresolved_critical_recurrences: 0,
+    hidden_validation_or_conflict_errors: hiddenValidationOrConflictErrors,
+    stale_response_overwrites: staleResponseOverwrites,
+    duplicate_dispatches: duplicateDispatches,
+    unresolved_critical_recurrences: unresolvedCriticalRecurrences,
   },
   cases,
 };

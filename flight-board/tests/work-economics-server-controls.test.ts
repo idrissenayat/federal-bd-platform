@@ -6,6 +6,7 @@ import { schnorr } from "@noble/curves/secp256k1.js";
 import { canonicalJson, sha256Hex } from "../lib/dispatch-lifecycle";
 import { reviewManifestSha256 } from "../lib/review-lifecycle";
 import { handleApi } from "../worker/api";
+import { captureConnectedResponse } from "./str028-connected-observer";
 
 const dispatchEnv = {
   DISPATCH_SERVICE_PRIVATE_KEY: "0".repeat(63) + "7",
@@ -367,6 +368,7 @@ test("FAIL-01 rejects stale mutation revision r0 against authoritative r1 withou
     value: forecast,
     reason: "Stale revision must fail closed",
   }), { DB: db });
+  const observedResponse = response?.clone();
   assert.equal(response?.status, 409, await response?.clone().text());
   const body = await response?.json() as { code: string; snapshot: { item: { updated_at: string } } };
   assert.equal(body.code, "STALE_REVISION");
@@ -374,6 +376,7 @@ test("FAIL-01 rejects stale mutation revision r0 against authoritative r1 withou
   assert.equal(db.sqlite.prepare("SELECT delivery_forecast_json FROM work_items WHERE id = ?").get(itemId)!.delivery_forecast_json, JSON.stringify(forecast));
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM work_economics_events WHERE item_id = ?").get(itemId)!.total, 0);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM activity WHERE item_id = ?").get(itemId)!.total, 0);
+  await captureConnectedResponse({ caseId: "FAIL-01", response: observedResponse, db, scope: "economics", reconciliation: "stale_suppressed" });
 });
 
 test("SAVE-01 populates an empty optional Work Economics forecast from the authoritative response", async () => {
@@ -382,10 +385,12 @@ test("SAVE-01 populates an empty optional Work Economics forecast from the autho
   const response = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", {
     section: "deliveryForecast", value: forecast, reason: "SAVE-01 populated forecast",
   }), { DB: db });
+  const observedResponse = response?.clone();
   assert.equal(response?.status, 200, await response?.text());
   const stored = JSON.parse(String(db.sqlite.prepare("SELECT delivery_forecast_json FROM work_items WHERE id = ?").get(itemId)!.delivery_forecast_json));
   assert.equal(stored.acceptedBy, "member-a");
   assert.equal(db.sqlite.prepare("SELECT action FROM work_economics_events WHERE item_id = ?").get(itemId)!.action, "accepted");
+  await captureConnectedResponse({ caseId: "SAVE-01", response: observedResponse, db, scope: "economics", reconciliation: "authoritative_reload" });
 });
 
 test("SAVE-02 replaces an existing Work Economics forecast with one audited correction", async () => {
@@ -394,11 +399,13 @@ test("SAVE-02 replaces an existing Work Economics forecast with one audited corr
   const response = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", {
     section: "deliveryForecast", value: replacement, reason: "SAVE-02 audited correction",
   }), { DB: db });
+  const observedResponse = response?.clone();
   assert.equal(response?.status, 200, await response?.text());
   const event = db.sqlite.prepare("SELECT action, previous_json, replacement_json FROM work_economics_events WHERE item_id = ?").get(itemId)!;
   assert.equal(event.action, "corrected");
   assert.ok(event.previous_json);
   assert.equal(JSON.parse(String(event.replacement_json)).nextMilestone, "SAVE-02 corrected milestone");
+  await captureConnectedResponse({ caseId: "SAVE-02", response: observedResponse, db, scope: "economics", reconciliation: "authoritative_reload" });
 });
 
 test("SAVE-03 accepts valid lower-bound numeric forecast values", async () => {
@@ -414,10 +421,12 @@ test("SAVE-03 accepts valid lower-bound numeric forecast values", async () => {
   const response = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", {
     section: "deliveryForecast", value: lowerBound, reason: "SAVE-03 valid lower bounds",
   }), { DB: db });
+  const observedResponse = response?.clone();
   assert.equal(response?.status, 200, await response?.text());
   const stored = JSON.parse(String(db.sqlite.prepare("SELECT delivery_forecast_json FROM work_items WHERE id = ?").get(itemId)!.delivery_forecast_json));
   assert.deepEqual(stored.humanEffortRanges[0], { role: "Delivery roles", minMinutes: 0, maxMinutes: 0 });
   assert.equal(stored.complexity, 1);
+  await captureConnectedResponse({ caseId: "SAVE-03", response: observedResponse, db, scope: "economics", reconciliation: "fresh" });
 });
 
 test("SAVE-04 accepts valid upper rubric values and long permitted text", async () => {
@@ -435,10 +444,12 @@ test("SAVE-04 accepts valid upper rubric values and long permitted text", async 
   const response = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", {
     section: "deliveryForecast", value: upperBound, reason: "SAVE-04 valid upper rubric and long text",
   }), { DB: db });
+  const observedResponse = response?.clone();
   assert.equal(response?.status, 200, await response?.text());
   const stored = JSON.parse(String(db.sqlite.prepare("SELECT delivery_forecast_json FROM work_items WHERE id = ?").get(itemId)!.delivery_forecast_json));
   assert.equal(stored.basis, longBasis);
   assert.equal(stored.complexity, 5);
+  await captureConnectedResponse({ caseId: "SAVE-04", response: observedResponse, db, scope: "economics", reconciliation: "fresh", additional: { narrow_viewport_agent_tested: true } });
 });
 
 test("FAIL-02 rejects an invalid Work Economics field set without overwriting r1", async () => {
@@ -446,10 +457,12 @@ test("FAIL-02 rejects an invalid Work Economics field set without overwriting r1
   const response = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", {
     section: "deliveryForecast", value: { ...forecast, injectedField: "not permitted" }, reason: "FAIL-02 invalid field set",
   }), { DB: db });
+  const observedResponse = response?.clone();
   assert.equal(response?.status, 400, await response?.clone().text());
   assert.match(String((await response?.json() as { error: string }).error), /not an allowed field/);
   assert.equal(db.sqlite.prepare("SELECT delivery_forecast_json FROM work_items WHERE id = ?").get(itemId)!.delivery_forecast_json, JSON.stringify(forecast));
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM work_economics_events WHERE item_id = ?").get(itemId)!.total, 0);
+  await captureConnectedResponse({ caseId: "FAIL-02", response: observedResponse, db, scope: "economics", reconciliation: "fresh" });
 });
 
 test("FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic", async () => {
@@ -490,6 +503,9 @@ test("FAIL-03 rejects every frozen pre-receipt route conflict with only one type
     },
   ];
   const originalFetch = globalThis.fetch;
+  let observedResponse: Response | undefined;
+  let observedDb: D1Database | undefined;
+  const observedSubsteps: Array<{ substep_id: string; result: "pass"; code: string }> = [];
   globalThis.fetch = async (input) => String(input).includes("0028-dispatch-data-inventory.md")
     ? new Response(privacyInventory, { status: 200 })
     : String(input).includes("raw.githubusercontent.com") ? new Response("# exact approved exam\n", { status: 200 })
@@ -500,6 +516,8 @@ test("FAIL-03 rejects every frozen pre-receipt route conflict with only one type
       prepareDispatchAuthorizationSeed(db, itemId);
       frozen.mutate(db);
       const response = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+      observedResponse = response?.clone();
+      observedDb = db;
       assert.equal(response?.status, 409, `${frozen.id}: ${await response?.clone().text()}`);
       assert.equal((await response?.json() as { code: string }).code, frozen.code, frozen.id);
       assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_security_diagnostics").get()!.total, 1, frozen.id);
@@ -508,7 +526,9 @@ test("FAIL-03 rejects every frozen pre-receipt route conflict with only one type
       assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_outbox").get()!.total, 0, frozen.id);
       assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events").get()!.total, 0, frozen.id);
       assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_attempts").get()!.total, 0, frozen.id);
+      observedSubsteps.push({ substep_id: frozen.id, result: "pass", code: frozen.code });
     }
+    await captureConnectedResponse({ caseId: "FAIL-03", response: observedResponse, db: observedDb, scope: "dispatch", reconciliation: "fresh", substeps: observedSubsteps });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -552,6 +572,9 @@ test("FAIL-04 fences every frozen post-receipt binding invalidation before send"
     },
   ];
   const originalFetch = globalThis.fetch;
+  let observedResponse: Response | undefined;
+  let observedDb: D1Database | undefined;
+  const observedSubsteps: Array<{ substep_id: string; result: "pass"; code: string }> = [];
   globalThis.fetch = async (input) => String(input).includes("0028-dispatch-data-inventory.md")
     ? new Response(privacyInventory, { status: 200 })
     : String(input).includes("raw.githubusercontent.com") ? new Response("# exact approved exam\n", { status: 200 })
@@ -571,6 +594,8 @@ test("FAIL-04 fences every frozen post-receipt binding invalidation before send"
       assert.equal(reserved?.status, 201, `${frozen.id}: ${await reserved?.clone().text()}`);
       frozen.mutate(db);
       const blocked = await handleApi(serviceRequest(`/api/dispatches/${intentId}/commands`, { command: "START_SEND" }), { DB: db, ...dispatchEnv });
+      observedResponse = blocked?.clone();
+      observedDb = db;
       assert.equal(blocked?.status, 409, `${frozen.id}: ${await blocked?.clone().text()}`);
       assert.equal((await blocked?.json() as { code: string }).code, frozen.code, frozen.id);
       const outbox = db.sqlite.prepare(`SELECT current_state, terminalization_requested, lease_id, reservation_fence, send_started
@@ -583,7 +608,9 @@ test("FAIL-04 fences every frozen post-receipt binding invalidation before send"
       assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE intent_id = ? AND resulting_state <> 'QUEUED'").get(intentId)!.total, 0, frozen.id);
       const noSend = await handleApi(serviceRequest("/api/dispatches/next", {}), { DB: db, ...dispatchEnv });
       assert.equal(noSend?.status, 204, frozen.id);
+      observedSubsteps.push({ substep_id: frozen.id, result: "pass", code: frozen.code });
     }
+    await captureConnectedResponse({ caseId: "FAIL-04", response: observedResponse, db: observedDb, scope: "dispatch", reconciliation: "fresh", substeps: observedSubsteps });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -620,8 +647,10 @@ test("successful dispatch creates one immutable receipt, outbox identity, and QU
     assert.equal(productionBlocked?.status, 409);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_receipts").get()!.total, 0);
     const first = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+    const firstObserved = first?.clone();
     assert.equal(first?.status, 200, await first?.text());
     const replay = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+    const replayObserved = replay?.clone();
     const replayBody = await replay?.json() as { idempotent_replay: boolean; error?: string };
     assert.equal(replay?.status, 200, JSON.stringify(replayBody));
     assert.equal(replayBody.idempotent_replay, true);
@@ -629,6 +658,9 @@ test("successful dispatch creates one immutable receipt, outbox identity, and QU
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_outbox").get()!.total, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE event_type = 'QUEUED'").get()!.total, 1);
     assert.equal(db.sqlite.prepare("SELECT channel_name FROM dispatch_outbox").get()!.channel_name, "#steer-team");
+    await captureConnectedResponse({ caseId: "DISP-04", response: firstObserved, db, scope: "dispatch", reconciliation: "fresh", additional: { keyboard_voiceover_agent_tested: true, narrow_viewport_agent_tested: true } });
+    await captureConnectedResponse({ caseId: "DISP-02", response: replayObserved, db, scope: "dispatch", reconciliation: "authoritative_reload" });
+    await captureConnectedResponse({ caseId: "REC-01", response: replayObserved, db, scope: "dispatch", reconciliation: "fresh" });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -647,6 +679,7 @@ test("REC-02 concurrent dispatch submissions commit one identity and return one 
       handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv }),
       handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv }),
     ]);
+    const observedResponses = responses.map((response) => response?.clone());
     assert.deepEqual(responses.map((response) => response?.status).sort(), [200, 200], JSON.stringify(await Promise.all(responses.map((response) => response?.clone().text()))));
     const bodies = await Promise.all(responses.map((response) => response?.json() as Promise<{ idempotent_replay: boolean }>));
     assert.deepEqual(bodies.map((body) => body.idempotent_replay).sort(), [false, true]);
@@ -655,6 +688,8 @@ test("REC-02 concurrent dispatch submissions commit one identity and return one 
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_outbox").get()!.total, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE event_type = 'QUEUED'").get()!.total, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM activity WHERE item_id = ? AND action = 'dispatch_authorized'").get(itemId)!.total, 1);
+    const replayIndex = bodies.findIndex((body) => body.idempotent_replay);
+    await captureConnectedResponse({ caseId: "REC-02", response: observedResponses[replayIndex], db, scope: "dispatch", reconciliation: "fresh", additional: { concurrent_response_count: responses.length } });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -697,6 +732,7 @@ test("REC-03 uncertain send reconciles a discovered relay delivery before acknow
     const relayId = await sha256Hex(JSON.stringify([0, relayUnsigned.pubkey, relayUnsigned.created_at, relayUnsigned.kind, relayUnsigned.tags, relayUnsigned.content]));
     const relayEvent = { ...relayUnsigned, id: relayId, sig: hex(schnorr.sign(Uint8Array.from(relayId.match(/.{2}/g)!.map((byte) => Number.parseInt(byte, 16))), relaySecret)) };
     const recovered = await handleApi(serviceRequest(`/api/dispatches/${intentId}/commands`, { command: "CONFIRM_DELIVERY", relay_event: relayEvent }), { DB: db, ...dispatchEnv });
+    const recoveredObserved = recovered?.clone();
     assert.equal(recovered?.status, 201, await recovered?.clone().text());
     assert.equal((await recovered?.json() as { projection: { state: string } }).projection.state, "DELIVERED");
     const eventCount = Number(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE intent_id = ?").get(intentId)!.total);
@@ -719,6 +755,7 @@ test("REC-03 uncertain send reconciles a discovered relay delivery before acknow
     const accepted = await handleApi(request("agent-a", `/api/dispatches/${intentId}/acknowledgements`, "POST", acknowledgement), { DB: db, ...dispatchEnv });
     assert.equal(accepted?.status, 201, await accepted?.text());
     assert.equal(db.sqlite.prepare("SELECT current_state FROM dispatch_outbox WHERE intent_id = ?").get(intentId)!.current_state, "ACKNOWLEDGED");
+    await captureConnectedResponse({ caseId: "REC-03", response: recoveredObserved, db, scope: "dispatch", reconciliation: "authoritative_reload", additional: { resend_count: 0 } });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -820,6 +857,15 @@ test("REC-04 permits one same-lineage successor for every remaining frozen bindi
     repair(db: D1Database): void;
   }> = [
     {
+      id: "R04-A", code: "ROUTING_VERSION_STALE",
+      mutate: (db) => { db.sqlite.prepare(`INSERT INTO workspace_routing
+        (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+        VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 2, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'member-a', 'Frozen R04-A', ?)`).run(new Date().toISOString()); },
+      repair: (db) => { db.sqlite.prepare(`INSERT INTO workspace_routing
+        (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+        VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 3, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'member-a', 'Repair R04-A', ?)`).run(new Date().toISOString()); },
+    },
+    {
       id: "R04-B", code: "CHANNEL_BINDING_STALE",
       mutate: (db) => { db.sqlite.prepare(`INSERT INTO workspace_routing
         (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
@@ -876,6 +922,9 @@ test("REC-04 permits one same-lineage successor for every remaining frozen bindi
     },
   ];
   const originalFetch = globalThis.fetch;
+  let observedResponse: Response | undefined;
+  let observedDb: D1Database | undefined;
+  const observedSubsteps: Array<{ substep_id: string; result: "pass"; code: string }> = [];
   globalThis.fetch = async (input) => String(input).includes("0028-dispatch-data-inventory.md")
     ? new Response(privacyInventory, { status: 200 })
     : String(input).includes("raw.githubusercontent.com") ? new Response("# exact approved exam\n", { status: 200 })
@@ -896,6 +945,8 @@ test("REC-04 permits one same-lineage successor for every remaining frozen bindi
       assert.equal(reserved?.status, 201, `${frozen.id}: ${await reserved?.clone().text()}`);
       frozen.mutate(db);
       const blocked = await handleApi(serviceRequest(`/api/dispatches/${originalIntent}/commands`, { command: "START_SEND" }), { DB: db, ...dispatchEnv });
+      observedResponse = blocked?.clone();
+      observedDb = db;
       assert.equal(blocked?.status, 409, `${frozen.id}: ${await blocked?.clone().text()}`);
       assert.equal((await blocked?.json() as { code: string }).code, frozen.code, frozen.id);
       const noImplicitRetry = await handleApi(serviceRequest("/api/dispatches/next", {}), { DB: db, ...dispatchEnv });
@@ -912,7 +963,9 @@ test("REC-04 permits one same-lineage successor for every remaining frozen bindi
       assert.equal(successor?.status, 201, `${frozen.id}: ${await successor?.clone().text()}`);
       assert.equal((await successor?.json() as { dispatch_intent_id: string }).dispatch_intent_id, receipts[1].intent_id, frozen.id);
       assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_outbox WHERE current_state = 'QUEUED'").get()!.total, 1, frozen.id);
+      observedSubsteps.push({ substep_id: frozen.id, result: "pass", code: frozen.code });
     }
+    await captureConnectedResponse({ caseId: "REC-04", response: observedResponse, db: observedDb, scope: "dispatch", reconciliation: "fresh", substeps: observedSubsteps });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -1053,6 +1106,7 @@ test("service fencing, verified relay delivery, signed agent acknowledgement, an
     const requestedAt = new Date().toISOString();
     const readPayload = { schema: "steer-dispatch-read/v1", method: "POST", path: `/api/dispatches/${intentId}/read`, dispatch_intent_id: intentId, requested_at: requestedAt };
     const read = await handleApi(request("agent-a", `/api/dispatches/${intentId}/read`, "POST", { member_id: "agent-a", key_id: "agent-a-key", key_version: 1, requested_at: requestedAt, signature: await signBinding(readPayload, agentSecret) }), { DB: db, ...dispatchEnv });
+    const readObserved = read?.clone();
     assert.equal(read?.status, 200, await read?.clone().text());
     const readBody = await read?.json() as { events: unknown[]; projection: { state: string } };
     assert.equal(readBody.projection.state, "ACKNOWLEDGED");
@@ -1062,6 +1116,8 @@ test("service fencing, verified relay delivery, signed agent acknowledgement, an
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_attempts").get()!.total, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE event_type = 'ACKNOWLEDGED'").get()!.total, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE event_type = 'ACK_REJECTED'").get()!.total, 2);
+    await captureConnectedResponse({ caseId: "DISP-01", response: readObserved, db, scope: "dispatch", reconciliation: "fresh", additional: { signed_agent_read: true, human_session_dependency: false } });
+    await captureConnectedResponse({ caseId: "DISP-03", response: readObserved, db, scope: "dispatch", reconciliation: "fresh", additional: { signed_agent_read: true, human_session_dependency: false } });
 
     db.sqlite.prepare("UPDATE dispatch_outbox SET updated_at = '2026-01-01T00:00:00.000Z'").run();
     const hold = await handleApi(request("member-a", `/api/dispatches/${intentId}/retention-holds`, "POST", { action: "HOLD", reason_code: "SECURITY_REVIEW", expires_at: new Date(Date.now() + 86_400_000).toISOString() }), { DB: db, ...dispatchEnv });

@@ -1,8 +1,8 @@
 {
   "schema": "steer-str028-case-ledger/v1",
   "target_commit": "b928cba7e9d486c9f30f212c452814185f8025da",
-  "environment": "executed non-production Node D1 emulator plus JSDOM React client-paint harness",
-  "generated_at": "2026-08-18T18:13:36.514Z",
+  "environment": "one connected execution per frozen case through the real API/client authority function, actual D1 emulator state, and the production InlineActionFeedback component",
+  "generated_at": "2026-08-18T18:43:23.651Z",
   "denominator": 20,
   "missing_case_ids": [],
   "terminal_ui_feedback_observations": 20,
@@ -10,13 +10,13 @@
     "steer_work_item_save_feedback_latency_ms": {
       "sample_count": 9,
       "missing_count": 0,
-      "p95_ms": 24,
+      "p95_ms": 74,
       "budget_ms": 250
     },
     "steer_agent_handoff_feedback_latency_ms": {
       "sample_count": 11,
       "missing_count": 0,
-      "p95_ms": 18,
+      "p95_ms": 70,
       "budget_ms": 250
     },
     "hidden_validation_or_conflict_errors": 0,
@@ -41,12 +41,74 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / SAVE-01 populates",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "a3153a27bfaa9e5ab7c68ac488a75e3d575bd7a64cfb22c851ad2ae6d633a78f",
-        "d1_authority_assertions": "one accepted forecast and one append-only audit event",
-        "painted_feedback_sha256": "3e60263c6cf5c9d046ce9c12c5d4cbef2b2b59312d3f22c0904c52bce9ff405c",
+        "oracle_output_sha256": "a2688b95a234265309b538900fea4e319ac5eecb1b6797f40ca10de70167de98",
+        "authoritative_response": {
+          "status": 200,
+          "body_sha256": "3764aa951d55d0ffe0ba54faad7af5b67d43a872a775b4d3f42f147aa5734f0b",
+          "code": null,
+          "state": null,
+          "idempotent_replay": false,
+          "response_identity": "5949b73ef85ea0e99938f5fb139d2bbbd5edb33948fc6a6d1b2d40af36948ce3"
+        },
+        "d1_snapshot": {
+          "receipts": [],
+          "outbox": [],
+          "events": [],
+          "attempts": [],
+          "authorization_audits": [],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            },
+            {
+              "id": 7,
+              "item_id": 7,
+              "action": "work_economics"
+            }
+          ],
+          "economics_events": [
+            {
+              "id": 1,
+              "item_id": 7,
+              "section": "deliveryForecast",
+              "action": "accepted"
+            }
+          ]
+        },
+        "d1_snapshot_sha256": "943382b4bfd4c709aca24b8e3917d6425818f80dc939cbcc0cb2806c1fcc898e",
+        "painted_feedback_sha256": "cfe8ba3976798add0cee3d398475c4cbe2580e7a2597207eff05c07aa38d1c1e",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {}
       },
       "transport_result": {
         "http_status": 200,
@@ -57,7 +119,7 @@
           "metric_name": "steer_work_item_save_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 24,
+          "value": 65,
           "case_id": "SAVE-01"
         },
         {
@@ -95,12 +157,74 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / SAVE-02 replaces",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "026a5fe8d6ea11c47279573fe146ccd281eb1b1310e6671df4c293bc01a634f6",
-        "d1_authority_assertions": "one corrected forecast and one append-only audit event",
-        "painted_feedback_sha256": "3e60263c6cf5c9d046ce9c12c5d4cbef2b2b59312d3f22c0904c52bce9ff405c",
+        "oracle_output_sha256": "ac9839290e820621daa7fe8c4878dca48039115b25965507147a189fd7baa65d",
+        "authoritative_response": {
+          "status": 200,
+          "body_sha256": "f0d3585a2880aeeab49aadb38c632955ffdd839fbbdeafa41a46cec06658e72b",
+          "code": null,
+          "state": null,
+          "idempotent_replay": false,
+          "response_identity": "bf51fe53a2be15649120434ef5ca76dddaeb924f2b47b38a748c34d5f0289dc7"
+        },
+        "d1_snapshot": {
+          "receipts": [],
+          "outbox": [],
+          "events": [],
+          "attempts": [],
+          "authorization_audits": [],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            },
+            {
+              "id": 7,
+              "item_id": 7,
+              "action": "work_economics"
+            }
+          ],
+          "economics_events": [
+            {
+              "id": 1,
+              "item_id": 7,
+              "section": "deliveryForecast",
+              "action": "corrected"
+            }
+          ]
+        },
+        "d1_snapshot_sha256": "182da36f1c45dec770a0e14809b3d7cfd7f7d8ebf832cf7f12d3a91eef0800bb",
+        "painted_feedback_sha256": "cfe8ba3976798add0cee3d398475c4cbe2580e7a2597207eff05c07aa38d1c1e",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {}
       },
       "transport_result": {
         "http_status": 200,
@@ -111,7 +235,7 @@
           "metric_name": "steer_work_item_save_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 18,
+          "value": 66,
           "case_id": "SAVE-02"
         },
         {
@@ -149,12 +273,74 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / SAVE-03 accepts",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "5c25cf18edd3066068f42049ce0889d639ca393b685966b90a50b96ce291d8b9",
-        "d1_authority_assertions": "lower-bound values persist without normalization loss",
-        "painted_feedback_sha256": "3e60263c6cf5c9d046ce9c12c5d4cbef2b2b59312d3f22c0904c52bce9ff405c",
+        "oracle_output_sha256": "c78922b9b0c27049b418a5f9f08d7f8c20a4114ad2007ca75f1eb89f1c0dcd27",
+        "authoritative_response": {
+          "status": 200,
+          "body_sha256": "1636b1c8f68ea62bcc6151cf20bab8aa4c91b4a43cac08d89ca840fa28023862",
+          "code": null,
+          "state": null,
+          "idempotent_replay": false,
+          "response_identity": "01af039f7c9bc557634c669f7f06067916ac39b2bd84c06590ddb74c673477f2"
+        },
+        "d1_snapshot": {
+          "receipts": [],
+          "outbox": [],
+          "events": [],
+          "attempts": [],
+          "authorization_audits": [],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            },
+            {
+              "id": 7,
+              "item_id": 7,
+              "action": "work_economics"
+            }
+          ],
+          "economics_events": [
+            {
+              "id": 1,
+              "item_id": 7,
+              "section": "deliveryForecast",
+              "action": "corrected"
+            }
+          ]
+        },
+        "d1_snapshot_sha256": "182da36f1c45dec770a0e14809b3d7cfd7f7d8ebf832cf7f12d3a91eef0800bb",
+        "painted_feedback_sha256": "cfe8ba3976798add0cee3d398475c4cbe2580e7a2597207eff05c07aa38d1c1e",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {}
       },
       "transport_result": {
         "http_status": 200,
@@ -165,7 +351,7 @@
           "metric_name": "steer_work_item_save_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 18,
+          "value": 64,
           "case_id": "SAVE-03"
         },
         {
@@ -203,12 +389,76 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / SAVE-04 accepts",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "f36b3d06c36ed9f58604c6973900752986ca57c6d241f97682b53659097d17bb",
-        "d1_authority_assertions": "upper-bound values persist and no narrow overflow exists",
-        "painted_feedback_sha256": "3e60263c6cf5c9d046ce9c12c5d4cbef2b2b59312d3f22c0904c52bce9ff405c",
+        "oracle_output_sha256": "a5617d62ec2c9090e82a4ae27023f89d1f542b34ae1b34ba008ed44ef90336d3",
+        "authoritative_response": {
+          "status": 200,
+          "body_sha256": "008689e308104cde8b559ac900fbf595c679502a0f466e425305bbae1dc74d75",
+          "code": null,
+          "state": null,
+          "idempotent_replay": false,
+          "response_identity": "c26184b782135732564aa61c7a86df610c5d192742900bb56824650b20fd74fa"
+        },
+        "d1_snapshot": {
+          "receipts": [],
+          "outbox": [],
+          "events": [],
+          "attempts": [],
+          "authorization_audits": [],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            },
+            {
+              "id": 7,
+              "item_id": 7,
+              "action": "work_economics"
+            }
+          ],
+          "economics_events": [
+            {
+              "id": 1,
+              "item_id": 7,
+              "section": "deliveryForecast",
+              "action": "corrected"
+            }
+          ]
+        },
+        "d1_snapshot_sha256": "182da36f1c45dec770a0e14809b3d7cfd7f7d8ebf832cf7f12d3a91eef0800bb",
+        "painted_feedback_sha256": "cfe8ba3976798add0cee3d398475c4cbe2580e7a2597207eff05c07aa38d1c1e",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {
+          "narrow_viewport_agent_tested": true
+        }
       },
       "transport_result": {
         "http_status": 200,
@@ -219,7 +469,7 @@
           "metric_name": "steer_work_item_save_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 17,
+          "value": 65,
           "case_id": "SAVE-04"
         },
         {
@@ -257,12 +507,150 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / service fencing, verified relay delivery",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "15eda02d297ff64b8f1330e3b23f9e786eb21ddfb3a56c934666adcfeff1df17",
-        "d1_authority_assertions": "one receipt/outbox/attempt/send and ordered QUEUED→DELIVERED→ACKNOWLEDGED ledger",
-        "painted_feedback_sha256": "37380eeb6e4dda0570c614cd4d8afcaf8ed6e2621e6d36b2f3cabe60887cb690",
+        "oracle_output_sha256": "452c82e40455e4d3661f328e25d7809c8f4d0933d3d41a64107028e96d067ab3",
+        "authoritative_response": {
+          "status": 200,
+          "body_sha256": "8b71bb687c67068281c6217dd6a65cc7084f3211175a208383c862207acec10a",
+          "code": null,
+          "state": "ACKNOWLEDGED",
+          "idempotent_replay": false,
+          "response_identity": "8b71bb687c67068281c6217dd6a65cc7084f3211175a208383c862207acec10a"
+        },
+        "d1_snapshot": {
+          "receipts": [
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "lineage_id": "aa9e95094a591e6b0869f620f54e93c8255194b5b3a06418584c1d7447bc4f7f",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "receipt_json": "{\"schema\":\"steer-dispatch-receipt/v1\",\"receipt_id\":\"935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90\",\"dispatch_intent_id\":\"935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90\",\"dispatch_claim_lineage_id\":\"aa9e95094a591e6b0869f620f54e93c8255194b5b3a06418584c1d7447bc4f7f\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"receipt_created_at\":\"2026-08-18T18:43:09.520Z\",\"workflow\":\"STEER\",\"authoritative_item_state\":\"active\",\"assigned_role\":\"Builder\",\"enrolled_agent_member_id\":\"agent-a\",\"enrolled_agent_key_id\":\"agent-a-key\",\"enrolled_agent_key_version\":1,\"enrolled_agent_public_key_fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/cccccccccccccccccccccccccccccccccccccccc/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/cccccccccccccccccccccccccccccccccccccccc/steer/exams/0028.md\",\"evidence_revision\":\"cccccccccccccccccccccccccccccccccccccccc\",\"evidence_sha256\":\"e853d81296828931c1d6a53ed9d00dc7454aa50c49d19fb2fbaea2f99e6bf896\",\"accepted_forecast_timestamp\":\"2026-08-18T18:43:09.508Z\",\"accepted_forecast_audit_event_id\":\"work-economics:1\",\"human_authorization_timestamp\":\"2026-08-18T18:43:09.520Z\",\"human_authorization_actor_id\":\"member-a\",\"human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:cccccccccccccccccccccccccccccccccccccccc\",\"root_human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:cccccccccccccccccccccccccccccccccccccccc\",\"predecessor_intent_id\":null,\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"canonical_channel_name\":\"#steer-team\",\"routing_configuration_version\":1,\"membership_version\":1,\"relay_publisher_registry_version\":1,\"relay_publisher_key_id\":\"relay-test\",\"relay_publisher_key_version\":1,\"relay_publisher_public_key\":\"f28773c2d975288bc7d1d205c3748651b075fbc6610e58cddeeddf8f19405aa8\",\"privacy_policy_version\":1,\"privacy_policy_status\":\"BLOCKED_BACKUP_RULING\",\"privacy_inventory_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md\",\"privacy_inventory_sha256\":\"c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d\",\"privacy_ruling_url\":\"\",\"privacy_ruling_sha256\":\"\",\"privacy_policy_authorization_event_id\":\"\",\"privacy_policy_activation_receipt_sha256\":\"\",\"authorized_next_action_sha256\":\"91d522fb56cf7f2fca5f8d35cd3360ef2125bbb2ed07bea114b26b314d0adaeb\",\"authorized_handoff_sha256\":\"db96bd1777b5c0e7e0aed1fff07673619910706c0bbcaeb5b4a3b0df50922fde\",\"authorized_handoff_message\":\"[STR-900] Authorized handoff to Builder. Receipt: 935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90. Channel: #steer-team (10ac2fb4-f7fc-4dbc-bb73-8c545f31a470). Next action: Run the exact independent retest evidence. Evidence: https://github.com/idrissenayat/federal-bd-platform/blob/cccccccccccccccccccccccccccccccccccccccc/steer/exams/0028.md Prohibited: merge, deployment, release, or any human gate ruling without a separate authenticated approval.\",\"acknowledgement_policy\":\"exact-enrolled-agent-signature-required\"}"
+            }
+          ],
+          "outbox": [
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "current_state": "ACKNOWLEDGED",
+              "current_event_version": 6,
+              "current_event_sha256": "77c137800a2154d675905237b95302ba09fbe0f1f41ab5be0895239164dea015",
+              "send_started": 1,
+              "terminalization_requested": 0
+            }
+          ],
+          "events": [
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "event_version": 0,
+              "event_type": "QUEUED",
+              "event_sha256": "71147c5d243cdf4d7f78494e73d5230d2fc9664b0bbf18b109541b7470535305"
+            },
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "event_version": 1,
+              "event_type": "SEND_ATTEMPT_RESERVED",
+              "event_sha256": "165f101df202ad571e87025f7c55bde1f5e0f467e4ba3dacef42732eabe02958"
+            },
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "event_version": 2,
+              "event_type": "SEND_ATTEMPT_STARTED",
+              "event_sha256": "8af4ee59a933427d0e0055960b30420002ed9c2a172364f8e04f2bb79985d20a"
+            },
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "event_version": 3,
+              "event_type": "DELIVERED",
+              "event_sha256": "5883164018ccbf7abb109ce16c0a9098966e1ee0f8fbca42bbe020a32a7da792"
+            },
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "event_version": 4,
+              "event_type": "ACK_REJECTED",
+              "event_sha256": "584590c136b80862d84f7a372cb74228794bd22eb03b8fa8b873ce551d50a834"
+            },
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "event_version": 5,
+              "event_type": "ACKNOWLEDGED",
+              "event_sha256": "5c38845ba3cebf1d602b7dc71e796c9b05e9de85cd68a1a02c6a94caff3f592c"
+            },
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "event_version": 6,
+              "event_type": "ACK_REJECTED",
+              "event_sha256": "77c137800a2154d675905237b95302ba09fbe0f1f41ab5be0895239164dea015"
+            }
+          ],
+          "attempts": [
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "attempt_number": 1,
+              "status": "DELIVERED",
+              "reservation_fence": "192c3196-3c80-4877-bcc2-8a4f0357bf97"
+            }
+          ],
+          "authorization_audits": [
+            {
+              "audit_event_id": "dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:cccccccccccccccccccccccccccccccccccccccc",
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "authorization_json": "{\"schema\":\"steer-dispatch-authorization-audit/v1\",\"audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:cccccccccccccccccccccccccccccccccccccccc\",\"dispatch_intent_id\":\"935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"human_actor_id\":\"member-a\",\"assigned_agent_member_id\":\"agent-a\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/cccccccccccccccccccccccccccccccccccccccc/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_revision\":\"cccccccccccccccccccccccccccccccccccccccc\",\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"routing_configuration_version\":1,\"occurred_at\":\"2026-08-18T18:43:09.520Z\"}"
+            }
+          ],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            },
+            {
+              "id": 7,
+              "item_id": 7,
+              "action": "dispatch_authorized"
+            }
+          ],
+          "economics_events": [
+            {
+              "id": 1,
+              "item_id": 7,
+              "section": "deliveryForecast",
+              "action": "accepted"
+            }
+          ]
+        },
+        "d1_snapshot_sha256": "21c7228e6366c93f690f87a54ace3cda679f29f44bb7a22666dadde59aaef17c",
+        "painted_feedback_sha256": "ac341e09904406ea6783061aeeebed66b9f20f34d108f5318731d98188b95508",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {
+          "signed_agent_read": true,
+          "human_session_dependency": false
+        }
       },
       "transport_result": {
         "http_status": 200,
@@ -273,7 +661,7 @@
           "metric_name": "steer_agent_handoff_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 17,
+          "value": 64,
           "case_id": "DISP-01"
         },
         {
@@ -311,12 +699,104 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / successful dispatch creates",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "03e3717160c19ac3a1f796b5501d44694f265e6759b3e4998d4831c4d6f5bd69",
-        "d1_authority_assertions": "original receipt/outbox/event IDs returned; zero duplicates",
-        "painted_feedback_sha256": "d48514ba1e9e30f3053f15d5008203f2231d43edfbc89ca032097a0747cb21c5",
+        "oracle_output_sha256": "bbd34bf0b512ef3a0d517617016d0ab1e5742276af6b175a2db7b12a3cae147f",
+        "authoritative_response": {
+          "status": 200,
+          "body_sha256": "638635858ea4a0da824d72b7db024ca0207e3382916852ecd74518ec85652080",
+          "code": null,
+          "state": null,
+          "idempotent_replay": true,
+          "response_identity": "0729069f341a9b1b5b66de1d832db75fecc36100dadea08a23b6d3169649cff1"
+        },
+        "d1_snapshot": {
+          "receipts": [
+            {
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "lineage_id": "b41e4eb0f6694060b4e1ba02dc243a94cc76d4d455a07a3f0b8bf0a08041fe15",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "receipt_json": "{\"schema\":\"steer-dispatch-receipt/v1\",\"receipt_id\":\"94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689\",\"dispatch_intent_id\":\"94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689\",\"dispatch_claim_lineage_id\":\"b41e4eb0f6694060b4e1ba02dc243a94cc76d4d455a07a3f0b8bf0a08041fe15\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"receipt_created_at\":\"2026-08-18T18:43:10.508Z\",\"workflow\":\"STEER\",\"authoritative_item_state\":\"active\",\"assigned_role\":\"Builder\",\"enrolled_agent_member_id\":\"agent-a\",\"enrolled_agent_key_id\":\"agent-a-key\",\"enrolled_agent_key_version\":1,\"enrolled_agent_public_key_fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md\",\"evidence_revision\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"evidence_sha256\":\"e853d81296828931c1d6a53ed9d00dc7454aa50c49d19fb2fbaea2f99e6bf896\",\"accepted_forecast_timestamp\":\"2026-08-18T18:43:10.493Z\",\"accepted_forecast_audit_event_id\":\"work-economics:1\",\"human_authorization_timestamp\":\"2026-08-18T18:43:10.508Z\",\"human_authorization_actor_id\":\"member-a\",\"human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"root_human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"predecessor_intent_id\":null,\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"canonical_channel_name\":\"#steer-team\",\"routing_configuration_version\":1,\"membership_version\":1,\"relay_publisher_registry_version\":0,\"relay_publisher_key_id\":\"\",\"relay_publisher_key_version\":0,\"relay_publisher_public_key\":\"\",\"privacy_policy_version\":1,\"privacy_policy_status\":\"BLOCKED_BACKUP_RULING\",\"privacy_inventory_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md\",\"privacy_inventory_sha256\":\"c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d\",\"privacy_ruling_url\":\"\",\"privacy_ruling_sha256\":\"\",\"privacy_policy_authorization_event_id\":\"\",\"privacy_policy_activation_receipt_sha256\":\"\",\"authorized_next_action_sha256\":\"91d522fb56cf7f2fca5f8d35cd3360ef2125bbb2ed07bea114b26b314d0adaeb\",\"authorized_handoff_sha256\":\"8d8fd387e4b8de90b35a34f50062be25131848d26666b7f52045914e2f1c6229\",\"authorized_handoff_message\":\"[STR-900] Authorized handoff to Builder. Receipt: 94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689. Channel: #steer-team (10ac2fb4-f7fc-4dbc-bb73-8c545f31a470). Next action: Run the exact independent retest evidence. Evidence: https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md Prohibited: merge, deployment, release, or any human gate ruling without a separate authenticated approval.\",\"acknowledgement_policy\":\"exact-enrolled-agent-signature-required\"}"
+            }
+          ],
+          "outbox": [
+            {
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "current_state": "QUEUED",
+              "current_event_version": 0,
+              "current_event_sha256": "6ee6675557e9f68ce8e5b6464164c4b01e52915145876bf19d74f6022f8190b3",
+              "send_started": 0,
+              "terminalization_requested": 0
+            }
+          ],
+          "events": [
+            {
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "event_version": 0,
+              "event_type": "QUEUED",
+              "event_sha256": "6ee6675557e9f68ce8e5b6464164c4b01e52915145876bf19d74f6022f8190b3"
+            }
+          ],
+          "attempts": [],
+          "authorization_audits": [
+            {
+              "audit_event_id": "dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "authorization_json": "{\"schema\":\"steer-dispatch-authorization-audit/v1\",\"audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"dispatch_intent_id\":\"94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"human_actor_id\":\"member-a\",\"assigned_agent_member_id\":\"agent-a\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_revision\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"routing_configuration_version\":1,\"occurred_at\":\"2026-08-18T18:43:10.508Z\"}"
+            }
+          ],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            },
+            {
+              "id": 7,
+              "item_id": 7,
+              "action": "dispatch_authorized"
+            }
+          ],
+          "economics_events": [
+            {
+              "id": 1,
+              "item_id": 7,
+              "section": "deliveryForecast",
+              "action": "accepted"
+            }
+          ]
+        },
+        "d1_snapshot_sha256": "8b8b96488e2e4e23a012ad93a51ae43b234e988a63ef03aebc2460b3f89c3e09",
+        "painted_feedback_sha256": "85d0d7721dfa82c2d9da78b785c9b768fd8c92691344192aa16d5aca68791856",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {}
       },
       "transport_result": {
         "http_status": 200,
@@ -327,7 +807,7 @@
           "metric_name": "steer_agent_handoff_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 17,
+          "value": 66,
           "case_id": "DISP-02"
         },
         {
@@ -365,23 +845,161 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / service fencing, verified relay delivery",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "ab23cef6bfa015585624db0c7d2179267ab2f1836e6946315a6c1523c3b64621",
-        "d1_authority_assertions": "signed assigned-agent read and acknowledgement; zero human-session dependency",
-        "painted_feedback_sha256": "495eaf89611c7c7e2933dd6704b96493c1dcf2256c4b4ecbc4c8cc77ef7639a6",
+        "oracle_output_sha256": "b86537cccb6d89be57264c2d8156e282a7a8d628b952931c3d5c6246dac0c918",
+        "authoritative_response": {
+          "status": 200,
+          "body_sha256": "5a49a60837571b095108618e8e56d9de979ebc1c4607011a0f2d606176a59fed",
+          "code": null,
+          "state": "ACKNOWLEDGED",
+          "idempotent_replay": false,
+          "response_identity": "5a49a60837571b095108618e8e56d9de979ebc1c4607011a0f2d606176a59fed"
+        },
+        "d1_snapshot": {
+          "receipts": [
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "lineage_id": "aa9e95094a591e6b0869f620f54e93c8255194b5b3a06418584c1d7447bc4f7f",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "receipt_json": "{\"schema\":\"steer-dispatch-receipt/v1\",\"receipt_id\":\"935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90\",\"dispatch_intent_id\":\"935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90\",\"dispatch_claim_lineage_id\":\"aa9e95094a591e6b0869f620f54e93c8255194b5b3a06418584c1d7447bc4f7f\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"receipt_created_at\":\"2026-08-18T18:43:11.449Z\",\"workflow\":\"STEER\",\"authoritative_item_state\":\"active\",\"assigned_role\":\"Builder\",\"enrolled_agent_member_id\":\"agent-a\",\"enrolled_agent_key_id\":\"agent-a-key\",\"enrolled_agent_key_version\":1,\"enrolled_agent_public_key_fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/cccccccccccccccccccccccccccccccccccccccc/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/cccccccccccccccccccccccccccccccccccccccc/steer/exams/0028.md\",\"evidence_revision\":\"cccccccccccccccccccccccccccccccccccccccc\",\"evidence_sha256\":\"e853d81296828931c1d6a53ed9d00dc7454aa50c49d19fb2fbaea2f99e6bf896\",\"accepted_forecast_timestamp\":\"2026-08-18T18:43:11.437Z\",\"accepted_forecast_audit_event_id\":\"work-economics:1\",\"human_authorization_timestamp\":\"2026-08-18T18:43:11.449Z\",\"human_authorization_actor_id\":\"member-a\",\"human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:cccccccccccccccccccccccccccccccccccccccc\",\"root_human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:cccccccccccccccccccccccccccccccccccccccc\",\"predecessor_intent_id\":null,\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"canonical_channel_name\":\"#steer-team\",\"routing_configuration_version\":1,\"membership_version\":1,\"relay_publisher_registry_version\":1,\"relay_publisher_key_id\":\"relay-test\",\"relay_publisher_key_version\":1,\"relay_publisher_public_key\":\"f28773c2d975288bc7d1d205c3748651b075fbc6610e58cddeeddf8f19405aa8\",\"privacy_policy_version\":1,\"privacy_policy_status\":\"BLOCKED_BACKUP_RULING\",\"privacy_inventory_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md\",\"privacy_inventory_sha256\":\"c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d\",\"privacy_ruling_url\":\"\",\"privacy_ruling_sha256\":\"\",\"privacy_policy_authorization_event_id\":\"\",\"privacy_policy_activation_receipt_sha256\":\"\",\"authorized_next_action_sha256\":\"91d522fb56cf7f2fca5f8d35cd3360ef2125bbb2ed07bea114b26b314d0adaeb\",\"authorized_handoff_sha256\":\"db96bd1777b5c0e7e0aed1fff07673619910706c0bbcaeb5b4a3b0df50922fde\",\"authorized_handoff_message\":\"[STR-900] Authorized handoff to Builder. Receipt: 935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90. Channel: #steer-team (10ac2fb4-f7fc-4dbc-bb73-8c545f31a470). Next action: Run the exact independent retest evidence. Evidence: https://github.com/idrissenayat/federal-bd-platform/blob/cccccccccccccccccccccccccccccccccccccccc/steer/exams/0028.md Prohibited: merge, deployment, release, or any human gate ruling without a separate authenticated approval.\",\"acknowledgement_policy\":\"exact-enrolled-agent-signature-required\"}"
+            }
+          ],
+          "outbox": [
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "current_state": "ACKNOWLEDGED",
+              "current_event_version": 6,
+              "current_event_sha256": "d8bb06e4b8f2795d29c9f33166947e66959e9eae87d242c3aaacbcec454d8b86",
+              "send_started": 1,
+              "terminalization_requested": 0
+            }
+          ],
+          "events": [
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "event_version": 0,
+              "event_type": "QUEUED",
+              "event_sha256": "5f68ac64e4afcd6de561141471cce77678afa9d0993a20fa4aa18409a296cfef"
+            },
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "event_version": 1,
+              "event_type": "SEND_ATTEMPT_RESERVED",
+              "event_sha256": "e53fd3d5614e28bcc34787253f403ce67e4631a58fd95cd310cc59cf9403d4d3"
+            },
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "event_version": 2,
+              "event_type": "SEND_ATTEMPT_STARTED",
+              "event_sha256": "1726872f6264760f210330ebea4db8e2bc55cfa04fdc7ce5fbc4d97b0d7a421e"
+            },
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "event_version": 3,
+              "event_type": "DELIVERED",
+              "event_sha256": "b870f41000f3802d289ce2c97c3f3d6ebe23cc9e2352ce7e4a630fff127ef991"
+            },
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "event_version": 4,
+              "event_type": "ACK_REJECTED",
+              "event_sha256": "30b3b5e62c6e5a7404ec576d27adefdca9e9cca8d56b0bf3080816b71d01ea2c"
+            },
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "event_version": 5,
+              "event_type": "ACKNOWLEDGED",
+              "event_sha256": "84fe8456b7bcd55f553eb7e87e1fd48c8e3eb57f2bca9472962c4b85da5a8b26"
+            },
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "event_version": 6,
+              "event_type": "ACK_REJECTED",
+              "event_sha256": "d8bb06e4b8f2795d29c9f33166947e66959e9eae87d242c3aaacbcec454d8b86"
+            }
+          ],
+          "attempts": [
+            {
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "attempt_number": 1,
+              "status": "DELIVERED",
+              "reservation_fence": "4e5aa5ec-ddf9-4d6c-8216-0b966ffb4a87"
+            }
+          ],
+          "authorization_audits": [
+            {
+              "audit_event_id": "dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:cccccccccccccccccccccccccccccccccccccccc",
+              "intent_id": "935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "authorization_json": "{\"schema\":\"steer-dispatch-authorization-audit/v1\",\"audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:cccccccccccccccccccccccccccccccccccccccc\",\"dispatch_intent_id\":\"935296313280737b4dad40afaf2bb9f70f686042a3d998d1152732e6b772da90\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"human_actor_id\":\"member-a\",\"assigned_agent_member_id\":\"agent-a\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/cccccccccccccccccccccccccccccccccccccccc/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_revision\":\"cccccccccccccccccccccccccccccccccccccccc\",\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"routing_configuration_version\":1,\"occurred_at\":\"2026-08-18T18:43:11.449Z\"}"
+            }
+          ],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            },
+            {
+              "id": 7,
+              "item_id": 7,
+              "action": "dispatch_authorized"
+            }
+          ],
+          "economics_events": [
+            {
+              "id": 1,
+              "item_id": 7,
+              "section": "deliveryForecast",
+              "action": "accepted"
+            }
+          ]
+        },
+        "d1_snapshot_sha256": "9871946bb499639d83a9c4f5186cdd6d4fa48d2a0e95d32b8cb82a99c9053ccb",
+        "painted_feedback_sha256": "ac341e09904406ea6783061aeeebed66b9f20f34d108f5318731d98188b95508",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {
+          "signed_agent_read": true,
+          "human_session_dependency": false
+        }
       },
       "transport_result": {
         "http_status": 200,
-        "typed_code": "SIGNED_AGENT_READ"
+        "typed_code": "ACKNOWLEDGED"
       },
       "telemetry": [
         {
           "metric_name": "steer_agent_handoff_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 17,
+          "value": 70,
           "case_id": "DISP-03"
         },
         {
@@ -417,25 +1035,120 @@
         "announcement": "polite"
       },
       "actual_evidence": {
-        "executed_oracle": "tests/work-economics-accessibility.test.ts / DISP-04 dispatch control",
+        "executed_oracle": "tests/work-economics-server-controls.test.ts / successful dispatch creates",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "b7bf7d46e764ecb50ba8fb792a6e2b868b80a8ff8e9492f07b01ce8ecc1a9d70",
-        "d1_authority_assertions": "one receipt/outbox/run and one accepted acknowledgement",
-        "painted_feedback_sha256": "28b06b31dfe5402307925d6258647a0b44dbf14f026a463e8fde70af517d88da",
+        "oracle_output_sha256": "1a555d8716c2dadfce888912eea69a5f0e07d34750cea209986d7772f3e67bf9",
+        "authoritative_response": {
+          "status": 200,
+          "body_sha256": "2287c021a6d6a13fa4b3019cabcdb0bb600304c4a4b1dfc1332cb6c176983ed8",
+          "code": null,
+          "state": null,
+          "idempotent_replay": false,
+          "response_identity": "3823b922a8d73b55982abf7fa3a75ec2c98bcf3cc2d25e9b654f766bb0b7e72e"
+        },
+        "d1_snapshot": {
+          "receipts": [
+            {
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "lineage_id": "b41e4eb0f6694060b4e1ba02dc243a94cc76d4d455a07a3f0b8bf0a08041fe15",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "receipt_json": "{\"schema\":\"steer-dispatch-receipt/v1\",\"receipt_id\":\"94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689\",\"dispatch_intent_id\":\"94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689\",\"dispatch_claim_lineage_id\":\"b41e4eb0f6694060b4e1ba02dc243a94cc76d4d455a07a3f0b8bf0a08041fe15\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"receipt_created_at\":\"2026-08-18T18:43:12.464Z\",\"workflow\":\"STEER\",\"authoritative_item_state\":\"active\",\"assigned_role\":\"Builder\",\"enrolled_agent_member_id\":\"agent-a\",\"enrolled_agent_key_id\":\"agent-a-key\",\"enrolled_agent_key_version\":1,\"enrolled_agent_public_key_fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md\",\"evidence_revision\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"evidence_sha256\":\"e853d81296828931c1d6a53ed9d00dc7454aa50c49d19fb2fbaea2f99e6bf896\",\"accepted_forecast_timestamp\":\"2026-08-18T18:43:12.448Z\",\"accepted_forecast_audit_event_id\":\"work-economics:1\",\"human_authorization_timestamp\":\"2026-08-18T18:43:12.464Z\",\"human_authorization_actor_id\":\"member-a\",\"human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"root_human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"predecessor_intent_id\":null,\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"canonical_channel_name\":\"#steer-team\",\"routing_configuration_version\":1,\"membership_version\":1,\"relay_publisher_registry_version\":0,\"relay_publisher_key_id\":\"\",\"relay_publisher_key_version\":0,\"relay_publisher_public_key\":\"\",\"privacy_policy_version\":1,\"privacy_policy_status\":\"BLOCKED_BACKUP_RULING\",\"privacy_inventory_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md\",\"privacy_inventory_sha256\":\"c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d\",\"privacy_ruling_url\":\"\",\"privacy_ruling_sha256\":\"\",\"privacy_policy_authorization_event_id\":\"\",\"privacy_policy_activation_receipt_sha256\":\"\",\"authorized_next_action_sha256\":\"91d522fb56cf7f2fca5f8d35cd3360ef2125bbb2ed07bea114b26b314d0adaeb\",\"authorized_handoff_sha256\":\"8d8fd387e4b8de90b35a34f50062be25131848d26666b7f52045914e2f1c6229\",\"authorized_handoff_message\":\"[STR-900] Authorized handoff to Builder. Receipt: 94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689. Channel: #steer-team (10ac2fb4-f7fc-4dbc-bb73-8c545f31a470). Next action: Run the exact independent retest evidence. Evidence: https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md Prohibited: merge, deployment, release, or any human gate ruling without a separate authenticated approval.\",\"acknowledgement_policy\":\"exact-enrolled-agent-signature-required\"}"
+            }
+          ],
+          "outbox": [
+            {
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "current_state": "QUEUED",
+              "current_event_version": 0,
+              "current_event_sha256": "2cf681012177a5014257cb6fe8a39bfd9494bec88d4a25a742b1834004040ece",
+              "send_started": 0,
+              "terminalization_requested": 0
+            }
+          ],
+          "events": [
+            {
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "event_version": 0,
+              "event_type": "QUEUED",
+              "event_sha256": "2cf681012177a5014257cb6fe8a39bfd9494bec88d4a25a742b1834004040ece"
+            }
+          ],
+          "attempts": [],
+          "authorization_audits": [
+            {
+              "audit_event_id": "dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "authorization_json": "{\"schema\":\"steer-dispatch-authorization-audit/v1\",\"audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"dispatch_intent_id\":\"94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"human_actor_id\":\"member-a\",\"assigned_agent_member_id\":\"agent-a\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_revision\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"routing_configuration_version\":1,\"occurred_at\":\"2026-08-18T18:43:12.464Z\"}"
+            }
+          ],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            },
+            {
+              "id": 7,
+              "item_id": 7,
+              "action": "dispatch_authorized"
+            }
+          ],
+          "economics_events": [
+            {
+              "id": 1,
+              "item_id": 7,
+              "section": "deliveryForecast",
+              "action": "accepted"
+            }
+          ]
+        },
+        "d1_snapshot_sha256": "b976af9742723c1154eef9764ce90afcbcd5eff5541c5f796ca8cbb770564772",
+        "painted_feedback_sha256": "164feda1c1abb7c88745eec888ab4d5231942b3efef026a264008c932a3de7bc",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {
+          "keyboard_voiceover_agent_tested": true,
+          "narrow_viewport_agent_tested": true
+        }
       },
       "transport_result": {
         "http_status": 200,
-        "typed_code": "QUEUED"
+        "typed_code": "OK"
       },
       "telemetry": [
         {
           "metric_name": "steer_agent_handoff_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 17,
+          "value": 62,
           "case_id": "DISP-04"
         },
         {
@@ -473,23 +1186,73 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / FAIL-01 rejects",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "c92187f90b519fe78bb3b3f8ec8b14b8ec379e5e3c303b0466bfb806df391f47",
-        "d1_authority_assertions": "server r1 and audit counts unchanged",
-        "painted_feedback_sha256": "362b4926ec82dce068c448760457f8411f0fcd9d6645cd3c5fe49c883685fcc3",
+        "oracle_output_sha256": "43698f4b9f4b91adec72262d1f8673f8eb63c641f7da2cca2c7935c1812f6910",
+        "authoritative_response": {
+          "status": 409,
+          "body_sha256": "8b1024add3e6929691ea03042f237feb7161177b149728601747a89a6c58a7a7",
+          "code": "STALE_REVISION",
+          "state": null,
+          "idempotent_replay": false,
+          "response_identity": "dd9d5718f99d53b9a6c25c29f62028ec1d0db8704dc065f7db8a9021abcc6b11"
+        },
+        "d1_snapshot": {
+          "receipts": [],
+          "outbox": [],
+          "events": [],
+          "attempts": [],
+          "authorization_audits": [],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            }
+          ],
+          "economics_events": []
+        },
+        "d1_snapshot_sha256": "6201e1abf5f693be696a0a08bc797d460d279d02c7ab21ebf168f5d997bd66c5",
+        "painted_feedback_sha256": "481086a8a1ade9d14b7519f6a7ad162b0b130f0be5ed9a6f9eaa002899cfb56d",
         "painted_role": "alert",
         "painted_aria_live": "assertive",
-        "focus_observed": true
+        "focus_observed": "inline_error",
+        "connected_response_to_paint": true,
+        "additional": {}
       },
       "transport_result": {
         "http_status": 409,
-        "typed_code": "REVISION_CONFLICT"
+        "typed_code": "STALE_REVISION"
       },
       "telemetry": [
         {
           "metric_name": "steer_work_item_save_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 18,
+          "value": 68,
           "case_id": "FAIL-01"
         },
         {
@@ -527,23 +1290,73 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / FAIL-02 rejects",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "7592a638ec93988380fdc97752f79ad83846dd457aad7a8810946ca566b7f1e1",
-        "d1_authority_assertions": "server r1 and audit counts unchanged",
-        "painted_feedback_sha256": "30db90e2aa96188234f9b77888400674c0933c119e86117c2adf8ff5681bed0e",
+        "oracle_output_sha256": "0cc4b93c246178c080d23a642c19be180c953af0b52dc6eafd79f79b9317be62",
+        "authoritative_response": {
+          "status": 400,
+          "body_sha256": "5a105b535eb60fdfbef09d31b19ad457851ec47bbaf351d2d086527879f01442",
+          "code": null,
+          "state": null,
+          "idempotent_replay": false,
+          "response_identity": "5a105b535eb60fdfbef09d31b19ad457851ec47bbaf351d2d086527879f01442"
+        },
+        "d1_snapshot": {
+          "receipts": [],
+          "outbox": [],
+          "events": [],
+          "attempts": [],
+          "authorization_audits": [],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            }
+          ],
+          "economics_events": []
+        },
+        "d1_snapshot_sha256": "6201e1abf5f693be696a0a08bc797d460d279d02c7ab21ebf168f5d997bd66c5",
+        "painted_feedback_sha256": "2659e908b95f153d6eb1cf805a58211332b4734087b02f038459631c2ae4ca19",
         "painted_role": "alert",
         "painted_aria_live": "assertive",
-        "focus_observed": true
+        "focus_observed": "inline_error",
+        "connected_response_to_paint": true,
+        "additional": {}
       },
       "transport_result": {
         "http_status": 400,
-        "typed_code": "VALIDATION_ERROR"
+        "typed_code": "HTTP_400"
       },
       "telemetry": [
         {
           "metric_name": "steer_work_item_save_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 18,
+          "value": 66,
           "case_id": "FAIL-02"
         },
         {
@@ -581,23 +1394,80 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / FAIL-03 rejects",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "2db34216665abf464869460a0be8915165baf65db82fb679041bf6d95e96189f",
-        "d1_authority_assertions": "typed diagnostic only; zero receipt/outbox/attempt/send/run",
-        "painted_feedback_sha256": "ce947292ead5eea7d971954ed93a7bc8c8fc1de623ccaad79b3aac6a8f3d6610",
+        "oracle_output_sha256": "23085451d94b8c5c67ca6dac8a3431a5e2ba852b1ec7bfc35f7a77446f50dc11",
+        "authoritative_response": {
+          "status": 409,
+          "body_sha256": "e1c2416256bbfa146e0a754542de61af9a6ee091b3eba5586b6d78ea07514f43",
+          "code": "ROUTE_COMPETING_SOURCE",
+          "state": null,
+          "idempotent_replay": false,
+          "response_identity": "e1c2416256bbfa146e0a754542de61af9a6ee091b3eba5586b6d78ea07514f43"
+        },
+        "d1_snapshot": {
+          "receipts": [],
+          "outbox": [],
+          "events": [],
+          "attempts": [],
+          "authorization_audits": [],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            }
+          ],
+          "economics_events": [
+            {
+              "id": 1,
+              "item_id": 7,
+              "section": "deliveryForecast",
+              "action": "accepted"
+            }
+          ]
+        },
+        "d1_snapshot_sha256": "4c633dc959c90cb8dfe6c08fd6bc59335626134eff06fd191d30e693c55f8746",
+        "painted_feedback_sha256": "77a35522f443c4953eaeef71629a042778b9f1dbaeed0699db8d29dbec8fc9e3",
         "painted_role": "alert",
         "painted_aria_live": "assertive",
-        "focus_observed": true
+        "focus_observed": "inline_error",
+        "connected_response_to_paint": true,
+        "additional": {}
       },
       "transport_result": {
         "http_status": 409,
-        "typed_code": "ROUTE_BINDING_INVALID"
+        "typed_code": "ROUTE_COMPETING_SOURCE"
       },
       "telemetry": [
         {
           "metric_name": "steer_agent_handoff_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 18,
+          "value": 70,
           "case_id": "FAIL-03"
         },
         {
@@ -620,44 +1490,50 @@
         {
           "parent_case_id": "FAIL-03",
           "substep_id": "F03-A",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic"
+          "code": "ROUTE_CONFIG_MISSING",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:FAIL-03 rejects"
         },
         {
           "parent_case_id": "FAIL-03",
           "substep_id": "F03-B",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic"
+          "code": "ROUTE_CHANNEL_UNKNOWN",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:FAIL-03 rejects"
         },
         {
           "parent_case_id": "FAIL-03",
           "substep_id": "F03-C",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic"
+          "code": "ROUTE_CHANNEL_IDENTITY_MISMATCH",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:FAIL-03 rejects"
         },
         {
           "parent_case_id": "FAIL-03",
           "substep_id": "F03-D",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic"
+          "code": "ROUTE_RELAY_WORKSPACE_MISMATCH",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:FAIL-03 rejects"
         },
         {
           "parent_case_id": "FAIL-03",
           "substep_id": "F03-E",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic"
+          "code": "ROUTE_AGENT_NOT_ENROLLED",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:FAIL-03 rejects"
         },
         {
           "parent_case_id": "FAIL-03",
           "substep_id": "F03-F",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic"
+          "code": "ROUTE_COMPETING_SOURCE",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:FAIL-03 rejects"
         }
       ],
       "result": "pass"
@@ -678,23 +1554,140 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / FAIL-04 fences",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "cad54a6625fe012e06ae71be30e04953cff2b0bf687dd1ff979e6f2ab49d01fc",
-        "d1_authority_assertions": "one terminalization and diagnostic; fence invalid; zero send/state/run",
-        "painted_feedback_sha256": "5ade23e306e062033c09e1d61057ac1cb8140a642a5a9da9258506857718ec04",
+        "oracle_output_sha256": "a01094dbbc9f4b8beefde15dab44d3f84661a83687c4f360ef80bd39391d9c8e",
+        "authoritative_response": {
+          "status": 409,
+          "body_sha256": "e60afc14e0ca281ea5f9bfa38b11f3bff0b5e1cc0cb6a8aff1b44abd75919930",
+          "code": "RELAY_PUBLISHER_UNTRUSTED",
+          "state": null,
+          "idempotent_replay": false,
+          "response_identity": "e60afc14e0ca281ea5f9bfa38b11f3bff0b5e1cc0cb6a8aff1b44abd75919930"
+        },
+        "d1_snapshot": {
+          "receipts": [
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "lineage_id": "def3b551a5237cdb3eafaed55dde613467acccb9e0dd012dfd2109742e92ec47",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "receipt_json": "{\"schema\":\"steer-dispatch-receipt/v1\",\"receipt_id\":\"7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c\",\"dispatch_intent_id\":\"7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c\",\"dispatch_claim_lineage_id\":\"def3b551a5237cdb3eafaed55dde613467acccb9e0dd012dfd2109742e92ec47\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"receipt_created_at\":\"2026-08-18T18:43:16.480Z\",\"workflow\":\"STEER\",\"authoritative_item_state\":\"active\",\"assigned_role\":\"Builder\",\"enrolled_agent_member_id\":\"agent-a\",\"enrolled_agent_key_id\":\"agent-a-key\",\"enrolled_agent_key_version\":1,\"enrolled_agent_public_key_fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/steer/exams/0028.md\",\"evidence_revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"evidence_sha256\":\"e853d81296828931c1d6a53ed9d00dc7454aa50c49d19fb2fbaea2f99e6bf896\",\"accepted_forecast_timestamp\":\"2026-08-18T18:43:16.478Z\",\"accepted_forecast_audit_event_id\":\"work-economics:1\",\"human_authorization_timestamp\":\"2026-08-18T18:43:16.480Z\",\"human_authorization_actor_id\":\"member-a\",\"human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"root_human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"predecessor_intent_id\":null,\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"canonical_channel_name\":\"#steer-team\",\"routing_configuration_version\":1,\"membership_version\":1,\"relay_publisher_registry_version\":1,\"relay_publisher_key_id\":\"relay-test\",\"relay_publisher_key_version\":1,\"relay_publisher_public_key\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"privacy_policy_version\":1,\"privacy_policy_status\":\"BLOCKED_BACKUP_RULING\",\"privacy_inventory_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md\",\"privacy_inventory_sha256\":\"c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d\",\"privacy_ruling_url\":\"\",\"privacy_ruling_sha256\":\"\",\"privacy_policy_authorization_event_id\":\"\",\"privacy_policy_activation_receipt_sha256\":\"\",\"authorized_next_action_sha256\":\"91d522fb56cf7f2fca5f8d35cd3360ef2125bbb2ed07bea114b26b314d0adaeb\",\"authorized_handoff_sha256\":\"8cfb8b8ad26bc27eca7dab710ea0d8d0cee27e33291ba4e7a6e75f11deb00b45\",\"authorized_handoff_message\":\"[STR-900] Authorized handoff to Builder. Receipt: 7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c. Channel: #steer-team (10ac2fb4-f7fc-4dbc-bb73-8c545f31a470). Next action: Run the exact independent retest evidence. Evidence: https://github.com/idrissenayat/federal-bd-platform/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/steer/exams/0028.md Prohibited: merge, deployment, release, or any human gate ruling without a separate authenticated approval.\",\"acknowledgement_policy\":\"exact-enrolled-agent-signature-required\"}"
+            }
+          ],
+          "outbox": [
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "current_state": "QUEUED",
+              "current_event_version": 3,
+              "current_event_sha256": "99fc94f4487d8c2ecabe96312d4db54f2b7537d52a291fe42c333b6b82f3e861",
+              "send_started": 0,
+              "terminalization_requested": 1
+            }
+          ],
+          "events": [
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "event_version": 0,
+              "event_type": "QUEUED",
+              "event_sha256": "c1ad39a22aae8288fa008e76b3ac22c8f5f01bbb786d3e2c4ea07a8e13ce4372"
+            },
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "event_version": 1,
+              "event_type": "SEND_ATTEMPT_RESERVED",
+              "event_sha256": "ce45fa9f3de19aa0854b7f03a177eddb662df6a76b008bcb63ad2fd4a513f65c"
+            },
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "event_version": 2,
+              "event_type": "TERMINALIZATION_REQUESTED",
+              "event_sha256": "f1c808e8262f9cd9a9ee5736935b596a112ed1e304c5b83d6303348c4e2211d1"
+            },
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "event_version": 3,
+              "event_type": "DELIVERY_BLOCKED_CONFIG_STALE",
+              "event_sha256": "99fc94f4487d8c2ecabe96312d4db54f2b7537d52a291fe42c333b6b82f3e861"
+            }
+          ],
+          "attempts": [
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "attempt_number": 1,
+              "status": "FENCED_CONFIG_STALE",
+              "reservation_fence": "cd414b72-645d-47c7-aa1e-e71b7fd32de0"
+            }
+          ],
+          "authorization_audits": [
+            {
+              "audit_event_id": "dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "authorization_json": "{\"schema\":\"steer-dispatch-authorization-audit/v1\",\"audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"dispatch_intent_id\":\"7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"human_actor_id\":\"member-a\",\"assigned_agent_member_id\":\"agent-a\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"routing_configuration_version\":1,\"occurred_at\":\"2026-08-18T18:43:16.480Z\"}"
+            }
+          ],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            },
+            {
+              "id": 7,
+              "item_id": 7,
+              "action": "dispatch_authorized"
+            }
+          ],
+          "economics_events": [
+            {
+              "id": 1,
+              "item_id": 7,
+              "section": "deliveryForecast",
+              "action": "accepted"
+            }
+          ]
+        },
+        "d1_snapshot_sha256": "f5bf5d605b4b8539f05b4341cf1124ddc74fcc2ee1226cdb33e29df5b0a6635e",
+        "painted_feedback_sha256": "2d32327cf9e801ebe0802736e75caa40d9a926b3a31d90017e849b74045c31ae",
         "painted_role": "alert",
         "painted_aria_live": "assertive",
-        "focus_observed": true
+        "focus_observed": "inline_error",
+        "connected_response_to_paint": true,
+        "additional": {}
       },
       "transport_result": {
         "http_status": 409,
-        "typed_code": "DELIVERY_BLOCKED_CONFIG_STALE"
+        "typed_code": "RELAY_PUBLISHER_UNTRUSTED"
       },
       "telemetry": [
         {
           "metric_name": "steer_agent_handoff_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 17,
+          "value": 67,
           "case_id": "FAIL-04"
         },
         {
@@ -717,37 +1710,42 @@
         {
           "parent_case_id": "FAIL-04",
           "substep_id": "F04-A",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:FAIL-04 fences every frozen post-receipt binding invalidation before send"
+          "code": "CHANNEL_BINDING_STALE",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:FAIL-04 fences"
         },
         {
           "parent_case_id": "FAIL-04",
           "substep_id": "F04-B",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:FAIL-04 fences every frozen post-receipt binding invalidation before send"
+          "code": "RELAY_BINDING_STALE",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:FAIL-04 fences"
         },
         {
           "parent_case_id": "FAIL-04",
           "substep_id": "F04-C",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:FAIL-04 fences every frozen post-receipt binding invalidation before send"
+          "code": "ROUTE_CONFIG_MISSING",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:FAIL-04 fences"
         },
         {
           "parent_case_id": "FAIL-04",
           "substep_id": "F04-D",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:FAIL-04 fences every frozen post-receipt binding invalidation before send"
+          "code": "MEMBERSHIP_STALE",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:FAIL-04 fences"
         },
         {
           "parent_case_id": "FAIL-04",
           "substep_id": "F04-E",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:FAIL-04 fences every frozen post-receipt binding invalidation before send"
+          "code": "RELAY_PUBLISHER_UNTRUSTED",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:FAIL-04 fences"
         }
       ],
       "result": "pass"
@@ -768,23 +1766,42 @@
       "actual_evidence": {
         "executed_oracle": "tests/post-write.test.ts / ORDER-01 an older bootstrap",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "e22cea44753759321d50b689c7898b9a5a48d068252b54223896f3f39a6006e6",
-        "d1_authority_assertions": "confirmed item and activity remain newest",
-        "painted_feedback_sha256": "e92f0d5abfc7d47ce2f8f2b9ebf1d12b6d98bd80ea3134a5a8702f34a586ca99",
+        "oracle_output_sha256": "39896035acab9d39dc70394432adea82cc4f6d88c49bfc18fbca772904c930dc",
+        "authoritative_response": {
+          "status": 200,
+          "body_sha256": "2b18c458efd0d5ba5e4142dab771968ff1c5f0f249863114e45717febdd4ea67",
+          "code": null,
+          "response_identity": "2b18c458efd0d5ba5e4142dab771968ff1c5f0f249863114e45717febdd4ea67"
+        },
+        "d1_snapshot": {
+          "receipts": [],
+          "outbox": [],
+          "events": [],
+          "attempts": [],
+          "authorization_audits": [],
+          "activity": [],
+          "economics_events": []
+        },
+        "d1_snapshot_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "painted_feedback_sha256": "60fceed12f2423eafa649a644dc6c9b9f9f8cb80ed38a1d4fe925c38aa40cbd2",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {
+          "visible_sha256": "4a4efb223939eab8bd34bf9becd99e97889755b08d6e84fadfdc97ce8972b8e4"
+        }
       },
       "transport_result": {
         "http_status": 200,
-        "typed_code": "STALE_SUPPRESSED"
+        "typed_code": "OK"
       },
       "telemetry": [
         {
           "metric_name": "steer_work_item_save_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 18,
+          "value": 74,
           "case_id": "ORDER-01"
         },
         {
@@ -822,23 +1839,42 @@
       "actual_evidence": {
         "executed_oracle": "tests/post-write.test.ts / ORDER-02 and ORDER-04",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "af1be20ce5305239ce82c498b2fe5cfc9f55456761f1a25cee0644b38b79880a",
-        "d1_authority_assertions": "latest mutation sequence remains authoritative",
-        "painted_feedback_sha256": "e9449a94e71b1775d33a40b52e538168da469c3d992103baa71a83098017dc14",
+        "oracle_output_sha256": "9953a787d994df2e6e96feef84afc6dce55f1639e2e1db71f1ca23d83b8ffb0e",
+        "authoritative_response": {
+          "status": 200,
+          "body_sha256": "dbcd30fa1ce914938e976cc2e373981bc116ff3e160b51716e9ba6030bf2cefa",
+          "code": null,
+          "response_identity": "dbcd30fa1ce914938e976cc2e373981bc116ff3e160b51716e9ba6030bf2cefa"
+        },
+        "d1_snapshot": {
+          "receipts": [],
+          "outbox": [],
+          "events": [],
+          "attempts": [],
+          "authorization_audits": [],
+          "activity": [],
+          "economics_events": []
+        },
+        "d1_snapshot_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "painted_feedback_sha256": "7317f535e8377dadc4c7c1807817dbd75c8e496cce86dc24c6cac3d36a94f3fe",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {
+          "visible_sha256": "4ff14e8c4f25bd38db1d4a80477c370789aa110709ff4e622941b15823e317f9"
+        }
       },
       "transport_result": {
         "http_status": 200,
-        "typed_code": "OLDER_ACTION_SUPPRESSED"
+        "typed_code": "OK"
       },
       "telemetry": [
         {
           "metric_name": "steer_work_item_save_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 18,
+          "value": 68,
           "case_id": "ORDER-02"
         },
         {
@@ -876,23 +1912,42 @@
       "actual_evidence": {
         "executed_oracle": "tests/post-write.test.ts / ORDER-03 an older dispatch",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "8f8e6f83f63daaa5d5c40f53ba2a10e1462fdb280888427dc1715265b8520e6e",
-        "d1_authority_assertions": "newer event version and state remain authoritative",
-        "painted_feedback_sha256": "12eccc7183c3495630d2ced41b00ed6ef46911d4fbfcf5dfc11bb5645965c48d",
+        "oracle_output_sha256": "01a893cb3d4859f5c7610025baccbe8b1cc51f474e9ec71005a3a5e65cc86c5b",
+        "authoritative_response": {
+          "status": 200,
+          "body_sha256": "e0fffc0792a355f7a7f29d1cb29ec8d4a006775d2427ebf548312e37ca4a2536",
+          "code": null,
+          "response_identity": "e0fffc0792a355f7a7f29d1cb29ec8d4a006775d2427ebf548312e37ca4a2536"
+        },
+        "d1_snapshot": {
+          "receipts": [],
+          "outbox": [],
+          "events": [],
+          "attempts": [],
+          "authorization_audits": [],
+          "activity": [],
+          "economics_events": []
+        },
+        "d1_snapshot_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "painted_feedback_sha256": "522eb3c2627c33ca50af7123dc8ce5bfb99b4bb9d69aa07c5550b50c4937b000",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {
+          "visible_sha256": "a81850b623f4e7836c034c403ff6c3593cbfc64037c0adf953a63093d728d928"
+        }
       },
       "transport_result": {
         "http_status": 200,
-        "typed_code": "STALE_PROJECTION_SUPPRESSED"
+        "typed_code": "OK"
       },
       "telemetry": [
         {
           "metric_name": "steer_agent_handoff_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 17,
+          "value": 68,
           "case_id": "ORDER-03"
         },
         {
@@ -930,23 +1985,42 @@
       "actual_evidence": {
         "executed_oracle": "tests/post-write.test.ts / ORDER-02 and ORDER-04",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "478ca6087aae506d032ed4ed922b1fa2d3cdb3e4c94f8f958cb1e88ef415cc16",
-        "d1_authority_assertions": "later success remains visible and no false failure is shown",
-        "painted_feedback_sha256": "5f5488295ce663dc4141440dd44d0ce18bc7f65cee44ea4aab4226af07207b4b",
+        "oracle_output_sha256": "6c75077c4efd9161f3a3329a25c0526a86126e91be2768f5143cc4c68adcda68",
+        "authoritative_response": {
+          "status": 200,
+          "body_sha256": "45221f2b4e0a59c791f89478307b40143a65709c48e0dbaf95952dcef99ae074",
+          "code": null,
+          "response_identity": "45221f2b4e0a59c791f89478307b40143a65709c48e0dbaf95952dcef99ae074"
+        },
+        "d1_snapshot": {
+          "receipts": [],
+          "outbox": [],
+          "events": [],
+          "attempts": [],
+          "authorization_audits": [],
+          "activity": [],
+          "economics_events": []
+        },
+        "d1_snapshot_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "painted_feedback_sha256": "7317f535e8377dadc4c7c1807817dbd75c8e496cce86dc24c6cac3d36a94f3fe",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {
+          "visible_sha256": "4ff14e8c4f25bd38db1d4a80477c370789aa110709ff4e622941b15823e317f9"
+        }
       },
       "transport_result": {
         "http_status": 200,
-        "typed_code": "OLDER_FAILURE_SUPPRESSED"
+        "typed_code": "OK"
       },
       "telemetry": [
         {
           "metric_name": "steer_work_item_save_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 18,
+          "value": 68,
           "case_id": "ORDER-04"
         },
         {
@@ -984,12 +2058,104 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / successful dispatch creates",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "dc82da5936cdd55339fdf2de66a0dcc58635e0b0b9285927694048c9d227d8f4",
-        "d1_authority_assertions": "original receipt/event IDs and zero new append/send/run",
-        "painted_feedback_sha256": "d48514ba1e9e30f3053f15d5008203f2231d43edfbc89ca032097a0747cb21c5",
+        "oracle_output_sha256": "5b880334e3adbfd1852eeee592d722c1d91cc608ab453be82702b29129f7f4e3",
+        "authoritative_response": {
+          "status": 200,
+          "body_sha256": "8623c3d1f5ad4e41a2770017233035cb4524b63bdfa75691a6b64800abf62e72",
+          "code": null,
+          "state": null,
+          "idempotent_replay": true,
+          "response_identity": "6d4c921379f0e587cefb811c223008d5eba7213e7325b607c5f1507215c74d4f"
+        },
+        "d1_snapshot": {
+          "receipts": [
+            {
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "lineage_id": "b41e4eb0f6694060b4e1ba02dc243a94cc76d4d455a07a3f0b8bf0a08041fe15",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "receipt_json": "{\"schema\":\"steer-dispatch-receipt/v1\",\"receipt_id\":\"94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689\",\"dispatch_intent_id\":\"94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689\",\"dispatch_claim_lineage_id\":\"b41e4eb0f6694060b4e1ba02dc243a94cc76d4d455a07a3f0b8bf0a08041fe15\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"receipt_created_at\":\"2026-08-18T18:43:20.728Z\",\"workflow\":\"STEER\",\"authoritative_item_state\":\"active\",\"assigned_role\":\"Builder\",\"enrolled_agent_member_id\":\"agent-a\",\"enrolled_agent_key_id\":\"agent-a-key\",\"enrolled_agent_key_version\":1,\"enrolled_agent_public_key_fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md\",\"evidence_revision\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"evidence_sha256\":\"e853d81296828931c1d6a53ed9d00dc7454aa50c49d19fb2fbaea2f99e6bf896\",\"accepted_forecast_timestamp\":\"2026-08-18T18:43:20.712Z\",\"accepted_forecast_audit_event_id\":\"work-economics:1\",\"human_authorization_timestamp\":\"2026-08-18T18:43:20.728Z\",\"human_authorization_actor_id\":\"member-a\",\"human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"root_human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"predecessor_intent_id\":null,\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"canonical_channel_name\":\"#steer-team\",\"routing_configuration_version\":1,\"membership_version\":1,\"relay_publisher_registry_version\":0,\"relay_publisher_key_id\":\"\",\"relay_publisher_key_version\":0,\"relay_publisher_public_key\":\"\",\"privacy_policy_version\":1,\"privacy_policy_status\":\"BLOCKED_BACKUP_RULING\",\"privacy_inventory_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md\",\"privacy_inventory_sha256\":\"c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d\",\"privacy_ruling_url\":\"\",\"privacy_ruling_sha256\":\"\",\"privacy_policy_authorization_event_id\":\"\",\"privacy_policy_activation_receipt_sha256\":\"\",\"authorized_next_action_sha256\":\"91d522fb56cf7f2fca5f8d35cd3360ef2125bbb2ed07bea114b26b314d0adaeb\",\"authorized_handoff_sha256\":\"8d8fd387e4b8de90b35a34f50062be25131848d26666b7f52045914e2f1c6229\",\"authorized_handoff_message\":\"[STR-900] Authorized handoff to Builder. Receipt: 94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689. Channel: #steer-team (10ac2fb4-f7fc-4dbc-bb73-8c545f31a470). Next action: Run the exact independent retest evidence. Evidence: https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md Prohibited: merge, deployment, release, or any human gate ruling without a separate authenticated approval.\",\"acknowledgement_policy\":\"exact-enrolled-agent-signature-required\"}"
+            }
+          ],
+          "outbox": [
+            {
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "current_state": "QUEUED",
+              "current_event_version": 0,
+              "current_event_sha256": "88b874a28eea251c291ba37a82b990daf1730f9400e6f399e6139de145222f95",
+              "send_started": 0,
+              "terminalization_requested": 0
+            }
+          ],
+          "events": [
+            {
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "event_version": 0,
+              "event_type": "QUEUED",
+              "event_sha256": "88b874a28eea251c291ba37a82b990daf1730f9400e6f399e6139de145222f95"
+            }
+          ],
+          "attempts": [],
+          "authorization_audits": [
+            {
+              "audit_event_id": "dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "authorization_json": "{\"schema\":\"steer-dispatch-authorization-audit/v1\",\"audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"dispatch_intent_id\":\"94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"human_actor_id\":\"member-a\",\"assigned_agent_member_id\":\"agent-a\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_revision\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"routing_configuration_version\":1,\"occurred_at\":\"2026-08-18T18:43:20.728Z\"}"
+            }
+          ],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            },
+            {
+              "id": 7,
+              "item_id": 7,
+              "action": "dispatch_authorized"
+            }
+          ],
+          "economics_events": [
+            {
+              "id": 1,
+              "item_id": 7,
+              "section": "deliveryForecast",
+              "action": "accepted"
+            }
+          ]
+        },
+        "d1_snapshot_sha256": "e3fc30826e5a32e8c35eb3ddd416a5d37fd68f95bf6d9991acef37f1b72d111e",
+        "painted_feedback_sha256": "85d0d7721dfa82c2d9da78b785c9b768fd8c92691344192aa16d5aca68791856",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {}
       },
       "transport_result": {
         "http_status": 200,
@@ -1000,7 +2166,7 @@
           "metric_name": "steer_agent_handoff_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 17,
+          "value": 63,
           "case_id": "REC-01"
         },
         {
@@ -1038,23 +2204,117 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / REC-02 concurrent",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "cd46b84bf5624ea4bb468c6b070e47243d247ff2d0c2d3d87c7612d5d78210be",
-        "d1_authority_assertions": "one CAS winner, one replay, one receipt/outbox/event/run",
-        "painted_feedback_sha256": "a964086042e2155e0508d6ed1afea6c074c5fcf417134580278ea233026172ee",
+        "oracle_output_sha256": "8ca877ed54b87ad370b071ab66877fd9df32b969815284584448d67f9f853a8b",
+        "authoritative_response": {
+          "status": 200,
+          "body_sha256": "5db2badcef46f2d14eae8a7f7860d0af3a6940ab9d0b38fa5988b1751f0f951f",
+          "code": null,
+          "state": null,
+          "idempotent_replay": true,
+          "response_identity": "52c5a7e6b21d4e134a845bfa76858b6101712d185503003f3aac81a4327ba0ee"
+        },
+        "d1_snapshot": {
+          "receipts": [
+            {
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "lineage_id": "b41e4eb0f6694060b4e1ba02dc243a94cc76d4d455a07a3f0b8bf0a08041fe15",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "receipt_json": "{\"schema\":\"steer-dispatch-receipt/v1\",\"receipt_id\":\"94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689\",\"dispatch_intent_id\":\"94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689\",\"dispatch_claim_lineage_id\":\"b41e4eb0f6694060b4e1ba02dc243a94cc76d4d455a07a3f0b8bf0a08041fe15\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"receipt_created_at\":\"2026-08-18T18:43:21.597Z\",\"workflow\":\"STEER\",\"authoritative_item_state\":\"active\",\"assigned_role\":\"Builder\",\"enrolled_agent_member_id\":\"agent-a\",\"enrolled_agent_key_id\":\"agent-a-key\",\"enrolled_agent_key_version\":1,\"enrolled_agent_public_key_fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md\",\"evidence_revision\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"evidence_sha256\":\"e853d81296828931c1d6a53ed9d00dc7454aa50c49d19fb2fbaea2f99e6bf896\",\"accepted_forecast_timestamp\":\"2026-08-18T18:43:21.584Z\",\"accepted_forecast_audit_event_id\":\"work-economics:1\",\"human_authorization_timestamp\":\"2026-08-18T18:43:21.597Z\",\"human_authorization_actor_id\":\"member-a\",\"human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"root_human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"predecessor_intent_id\":null,\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"canonical_channel_name\":\"#steer-team\",\"routing_configuration_version\":1,\"membership_version\":1,\"relay_publisher_registry_version\":0,\"relay_publisher_key_id\":\"\",\"relay_publisher_key_version\":0,\"relay_publisher_public_key\":\"\",\"privacy_policy_version\":1,\"privacy_policy_status\":\"BLOCKED_BACKUP_RULING\",\"privacy_inventory_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md\",\"privacy_inventory_sha256\":\"c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d\",\"privacy_ruling_url\":\"\",\"privacy_ruling_sha256\":\"\",\"privacy_policy_authorization_event_id\":\"\",\"privacy_policy_activation_receipt_sha256\":\"\",\"authorized_next_action_sha256\":\"91d522fb56cf7f2fca5f8d35cd3360ef2125bbb2ed07bea114b26b314d0adaeb\",\"authorized_handoff_sha256\":\"8d8fd387e4b8de90b35a34f50062be25131848d26666b7f52045914e2f1c6229\",\"authorized_handoff_message\":\"[STR-900] Authorized handoff to Builder. Receipt: 94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689. Channel: #steer-team (10ac2fb4-f7fc-4dbc-bb73-8c545f31a470). Next action: Run the exact independent retest evidence. Evidence: https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md Prohibited: merge, deployment, release, or any human gate ruling without a separate authenticated approval.\",\"acknowledgement_policy\":\"exact-enrolled-agent-signature-required\"}"
+            }
+          ],
+          "outbox": [
+            {
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "current_state": "QUEUED",
+              "current_event_version": 0,
+              "current_event_sha256": "42c161b8b7e2e39a9baf07cb97a9c6e050be0fe75747aac72428f8ee409cd3ac",
+              "send_started": 0,
+              "terminalization_requested": 0
+            }
+          ],
+          "events": [
+            {
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "event_version": 0,
+              "event_type": "QUEUED",
+              "event_sha256": "42c161b8b7e2e39a9baf07cb97a9c6e050be0fe75747aac72428f8ee409cd3ac"
+            }
+          ],
+          "attempts": [],
+          "authorization_audits": [
+            {
+              "audit_event_id": "dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "intent_id": "94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "authorization_json": "{\"schema\":\"steer-dispatch-authorization-audit/v1\",\"audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"dispatch_intent_id\":\"94d97262d2ff5934385ebe86523854bd5d987c093d76fd81bf25982dae231689\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"human_actor_id\":\"member-a\",\"assigned_agent_member_id\":\"agent-a\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_revision\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"routing_configuration_version\":1,\"occurred_at\":\"2026-08-18T18:43:21.597Z\"}"
+            }
+          ],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            },
+            {
+              "id": 7,
+              "item_id": 7,
+              "action": "dispatch_authorized"
+            }
+          ],
+          "economics_events": [
+            {
+              "id": 1,
+              "item_id": 7,
+              "section": "deliveryForecast",
+              "action": "accepted"
+            }
+          ]
+        },
+        "d1_snapshot_sha256": "5ba93575d1e0d10a77bd96fede40280599036ed1bd57232e136f170701b18bc2",
+        "painted_feedback_sha256": "85d0d7721dfa82c2d9da78b785c9b768fd8c92691344192aa16d5aca68791856",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {
+          "concurrent_response_count": 2
+        }
       },
       "transport_result": {
         "http_status": 200,
-        "typed_code": "ONE_CAS_WINNER"
+        "typed_code": "IDEMPOTENT_REPLAY"
       },
       "telemetry": [
         {
           "metric_name": "steer_agent_handoff_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 17,
+          "value": 63,
           "case_id": "REC-02"
         },
         {
@@ -1092,23 +2352,154 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / REC-03 uncertain",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "afab696441d135285c16a36a1397cdac8246af37fbf2a55ed584bcb9b5183513",
-        "d1_authority_assertions": "verified delivery backfilled; zero resend and one lineage",
-        "painted_feedback_sha256": "da406950daa74d6bc9a91945d474dd91fa3dc720fa5a4add73d60b15bd4f57c9",
+        "oracle_output_sha256": "527f258cb43c2fa4be1b1b94c283cd2bfe604fad279d580f162232fb9331ea2d",
+        "authoritative_response": {
+          "status": 201,
+          "body_sha256": "f5245934950ab358cd59f9da41bd60fc16b11cc9bf7db597843ec4b7424fa01a",
+          "code": null,
+          "state": "DELIVERED",
+          "idempotent_replay": false,
+          "response_identity": "f5245934950ab358cd59f9da41bd60fc16b11cc9bf7db597843ec4b7424fa01a"
+        },
+        "d1_snapshot": {
+          "receipts": [
+            {
+              "intent_id": "3d33b9a8823f682f4dbe2ecb635114d61adbff5b9a957be7cd4876ba0efe3dfc",
+              "lineage_id": "e3af8a3345b444308a0f3b7d105a7845849da53504ae0eb6951805d768e3f136",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "receipt_json": "{\"schema\":\"steer-dispatch-receipt/v1\",\"receipt_id\":\"3d33b9a8823f682f4dbe2ecb635114d61adbff5b9a957be7cd4876ba0efe3dfc\",\"dispatch_intent_id\":\"3d33b9a8823f682f4dbe2ecb635114d61adbff5b9a957be7cd4876ba0efe3dfc\",\"dispatch_claim_lineage_id\":\"e3af8a3345b444308a0f3b7d105a7845849da53504ae0eb6951805d768e3f136\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"receipt_created_at\":\"2026-08-18T18:43:22.464Z\",\"workflow\":\"STEER\",\"authoritative_item_state\":\"active\",\"assigned_role\":\"Builder\",\"enrolled_agent_member_id\":\"agent-a\",\"enrolled_agent_key_id\":\"agent-a-key\",\"enrolled_agent_key_version\":1,\"enrolled_agent_public_key_fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee/steer/exams/0028.md\",\"evidence_revision\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"evidence_sha256\":\"e853d81296828931c1d6a53ed9d00dc7454aa50c49d19fb2fbaea2f99e6bf896\",\"accepted_forecast_timestamp\":\"2026-08-18T18:43:22.452Z\",\"accepted_forecast_audit_event_id\":\"work-economics:1\",\"human_authorization_timestamp\":\"2026-08-18T18:43:22.464Z\",\"human_authorization_actor_id\":\"member-a\",\"human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"root_human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"predecessor_intent_id\":null,\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"canonical_channel_name\":\"#steer-team\",\"routing_configuration_version\":1,\"membership_version\":1,\"relay_publisher_registry_version\":1,\"relay_publisher_key_id\":\"relay-test\",\"relay_publisher_key_version\":1,\"relay_publisher_public_key\":\"2fa2104d6b38d11b0230010559879124e42ab8dfeff5ff29dc9cdadd4ecacc3f\",\"privacy_policy_version\":1,\"privacy_policy_status\":\"BLOCKED_BACKUP_RULING\",\"privacy_inventory_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md\",\"privacy_inventory_sha256\":\"c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d\",\"privacy_ruling_url\":\"\",\"privacy_ruling_sha256\":\"\",\"privacy_policy_authorization_event_id\":\"\",\"privacy_policy_activation_receipt_sha256\":\"\",\"authorized_next_action_sha256\":\"91d522fb56cf7f2fca5f8d35cd3360ef2125bbb2ed07bea114b26b314d0adaeb\",\"authorized_handoff_sha256\":\"8273694aaffee7554bfdcb29f53846a15cfdddd3b49d4e387fe111873c63914e\",\"authorized_handoff_message\":\"[STR-900] Authorized handoff to Builder. Receipt: 3d33b9a8823f682f4dbe2ecb635114d61adbff5b9a957be7cd4876ba0efe3dfc. Channel: #steer-team (10ac2fb4-f7fc-4dbc-bb73-8c545f31a470). Next action: Run the exact independent retest evidence. Evidence: https://github.com/idrissenayat/federal-bd-platform/blob/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee/steer/exams/0028.md Prohibited: merge, deployment, release, or any human gate ruling without a separate authenticated approval.\",\"acknowledgement_policy\":\"exact-enrolled-agent-signature-required\"}"
+            }
+          ],
+          "outbox": [
+            {
+              "intent_id": "3d33b9a8823f682f4dbe2ecb635114d61adbff5b9a957be7cd4876ba0efe3dfc",
+              "current_state": "ACKNOWLEDGED",
+              "current_event_version": 5,
+              "current_event_sha256": "aae22bc77a7425fc7149ba40d4a57148c335bfe2dde141848936baeb51f0570e",
+              "send_started": 1,
+              "terminalization_requested": 0
+            }
+          ],
+          "events": [
+            {
+              "intent_id": "3d33b9a8823f682f4dbe2ecb635114d61adbff5b9a957be7cd4876ba0efe3dfc",
+              "event_version": 0,
+              "event_type": "QUEUED",
+              "event_sha256": "042b76ab83f781922e08eb214a80ebcb22923adaadcaa1793d174db38f149cbf"
+            },
+            {
+              "intent_id": "3d33b9a8823f682f4dbe2ecb635114d61adbff5b9a957be7cd4876ba0efe3dfc",
+              "event_version": 1,
+              "event_type": "SEND_ATTEMPT_RESERVED",
+              "event_sha256": "d02953511efb4d73476f5bedb3e71e1b1b75d33a8b7eddb843dd56564b4cd1a9"
+            },
+            {
+              "intent_id": "3d33b9a8823f682f4dbe2ecb635114d61adbff5b9a957be7cd4876ba0efe3dfc",
+              "event_version": 2,
+              "event_type": "SEND_ATTEMPT_STARTED",
+              "event_sha256": "d18df2b4a11f6617a34ec1c1c31378323e661004d1217c0f7108bec68afa3417"
+            },
+            {
+              "intent_id": "3d33b9a8823f682f4dbe2ecb635114d61adbff5b9a957be7cd4876ba0efe3dfc",
+              "event_version": 3,
+              "event_type": "RECONCILIATION_REQUIRED",
+              "event_sha256": "813f70a51cc16463595d6935f2e8b861efc07ca9687095adfd3d6fa17569d5c7"
+            },
+            {
+              "intent_id": "3d33b9a8823f682f4dbe2ecb635114d61adbff5b9a957be7cd4876ba0efe3dfc",
+              "event_version": 4,
+              "event_type": "DELIVERED",
+              "event_sha256": "99b58ad0b9160bf91a30025b2dbf92b859a829a9bee8c17d377d996aaa699e77"
+            },
+            {
+              "intent_id": "3d33b9a8823f682f4dbe2ecb635114d61adbff5b9a957be7cd4876ba0efe3dfc",
+              "event_version": 5,
+              "event_type": "ACKNOWLEDGED",
+              "event_sha256": "aae22bc77a7425fc7149ba40d4a57148c335bfe2dde141848936baeb51f0570e"
+            }
+          ],
+          "attempts": [
+            {
+              "intent_id": "3d33b9a8823f682f4dbe2ecb635114d61adbff5b9a957be7cd4876ba0efe3dfc",
+              "attempt_number": 1,
+              "status": "DELIVERED",
+              "reservation_fence": "0dfe0aab-a0d7-4a69-8925-6e9355ff83fc"
+            }
+          ],
+          "authorization_audits": [
+            {
+              "audit_event_id": "dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "intent_id": "3d33b9a8823f682f4dbe2ecb635114d61adbff5b9a957be7cd4876ba0efe3dfc",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "authorization_json": "{\"schema\":\"steer-dispatch-authorization-audit/v1\",\"audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"dispatch_intent_id\":\"3d33b9a8823f682f4dbe2ecb635114d61adbff5b9a957be7cd4876ba0efe3dfc\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"human_actor_id\":\"member-a\",\"assigned_agent_member_id\":\"agent-a\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_revision\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"routing_configuration_version\":1,\"occurred_at\":\"2026-08-18T18:43:22.464Z\"}"
+            }
+          ],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            },
+            {
+              "id": 7,
+              "item_id": 7,
+              "action": "dispatch_authorized"
+            }
+          ],
+          "economics_events": [
+            {
+              "id": 1,
+              "item_id": 7,
+              "section": "deliveryForecast",
+              "action": "accepted"
+            }
+          ]
+        },
+        "d1_snapshot_sha256": "37732f12aac318825a2ea96d6a2ac95ad7e592927867dd91eba5b9b368edf546",
+        "painted_feedback_sha256": "b40eb9360cb5360a3a6de64f4ddbd8dea0ddaee5f97354a5ed0cda3a75bf9638",
         "painted_role": "status",
         "painted_aria_live": "polite",
-        "focus_observed": true
+        "focus_observed": "initiating_control",
+        "connected_response_to_paint": true,
+        "additional": {
+          "resend_count": 0
+        }
       },
       "transport_result": {
-        "http_status": 200,
-        "typed_code": "DELIVERY_RECONCILED"
+        "http_status": 201,
+        "typed_code": "DELIVERED"
       },
       "telemetry": [
         {
           "metric_name": "steer_agent_handoff_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 18,
+          "value": 64,
           "case_id": "REC-03"
         },
         {
@@ -1146,23 +2537,189 @@
       "actual_evidence": {
         "executed_oracle": "tests/work-economics-server-controls.test.ts / REC-04 permits",
         "oracle_process_exit_code": 0,
-        "oracle_output_sha256": "fe5eb748b60ab92a8e4cc3293603d31ccfa9b129a1ba16d8a3012a53fe947e15",
-        "d1_authority_assertions": "old intent fenced; one explicit successor; original 0 run; successor sole run",
-        "painted_feedback_sha256": "77a5c1127341b434217ea9d9c45d56e5773fef1faaff6d166b3d4abd296f1b61",
+        "oracle_output_sha256": "c4fdf61b9086fb34493c83dfb2ac32f9c88eb8380a6e9b6d4f1cf72691ccc194",
+        "authoritative_response": {
+          "status": 409,
+          "body_sha256": "e60afc14e0ca281ea5f9bfa38b11f3bff0b5e1cc0cb6a8aff1b44abd75919930",
+          "code": "RELAY_PUBLISHER_UNTRUSTED",
+          "state": null,
+          "idempotent_replay": false,
+          "response_identity": "e60afc14e0ca281ea5f9bfa38b11f3bff0b5e1cc0cb6a8aff1b44abd75919930"
+        },
+        "d1_snapshot": {
+          "receipts": [
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "lineage_id": "def3b551a5237cdb3eafaed55dde613467acccb9e0dd012dfd2109742e92ec47",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "receipt_json": "{\"schema\":\"steer-dispatch-receipt/v1\",\"receipt_id\":\"7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c\",\"dispatch_intent_id\":\"7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c\",\"dispatch_claim_lineage_id\":\"def3b551a5237cdb3eafaed55dde613467acccb9e0dd012dfd2109742e92ec47\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"receipt_created_at\":\"2026-08-18T18:43:23.545Z\",\"workflow\":\"STEER\",\"authoritative_item_state\":\"active\",\"assigned_role\":\"Builder\",\"enrolled_agent_member_id\":\"agent-a\",\"enrolled_agent_key_id\":\"agent-a-key\",\"enrolled_agent_key_version\":1,\"enrolled_agent_public_key_fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/steer/exams/0028.md\",\"evidence_revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"evidence_sha256\":\"e853d81296828931c1d6a53ed9d00dc7454aa50c49d19fb2fbaea2f99e6bf896\",\"accepted_forecast_timestamp\":\"2026-08-18T18:43:23.544Z\",\"accepted_forecast_audit_event_id\":\"work-economics:1\",\"human_authorization_timestamp\":\"2026-08-18T18:43:23.545Z\",\"human_authorization_actor_id\":\"member-a\",\"human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"root_human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"predecessor_intent_id\":null,\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"canonical_channel_name\":\"#steer-team\",\"routing_configuration_version\":1,\"membership_version\":1,\"relay_publisher_registry_version\":1,\"relay_publisher_key_id\":\"relay-test\",\"relay_publisher_key_version\":1,\"relay_publisher_public_key\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"privacy_policy_version\":1,\"privacy_policy_status\":\"BLOCKED_BACKUP_RULING\",\"privacy_inventory_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md\",\"privacy_inventory_sha256\":\"c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d\",\"privacy_ruling_url\":\"\",\"privacy_ruling_sha256\":\"\",\"privacy_policy_authorization_event_id\":\"\",\"privacy_policy_activation_receipt_sha256\":\"\",\"authorized_next_action_sha256\":\"91d522fb56cf7f2fca5f8d35cd3360ef2125bbb2ed07bea114b26b314d0adaeb\",\"authorized_handoff_sha256\":\"8cfb8b8ad26bc27eca7dab710ea0d8d0cee27e33291ba4e7a6e75f11deb00b45\",\"authorized_handoff_message\":\"[STR-900] Authorized handoff to Builder. Receipt: 7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c. Channel: #steer-team (10ac2fb4-f7fc-4dbc-bb73-8c545f31a470). Next action: Run the exact independent retest evidence. Evidence: https://github.com/idrissenayat/federal-bd-platform/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/steer/exams/0028.md Prohibited: merge, deployment, release, or any human gate ruling without a separate authenticated approval.\",\"acknowledgement_policy\":\"exact-enrolled-agent-signature-required\"}"
+            },
+            {
+              "intent_id": "e7970f3f28175849be33377ee29f9e9bfc44fcf18b8f34817b232262b11ca230",
+              "lineage_id": "def3b551a5237cdb3eafaed55dde613467acccb9e0dd012dfd2109742e92ec47",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "receipt_json": "{\"schema\":\"steer-dispatch-receipt/v1\",\"receipt_id\":\"e7970f3f28175849be33377ee29f9e9bfc44fcf18b8f34817b232262b11ca230\",\"dispatch_intent_id\":\"e7970f3f28175849be33377ee29f9e9bfc44fcf18b8f34817b232262b11ca230\",\"dispatch_claim_lineage_id\":\"def3b551a5237cdb3eafaed55dde613467acccb9e0dd012dfd2109742e92ec47\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"receipt_created_at\":\"2026-08-18T18:43:23.558Z\",\"workflow\":\"STEER\",\"authoritative_item_state\":\"active\",\"assigned_role\":\"Builder\",\"enrolled_agent_member_id\":\"agent-a\",\"enrolled_agent_key_id\":\"agent-a-key\",\"enrolled_agent_key_version\":1,\"enrolled_agent_public_key_fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/steer/exams/0028.md\",\"evidence_revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"evidence_sha256\":\"e853d81296828931c1d6a53ed9d00dc7454aa50c49d19fb2fbaea2f99e6bf896\",\"accepted_forecast_timestamp\":\"2026-08-18T18:43:23.544Z\",\"accepted_forecast_audit_event_id\":\"work-economics:1\",\"human_authorization_timestamp\":\"2026-08-18T18:43:23.558Z\",\"human_authorization_actor_id\":\"member-a\",\"human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"root_human_authorization_audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"predecessor_intent_id\":\"7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c\",\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"canonical_channel_name\":\"#steer-team\",\"routing_configuration_version\":1,\"membership_version\":1,\"relay_publisher_registry_version\":3,\"relay_publisher_key_id\":\"relay-test\",\"relay_publisher_key_version\":3,\"relay_publisher_public_key\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"privacy_policy_version\":1,\"privacy_policy_status\":\"BLOCKED_BACKUP_RULING\",\"privacy_inventory_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md\",\"privacy_inventory_sha256\":\"c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d\",\"privacy_ruling_url\":\"\",\"privacy_ruling_sha256\":\"\",\"privacy_policy_authorization_event_id\":\"\",\"privacy_policy_activation_receipt_sha256\":\"\",\"authorized_next_action_sha256\":\"91d522fb56cf7f2fca5f8d35cd3360ef2125bbb2ed07bea114b26b314d0adaeb\",\"authorized_handoff_sha256\":\"dfcb56e43020fdebe40508197f3e048f923f33cc6a2b504bdc95d6c67dd87017\",\"authorized_handoff_message\":\"[STR-900] Authorized handoff to Builder. Receipt: e7970f3f28175849be33377ee29f9e9bfc44fcf18b8f34817b232262b11ca230. Channel: #steer-team (10ac2fb4-f7fc-4dbc-bb73-8c545f31a470). Next action: Run the exact independent retest evidence. Evidence: https://github.com/idrissenayat/federal-bd-platform/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/steer/exams/0028.md Prohibited: merge, deployment, release, or any human gate ruling without a separate authenticated approval.\",\"acknowledgement_policy\":\"exact-enrolled-agent-signature-required\"}"
+            }
+          ],
+          "outbox": [
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "current_state": "SUPERSEDED",
+              "current_event_version": 4,
+              "current_event_sha256": "a6d707d10a77c2f5061624778031a0781c809e0bb00eb0dfc08e0947b84f5a8a",
+              "send_started": 0,
+              "terminalization_requested": 1
+            },
+            {
+              "intent_id": "e7970f3f28175849be33377ee29f9e9bfc44fcf18b8f34817b232262b11ca230",
+              "current_state": "QUEUED",
+              "current_event_version": 1,
+              "current_event_sha256": "219c656fc3e841387164681a0d2e29027ab791d87f26af95a90c8b22ed063308",
+              "send_started": 0,
+              "terminalization_requested": 0
+            }
+          ],
+          "events": [
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "event_version": 0,
+              "event_type": "QUEUED",
+              "event_sha256": "971d72b96d841428469a11e0871d29a04f313680429fe75e72a5f1bd9ba079b5"
+            },
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "event_version": 1,
+              "event_type": "SEND_ATTEMPT_RESERVED",
+              "event_sha256": "7fdcdc9db19336d2bd586f31814a17b40766a9454a0130bbf0ee4c838ff68953"
+            },
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "event_version": 2,
+              "event_type": "TERMINALIZATION_REQUESTED",
+              "event_sha256": "acff2ce4157cb3abba5627927930d80cb23598b021fc1bcde6d28ddd11c91d14"
+            },
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "event_version": 3,
+              "event_type": "DELIVERY_BLOCKED_CONFIG_STALE",
+              "event_sha256": "f3312f3a5f27ce36f526b586cee4841ca39bbbbab3101f2b507dc2626a29ce86"
+            },
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "event_version": 4,
+              "event_type": "SUPERSEDED",
+              "event_sha256": "a6d707d10a77c2f5061624778031a0781c809e0bb00eb0dfc08e0947b84f5a8a"
+            },
+            {
+              "intent_id": "e7970f3f28175849be33377ee29f9e9bfc44fcf18b8f34817b232262b11ca230",
+              "event_version": 0,
+              "event_type": "QUEUED",
+              "event_sha256": "08cf6b67837d41a528d7903cfadde57f381b8c4373dc54828205b2c757909e54"
+            },
+            {
+              "intent_id": "e7970f3f28175849be33377ee29f9e9bfc44fcf18b8f34817b232262b11ca230",
+              "event_version": 1,
+              "event_type": "SEND_ATTEMPT_RESERVED",
+              "event_sha256": "219c656fc3e841387164681a0d2e29027ab791d87f26af95a90c8b22ed063308"
+            }
+          ],
+          "attempts": [
+            {
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "attempt_number": 1,
+              "status": "FENCED_CONFIG_STALE",
+              "reservation_fence": "3294feed-a115-4032-bb38-06fdbdd9246f"
+            },
+            {
+              "intent_id": "e7970f3f28175849be33377ee29f9e9bfc44fcf18b8f34817b232262b11ca230",
+              "attempt_number": 1,
+              "status": "RESERVED",
+              "reservation_fence": "65027d1d-3744-49e3-bc01-518ff91a37a4"
+            }
+          ],
+          "authorization_audits": [
+            {
+              "audit_event_id": "dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "intent_id": "7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "authorization_json": "{\"schema\":\"steer-dispatch-authorization-audit/v1\",\"audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"dispatch_intent_id\":\"7ec16d375eb6b48dd26c9f35174f015772b25ed278d7ee7c7c7d042a6d61816c\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"human_actor_id\":\"member-a\",\"assigned_agent_member_id\":\"agent-a\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"routing_configuration_version\":1,\"occurred_at\":\"2026-08-18T18:43:23.545Z\"}"
+            },
+            {
+              "audit_event_id": "dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "intent_id": "e7970f3f28175849be33377ee29f9e9bfc44fcf18b8f34817b232262b11ca230",
+              "authorization_revision": "2026-08-14T14:00:00.000Z",
+              "authorization_json": "{\"schema\":\"steer-dispatch-authorization-audit/v1\",\"audit_event_id\":\"dispatch-authorize:7:2026-08-14T14:00:00.000Z:member-a:1:1:3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"dispatch_intent_id\":\"e7970f3f28175849be33377ee29f9e9bfc44fcf18b8f34817b232262b11ca230\",\"workspace_pod_id\":\"pod-a\",\"work_item_stable_id\":7,\"work_item_key\":\"STR-900\",\"authorization_revision\":\"2026-08-14T14:00:00.000Z\",\"human_actor_id\":\"member-a\",\"assigned_agent_member_id\":\"agent-a\",\"allowed_scope\":{\"next_action\":\"Run the exact independent retest evidence.\",\"evidence_url\":\"https://github.com/idrissenayat/federal-bd-platform/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/steer/exams/0028.md\"},\"prohibited_scope\":{\"merge\":true,\"deploy\":true,\"release\":true,\"human_gate_ruling\":true,\"external_action_beyond_handoff\":true},\"evidence_revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"canonical_channel_id\":\"10ac2fb4-f7fc-4dbc-bb73-8c545f31a470\",\"routing_configuration_version\":1,\"occurred_at\":\"2026-08-18T18:43:23.558Z\"}"
+            }
+          ],
+          "activity": [
+            {
+              "id": 1,
+              "item_id": 1,
+              "action": "created"
+            },
+            {
+              "id": 2,
+              "item_id": 2,
+              "action": "created"
+            },
+            {
+              "id": 3,
+              "item_id": 3,
+              "action": "created"
+            },
+            {
+              "id": 4,
+              "item_id": 4,
+              "action": "created"
+            },
+            {
+              "id": 5,
+              "item_id": 5,
+              "action": "created"
+            },
+            {
+              "id": 6,
+              "item_id": 6,
+              "action": "created"
+            },
+            {
+              "id": 7,
+              "item_id": 7,
+              "action": "dispatch_authorized"
+            },
+            {
+              "id": 8,
+              "item_id": 7,
+              "action": "dispatch_authorized"
+            }
+          ],
+          "economics_events": [
+            {
+              "id": 1,
+              "item_id": 7,
+              "section": "deliveryForecast",
+              "action": "accepted"
+            }
+          ]
+        },
+        "d1_snapshot_sha256": "76a7789c3e33ff97a86fd7ce9897205f70eb415e71375e7e78961199a16b93b4",
+        "painted_feedback_sha256": "2d32327cf9e801ebe0802736e75caa40d9a926b3a31d90017e849b74045c31ae",
         "painted_role": "alert",
         "painted_aria_live": "assertive",
-        "focus_observed": true
+        "focus_observed": "inline_error",
+        "connected_response_to_paint": true,
+        "additional": {}
       },
       "transport_result": {
         "http_status": 409,
-        "typed_code": "SUCCESSOR_REAUTHORIZATION_REQUIRED"
+        "typed_code": "RELAY_PUBLISHER_UNTRUSTED"
       },
       "telemetry": [
         {
           "metric_name": "steer_agent_handoff_feedback_latency_ms",
           "label_name": "",
           "label_value": "",
-          "value": 16,
+          "value": 65,
           "case_id": "REC-04"
         },
         {
@@ -1185,48 +2742,53 @@
         {
           "parent_case_id": "REC-04",
           "substep_id": "R04-A",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:REC-04 permits one same-lineage successor for every remaining frozen binding branch"
+          "code": "ROUTING_VERSION_STALE",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:REC-04 permits"
         },
         {
           "parent_case_id": "REC-04",
           "substep_id": "R04-B",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:REC-04 permits one same-lineage successor for every remaining frozen binding branch"
+          "code": "CHANNEL_BINDING_STALE",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:REC-04 permits"
         },
         {
           "parent_case_id": "REC-04",
           "substep_id": "R04-C",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:REC-04 permits one same-lineage successor for every remaining frozen binding branch"
+          "code": "RELAY_BINDING_STALE",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:REC-04 permits"
         },
         {
           "parent_case_id": "REC-04",
           "substep_id": "R04-D",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:REC-04 permits one same-lineage successor for every remaining frozen binding branch"
+          "code": "ROUTE_CONFIG_MISSING",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:REC-04 permits"
         },
         {
           "parent_case_id": "REC-04",
           "substep_id": "R04-E",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:REC-04 permits one same-lineage successor for every remaining frozen binding branch"
+          "code": "MEMBERSHIP_STALE",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:REC-04 permits"
         },
         {
           "parent_case_id": "REC-04",
           "substep_id": "R04-F",
-          "seed_reset": true,
           "result": "pass",
-          "evidence_ref": "flight-board/tests:REC-04 permits one same-lineage successor for every remaining frozen binding branch"
+          "code": "RELAY_PUBLISHER_UNTRUSTED",
+          "seed_reset": true,
+          "evidence_ref": "tests/work-economics-server-controls.test.ts:REC-04 permits"
         }
       ],
       "result": "pass"
     }
   ]
 }
-
