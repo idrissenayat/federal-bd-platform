@@ -2,7 +2,7 @@
 
 Status: **BLOCKED — manual accessibility and provider-backup rulings remain open**
 
-Target source commit: `bfd500758ec9f770bbb9b48f12a661aa1adc6978`
+Target source commit: `4fa02b1925f18874481925280042faafec59ea4c`
 
 Approved Brief: `0f83de8248771d35292ee57b56186493b5b71b1a`
 
@@ -19,11 +19,11 @@ not represented as a completed narrow-screen or screen-reader observation.
 | SAVE-01 | `work-economics-server-controls.test.ts` — “SAVE-01 populates an empty optional Work Economics forecast from the authoritative response” | Isolated server fixture PASS; source-level authoritative/local-feedback wiring PASS; staged operator mutation not executed |
 | SAVE-02 | `work-economics-server-controls.test.ts` — “SAVE-02 replaces an existing Work Economics forecast with one audited correction” | Isolated server fixture PASS; source-level authoritative/local-feedback wiring PASS; staged operator mutation not executed |
 | SAVE-03 | `work-economics-server-controls.test.ts` — “SAVE-03 accepts valid lower-bound numeric forecast values” | Isolated server fixture PASS; source-level authoritative/local-feedback wiring PASS; staged operator mutation not executed |
-| SAVE-04 | `work-economics-server-controls.test.ts` — “SAVE-04 accepts valid upper rubric values and long permitted text” | Isolated server fixture PASS; real narrow viewport pending because the in-app override did not change the layout viewport |
+| SAVE-04 | `work-economics-server-controls.test.ts` — “SAVE-04 accepts valid upper rubric values and long permitted text” | Isolated server fixture PASS; real 320px staging viewport PASS on version 10 |
 | DISP-01 | `work-economics-server-controls.test.ts` — “successful dispatch creates one immutable receipt, outbox identity, and QUEUED event across replay”; “service fencing, verified relay delivery, signed agent acknowledgement, and agent read form one idempotent lineage” | Complete synthetic signed-relay fixture PASS; staged blocked-state surface PASS |
 | DISP-02 | Same replay test proves the original receipt/outbox/event IDs are returned without a duplicate | Isolated replay fixture PASS; staged control survives reload |
 | DISP-03 | Service-fencing test uses service authentication, signed acknowledgement, and agent read without a human UI session | Isolated non-interactive service fixture PASS; hosted runtime remains separate issue #52 and is not substituted into this case |
-| DISP-04 | `work-economics-accessibility.test.ts` — named atomic live region, one focus-stable action, and WCAG AA contrast tests | Automated 320px markup/axe/contrast PASS; real narrow viewport and screen-reader observation pending |
+| DISP-04 | `work-economics-accessibility.test.ts` — named atomic live region, one focus-stable action, and WCAG AA contrast tests | Automated markup/axe/contrast PASS; real 320px staging containment PASS; manual keyboard traversal and screen-reader observation pending |
 | FAIL-01 | `work-economics-server-controls.test.ts` — stale r0 against authoritative r1 returns 409 without a durable side effect | Isolated conflict fixture PASS; source-level action-local failure wiring PASS; staged operator failure not executed |
 | FAIL-02 | Same file — invalid field set rejected without overwriting r1 | Isolated validation fixture PASS; source-level action-local failure wiring PASS; staged operator failure not executed |
 | FAIL-03 | Same file — all frozen F03-A..F03-F pre-receipt conflicts reject with one typed no-PII diagnostic | All isolated substeps PASS |
@@ -42,10 +42,12 @@ The manifest tests separately prove that the signed denominator is exactly these
 
 ## Verification completed
 
-- Full build and test suite: 109 passed, 0 failed.
+- Full build and test suite: 133 passed (24 JavaScript and 109 TypeScript),
+  0 failed.
 - TypeScript and lint checks: passed on the target source state.
 - Production dependency audit: 0 vulnerabilities.
-- Owner-only staging version 8 deployed with environment revision 1.
+- Owner-only staging version 10 deployed with environment revision 1 as
+  deployment `appgdep_6a847929deb881919d08bc7bd47de8ae`.
 - Populated staging retained all 24 work items (20 open, 4 closed).
 - Desktop staging inspection confirmed the STR-028 action-local dispatch status,
   named atomic live region, one disabled action when authorization is blocked,
@@ -53,15 +55,25 @@ The manifest tests separately prove that the signed denominator is exactly these
 - Actual rollback rehearsal: staging was moved to saved version 5, the prior UI
   was observed, and saved version 8 was redeployed successfully as deployment
   `appgdep_6a8472b2e2dc81918fb105396251bd17`.
+- The first real 320×800 staging observation found the STR-028 drawer at
+  `clientWidth=290` and `scrollWidth=485`. Source commit `c4278f6` reduced the
+  overflow, but staging version 9 still measured `290/356` because Work controls
+  and Agent authorization retained min-content width.
+- Exact target `4fa02b1925f18874481925280042faafec59ea4c` removed those residual
+  constraints. Staging version 10 measured body/document `305/305`, drawer
+  `290/290`, drawer body `290/290`, and zero descendants outside the drawer
+  boundary at a real `320×800` layout viewport. Visual inspection confirmed the
+  title, advisory review, and governed controls remain legible and contained.
 
 ## Open evidence and rulings
 
 1. Complete the missing operator-surface observations for SAVE-01..04, FAIL-01/02,
    and DISP-04 without modifying production data. The isolated server, ordering,
    cryptographic, recovery, and substep fixtures are already executed and green.
-2. Execute real narrow-screen and screen-reader checks. Automated responsive,
-   axe, landmark, focus-stability, and contrast tests are green, but they do not
-   replace the two manual checks.
+2. Complete manual keyboard traversal and screen-reader checks. The real
+   narrow-screen check now passes, and automated axe, landmark,
+   focus-stability, and contrast tests are green, but they do not replace those
+   two assistive-technology observations.
 3. Record the Privacy/Legal ruling for provider backup recovery. Live D1 rows are
    deleted after 90 days, but provider Time Travel recovery is not row-purgeable.
 4. Obtain a fresh independent signed Critic result against the exact Gate 3 target.

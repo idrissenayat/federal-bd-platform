@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { schnorr } from "@noble/curves/secp256k1.js";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { canonicalJson, sha256Hex } from "../lib/dispatch-lifecycle";
 import { buildReviewIdentity, createSignedReviewEvent, reviewManifestSha256, validateReviewAssignmentPayload, verifyReviewerBinding, type ReviewAssignmentPayload } from "../lib/review-lifecycle";
 
@@ -103,6 +106,18 @@ test("the STR-028 Gate 3 packet is an exact valid signed-review target", async (
   assert.equal(packet.stage, "GATE_3_BUILD");
   assert.equal(packet.target.target_artifacts.length, 19);
   assert.equal(await reviewManifestSha256(packet.target), packet.target.target_artifact_manifest_sha256);
+  const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
+  const oid = packet.target.target_git_commit_oid;
+  const commit = execFileSync("git", ["cat-file", "commit", oid], { cwd: repositoryRoot });
+  const commitSize = Number(execFileSync("git", ["cat-file", "-s", oid], { cwd: repositoryRoot, encoding: "utf8" }).trim());
+  const commitObject = Buffer.concat([Buffer.from(`commit ${commitSize}\0`), commit]);
+  assert.equal(createHash("sha256").update(commitObject).digest("hex"), packet.target.target_commit_object_sha256);
+  for (const artifact of packet.target.target_artifacts) {
+    const bytes = execFileSync("git", ["show", `${oid}:${artifact.path}`], { cwd: repositoryRoot });
+    assert.equal(bytes.length, artifact.size_bytes, artifact.path);
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), artifact.sha256, artifact.path);
+    assert.equal(artifact.url, `https://github.com/idrissenayat/federal-bd-platform/blob/${oid}/${artifact.path}`);
+  }
   const payload = await assignment();
   await validateReviewAssignmentPayload({
     ...payload,
