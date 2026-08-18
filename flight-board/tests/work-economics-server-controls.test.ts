@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { schnorr } from "@noble/curves/secp256k1.js";
 import { canonicalJson, sha256Hex } from "../lib/dispatch-lifecycle";
+import { reviewManifestSha256 } from "../lib/review-lifecycle";
 import { handleApi } from "../worker/api";
 
 const dispatchEnv = {
@@ -12,6 +13,10 @@ const dispatchEnv = {
   DISPATCH_SERVICE_KEY_VERSION: "1",
   DISPATCH_SERVICE_TOKEN: "test-dispatch-service-token-0000000000000000",
   DISPATCH_ALLOW_TEST_PRIVACY_POLICY: "true",
+  REVIEW_SERVICE_PRIVATE_KEY: "0".repeat(63) + "9",
+  REVIEW_SERVICE_KEY_ID: "test-review-signer",
+  REVIEW_SERVICE_KEY_VERSION: "1",
+  REVIEW_SERVICE_TOKEN: "test-review-service-token-000000000000000000",
 };
 
 const privacyInventory = await readFile(new URL("../../steer/evidence/0028-dispatch-data-inventory.md", import.meta.url), "utf8");
@@ -67,6 +72,18 @@ function serviceRequest(path: string, body: unknown) {
   });
 }
 
+function reviewServiceRequest(path: string, body: unknown) {
+  return new Request(`https://steer.test${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${dispatchEnv.REVIEW_SERVICE_TOKEN}` },
+    body: JSON.stringify(body),
+  });
+}
+
+function reviewAgentRequest(path: string, body: Record<string, unknown>) {
+  return reviewServiceRequest(path, { member_id: "agent-critic", ...body });
+}
+
 function hex(value: Uint8Array) {
   return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -112,6 +129,21 @@ async function setup() {
     (pod_id, registry_version, channel_id, channel_name, relay_url, status, changed_by, change_reason, created_at)
     VALUES ('pod-a', 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'ACTIVE', 'member-a', 'Test fixture', '2026-08-18T00:00:00.000Z')`).run();
   return { db, itemId: Number(result.lastInsertRowid) };
+}
+
+async function reviewTarget() {
+  const oid = "f".repeat(40);
+  const base = {
+    target_git_object_format: "sha1" as const,
+    target_git_commit_oid: oid,
+    target_artifacts: [{
+      path: "steer/evidence/0028-gate-3-build.md",
+      url: `https://github.com/idrissenayat/federal-bd-platform/blob/${oid}/steer/evidence/0028-gate-3-build.md`,
+      size_bytes: 1200,
+      sha256: "a".repeat(64),
+    }],
+  };
+  return { ...base, target_commit_object_sha256: "b".repeat(64), target_artifact_manifest_sha256: await reviewManifestSha256(base) };
 }
 
 function prepareDispatchAuthorizationSeed(db: D1Database, itemId: number, revision = "a".repeat(40)) {
@@ -892,6 +924,104 @@ test("service fencing, verified relay delivery, signed agent acknowledgement, an
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("Critic review requires exact target assignment, signed acknowledgement, and one signed result", async () => {
+  const { db, itemId } = await setup();
+  const criticSecret = new Uint8Array(32); criticSecret[31] = 17;
+  const criticPublicKey = hex(schnorr.getPublicKey(criticSecret));
+  db.sqlite.prepare(`UPDATE members SET pod_id = 'pod-a', agent_key_id = 'critic-key',
+    agent_key_version = 1, agent_public_key = ?, agent_public_key_fingerprint = ?
+    WHERE id = 'agent-critic'`).run(criticPublicKey, "c".repeat(64));
+  const target = await reviewTarget();
+
+  const created = await handleApi(request("member-a", `/api/items/${itemId}/reviews`, "POST", { stage: "GATE_3_BUILD", target, prior_binding_digests: ["d".repeat(64)] }), { DB: db, ...dispatchEnv });
+  assert.equal(created?.status, 201, await created?.clone().text());
+  const createdBody = await created?.json() as { assignment: { review_assignment_id: string }; request_event_sha256: string };
+  const assignmentId = createdBody.assignment.review_assignment_id;
+  assert.match(assignmentId, /^[0-9a-f]{64}$/);
+  assert.deepEqual(db.sqlite.prepare("SELECT event_type FROM review_events WHERE assignment_id = ? ORDER BY event_version").all(assignmentId).map((row) => row.event_type), ["REVIEW_TARGET_READY", "REVIEW_ASSIGNED", "REVIEW_REQUESTED"]);
+
+  const replay = await handleApi(request("member-a", `/api/items/${itemId}/reviews`, "POST", { stage: "GATE_3_BUILD", target, prior_binding_digests: ["d".repeat(64)] }), { DB: db, ...dispatchEnv });
+  assert.equal(replay?.status, 200, await replay?.clone().text());
+  assert.equal((await replay?.json() as { idempotent_replay: boolean }).idempotent_replay, true);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM review_events WHERE assignment_id = ?").get(assignmentId)!.total, 3);
+
+  const result = {
+    recommendation: "Ready for human Gate 3 review", confidence: "High",
+    summary: "The exact build target satisfies the signed Exam within the reviewed scope.",
+    findings: [], dependencies: ["Human Gate 3 remains required."], impacts: ["No production authority granted."],
+    actions: ["Present the exact evidence to the named human authorities."], derived_tags: ["#security", "#privacy"],
+    evidence_scope: "Exact immutable Gate 3 build target and fixed acceptance ledger.", completed_at: "2026-08-18T16:02:00.000Z",
+  };
+  const prematureResultPayload = { schema: "steer-review-result/v1", review_assignment_id: assignmentId, target_artifact_manifest_sha256: target.target_artifact_manifest_sha256, predecessor_event_sha256: "0".repeat(64), result_sha256: await sha256Hex(canonicalJson(result)), result };
+  const premature = await handleApi(reviewAgentRequest(`/api/review-assignments/${assignmentId}/results`, { result, key_id: "critic-key", key_version: 1, signature: await signBinding(prematureResultPayload, criticSecret) }), { DB: db, ...dispatchEnv });
+  assert.equal(premature?.status, 409, await premature?.clone().text());
+
+  const acknowledgedAt = "2026-08-18T16:01:00.000Z";
+  const acknowledgementPayload = { schema: "steer-review-acknowledgement/v1", review_assignment_id: assignmentId, target_artifact_manifest_sha256: target.target_artifact_manifest_sha256, source_request_event_sha256: createdBody.request_event_sha256, predecessor_event_sha256: createdBody.request_event_sha256, acknowledged_at: acknowledgedAt };
+  const wrongKey = await handleApi(reviewAgentRequest(`/api/review-assignments/${assignmentId}/acknowledgements`, { acknowledged_at: acknowledgedAt, key_id: "critic-key", key_version: 1, signature: await signBinding(acknowledgementPayload, new Uint8Array(32).fill(3)) }), { DB: db, ...dispatchEnv });
+  assert.equal(wrongKey?.status, 409, await wrongKey?.clone().text());
+  const acknowledgementSignature = await signBinding(acknowledgementPayload, criticSecret);
+  const acknowledged = await handleApi(reviewAgentRequest(`/api/review-assignments/${assignmentId}/acknowledgements`, { acknowledged_at: acknowledgedAt, key_id: "critic-key", key_version: 1, signature: acknowledgementSignature }), { DB: db, ...dispatchEnv });
+  assert.equal(acknowledged?.status, 201, await acknowledged?.clone().text());
+  const acknowledgedBody = await acknowledged?.json() as { event: { payload: { event_sha256?: string } } };
+  const acknowledgementEventSha256 = String(db.sqlite.prepare("SELECT event_sha256 FROM review_events WHERE assignment_id = ? AND event_type = 'REVIEW_ACKNOWLEDGED'").get(assignmentId)!.event_sha256);
+
+  const resultPayload = { schema: "steer-review-result/v1", review_assignment_id: assignmentId, target_artifact_manifest_sha256: target.target_artifact_manifest_sha256, predecessor_event_sha256: acknowledgementEventSha256, result_sha256: await sha256Hex(canonicalJson(result)), result };
+  const resultSignature = await signBinding(resultPayload, criticSecret);
+  const recorded = await handleApi(reviewAgentRequest(`/api/review-assignments/${assignmentId}/results`, { result, key_id: "critic-key", key_version: 1, signature: resultSignature }), { DB: db, ...dispatchEnv });
+  assert.equal(recorded?.status, 201, await recorded?.clone().text());
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM agent_reviews WHERE item_id = ? AND review_mode = 'signed_assignment_review'").get(itemId)!.total, 1);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM review_events WHERE assignment_id = ?").get(assignmentId)!.total, 5);
+
+  const exactReplay = await handleApi(reviewAgentRequest(`/api/review-assignments/${assignmentId}/results`, { result, key_id: "critic-key", key_version: 1, signature: resultSignature }), { DB: db, ...dispatchEnv });
+  assert.equal(exactReplay?.status, 200, await exactReplay?.clone().text());
+  const changed = { ...result, summary: "A changed second result must be rejected." };
+  const changedPayload = { ...resultPayload, result_sha256: await sha256Hex(canonicalJson(changed)), result: changed };
+  const mismatch = await handleApi(reviewAgentRequest(`/api/review-assignments/${assignmentId}/results`, { result: changed, key_id: "critic-key", key_version: 1, signature: await signBinding(changedPayload, criticSecret) }), { DB: db, ...dispatchEnv });
+  assert.equal(mismatch?.status, 409, await mismatch?.clone().text());
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM agent_reviews WHERE item_id = ?").get(itemId)!.total, 1);
+  void acknowledgedBody;
+});
+
+test("review retention honors a scoped hold and deletes every linked live record after release", async () => {
+  const { db, itemId } = await setup();
+  const assignmentId = "e".repeat(64);
+  const completedAt = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString();
+  db.sqlite.prepare(`INSERT INTO review_assignments
+    (assignment_id,idempotency_key,item_id,pod_id,review_stage,reviewer_member_id,primary_claim_lineage_id,item_revision,target_manifest_sha256,assignment_json,current_state,current_event_version,current_event_sha256,authorizing_actor_id,authorizing_event_id,created_at,terminal_at,delete_after)
+    VALUES (?, ?, ?, 'pod-a', 'GATE_3_BUILD', 'agent-critic', ?, 'r1', ?, '{}', 'RESULT_RECORDED', 4, ?, 'member-a', ?, ?, ?, ?)`)
+    .run(assignmentId, "1".repeat(64), itemId, "2".repeat(64), "3".repeat(64), "4".repeat(64), "5".repeat(64), completedAt, completedAt, completedAt);
+  db.sqlite.prepare(`INSERT INTO review_events
+    (assignment_id,event_version,expected_event_version,event_type,payload_json,previous_event_sha256,event_sha256,service_key_id,service_key_version,service_signature,actor_id,created_at)
+    VALUES (?,4,3,'REVIEW_RESULT_RECORDED','{}',?,?,'review-service',1,?,'agent-critic',?)`)
+    .run(assignmentId, "6".repeat(64), "7".repeat(64), "8".repeat(128), completedAt);
+  db.sqlite.prepare(`INSERT INTO agent_reviews
+    (item_id,agent_id,review_mode,recommendation,confidence,summary,findings_json,dependencies_json,impacts_json,actions_json,derived_tags_json,evidence_scope,reviewed_item_updated_at,requested_by,created_at,review_assignment_id)
+    VALUES (?, 'agent-critic', 'signed_assignment_review', 'Ready', 'High', 'Synthetic retention fixture', '[]', '[]', '[]', '[]', '[]', 'Synthetic', 'r1', 'member-a', ?, ?)`).run(itemId, completedAt, assignmentId);
+  db.sqlite.prepare("INSERT INTO activity (item_id,actor_id,action,detail,created_at,review_assignment_id) VALUES (?, 'agent-critic','agent_review','Synthetic',?,?)").run(itemId, completedAt, assignmentId);
+  db.sqlite.prepare(`INSERT INTO notifications
+    (dedupe_key,item_id,member_id,recipient_role,kind,title,body,channel,status,created_at,review_assignment_id)
+    VALUES (?,?,'agent-critic','Independent Critic','review_assignment','Synthetic','Synthetic','review-assignment-store','queued',?,?)`).run(`review-${assignmentId}`, itemId, completedAt, assignmentId);
+
+  const hold = await handleApi(request("member-a", `/api/review-assignments/${assignmentId}/retention-holds`, "POST", { action: "HOLD", reason_code: "SECURITY_REVIEW", expires_at: new Date(Date.now() + 86_400_000).toISOString() }), { DB: db, ...dispatchEnv });
+  assert.equal(hold?.status, 201, await hold?.clone().text());
+  const heldRun = await handleApi(reviewServiceRequest("/api/review-retention/run", {}), { DB: db, ...dispatchEnv });
+  assert.equal(heldRun?.status, 200, await heldRun?.clone().text());
+  assert.equal((await heldRun?.json() as { deleted_count: number }).deleted_count, 0);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM review_assignments WHERE assignment_id = ?").get(assignmentId)!.total, 1);
+
+  const release = await handleApi(request("member-a", `/api/review-assignments/${assignmentId}/retention-holds`, "POST", { action: "RELEASE", reason_code: "SECURITY_REVIEW_COMPLETE" }), { DB: db, ...dispatchEnv });
+  assert.equal(release?.status, 201, await release?.clone().text());
+  const deletion = await handleApi(reviewServiceRequest("/api/review-retention/run", {}), { DB: db, ...dispatchEnv });
+  assert.equal(deletion?.status, 200, await deletion?.clone().text());
+  assert.equal((await deletion?.json() as { deleted_count: number }).deleted_count, 1);
+  for (const table of ["review_assignments", "review_events", "review_retention_holds", "agent_reviews", "activity", "notifications"]) {
+    const column = ["review_assignments", "review_events", "review_retention_holds"].includes(table) ? "assignment_id" : "review_assignment_id";
+    assert.equal(db.sqlite.prepare(`SELECT COUNT(*) AS total FROM ${table} WHERE ${column} = ?`).get(assignmentId)!.total, 0, table);
+  }
+  assert.equal(db.sqlite.prepare("SELECT deleted_count FROM review_retention_runs ORDER BY id DESC LIMIT 1").get()!.deleted_count, 1);
 });
 
 test("general item mutation rejects a cross-POD assignee", async () => {

@@ -11,8 +11,9 @@ import {
 } from "../lib/work-economics";
 import { acceptedValueHypothesisReady, humanAcceptanceState, validateAndNormalizeWorkEconomics, type WorkEconomicsSection } from "../lib/work-economics-validation";
 import { buildDispatchIdentity, exactGitEvidence, STEER_HANDOFF_ROUTE_KEY, validateDispatchRoute, type DispatchRoute } from "../lib/dispatch-control";
-import { canonicalJson, createSignedDispatchEvent, sha256Hex, type DispatchState } from "../lib/dispatch-lifecycle";
+import { canonicalJson, createSignedDispatchEvent, dispatchPublicKey, sha256Hex, type DispatchState } from "../lib/dispatch-lifecycle";
 import { isStr028CaseId } from "../lib/str028-manifest";
+import { buildReviewIdentity, createSignedReviewEvent, validateReviewAssignmentPayload, verifyReviewerBinding, type ReviewAssignmentPayload } from "../lib/review-lifecycle";
 import { buildInitialQueuedEvent, ensureDispatchServiceSigner, handleDispatchServiceApi, type DispatchServiceEnv } from "./dispatch";
 
 type D1Result<T = Record<string, unknown>> = {
@@ -32,7 +33,15 @@ type Database = {
   batch(statements: Statement[]): Promise<unknown[]>;
 };
 
-type Env = { DB: Database; GITHUB_TOKEN?: string; DISPATCH_ALLOW_TEST_PRIVACY_POLICY?: string } & DispatchServiceEnv;
+type Env = {
+  DB: Database;
+  GITHUB_TOKEN?: string;
+  DISPATCH_ALLOW_TEST_PRIVACY_POLICY?: string;
+  REVIEW_SERVICE_PRIVATE_KEY?: string;
+  REVIEW_SERVICE_KEY_ID?: string;
+  REVIEW_SERVICE_KEY_VERSION?: string;
+  REVIEW_SERVICE_TOKEN?: string;
+} & DispatchServiceEnv;
 
 type User = { id: string; email: string | null; name: string };
 
@@ -396,6 +405,42 @@ async function ensureSchema(db: Database) {
       created_at text NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_agent_reviews_item_created ON agent_reviews (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS review_assignments (
+      assignment_id text PRIMARY KEY NOT NULL, idempotency_key text NOT NULL UNIQUE,
+      item_id integer NOT NULL, pod_id text NOT NULL, review_stage text NOT NULL,
+      reviewer_member_id text NOT NULL, primary_claim_lineage_id text NOT NULL,
+      item_revision text NOT NULL, target_manifest_sha256 text NOT NULL,
+      assignment_json text NOT NULL, current_state text NOT NULL,
+      current_event_version integer NOT NULL, current_event_sha256 text NOT NULL,
+      authorizing_actor_id text NOT NULL, authorizing_event_id text NOT NULL,
+      created_at text NOT NULL, terminal_at text, delete_after text
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_review_assignments_item_created ON review_assignments (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS review_events (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, assignment_id text NOT NULL,
+      event_version integer NOT NULL, expected_event_version integer NOT NULL,
+      event_type text NOT NULL, payload_json text NOT NULL, previous_event_sha256 text,
+      event_sha256 text NOT NULL, service_key_id text NOT NULL,
+      service_key_version integer NOT NULL, service_signature text NOT NULL,
+      reviewer_key_id text, reviewer_key_version integer, reviewer_signature text,
+      actor_id text NOT NULL, created_at text NOT NULL,
+      UNIQUE(assignment_id, event_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_review_events_assignment_created ON review_events (assignment_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS review_retention_holds (
+      hold_event_id text PRIMARY KEY NOT NULL, assignment_id text NOT NULL,
+      action text NOT NULL, reason_code text NOT NULL, expires_at text NOT NULL,
+      actor_id text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_review_retention_holds_assignment_created ON review_retention_holds (assignment_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS review_retention_authorizations (
+      assignment_id text PRIMARY KEY NOT NULL, authorization_nonce text NOT NULL,
+      expires_at text NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS review_retention_runs (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, cutoff_at text NOT NULL,
+      eligible_count integer NOT NULL, deleted_count integer NOT NULL, created_at text NOT NULL
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS notifications (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
       dedupe_key text NOT NULL UNIQUE,
@@ -573,6 +618,25 @@ async function ensureSchema(db: Database) {
   await ensureColumn(db, "agent_reviews", "evidence_url", "evidence_url text");
   await ensureColumn(db, "agent_reviews", "evidence_revision", "evidence_revision text");
   await ensureColumn(db, "agent_reviews", "evidence_sha256", "evidence_sha256 text");
+  await ensureColumn(db, "agent_reviews", "review_assignment_id", "review_assignment_id text");
+  await ensureColumn(db, "activity", "review_assignment_id", "review_assignment_id text");
+  await ensureColumn(db, "notifications", "review_assignment_id", "review_assignment_id text");
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_assignments_no_update
+    BEFORE UPDATE ON review_assignments BEGIN SELECT RAISE(ABORT, 'review assignments are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_assignments_no_delete
+    BEFORE DELETE ON review_assignments WHEN NOT EXISTS (
+      SELECT 1 FROM review_retention_authorizations a WHERE a.assignment_id = OLD.assignment_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'review assignments require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_events_no_update
+    BEFORE UPDATE ON review_events BEGIN SELECT RAISE(ABORT, 'review events are append-only'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_events_no_delete
+    BEFORE DELETE ON review_events WHEN NOT EXISTS (
+      SELECT 1 FROM review_retention_authorizations a WHERE a.assignment_id = OLD.assignment_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'review events require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_retention_holds_no_update
+    BEFORE UPDATE ON review_retention_holds BEGIN SELECT RAISE(ABORT, 'review retention hold events are immutable'); END`).run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_review_events_one_ack ON review_events (assignment_id) WHERE event_type = 'REVIEW_ACKNOWLEDGED'").run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_review_events_one_result ON review_events (assignment_id) WHERE event_type = 'REVIEW_RESULT_RECORDED'").run();
   await ensureColumn(db, "dispatch_events", "expected_event_version", "expected_event_version integer NOT NULL DEFAULT -1");
   await ensureColumn(db, "dispatch_events", "previous_event_sha256", "previous_event_sha256 text");
   await ensureColumn(db, "dispatch_events", "event_sha256", "event_sha256 text NOT NULL DEFAULT ''");
@@ -1732,19 +1796,6 @@ async function updateWorkEconomics(request: Request, db: Database, user: User, i
   return json({ ok: true, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
 }
 
-function deriveTags(text: string) {
-  const rules: Array<[string, RegExp]> = [
-    ["#security", /\b(auth|authori[sz]ation|credential|secret|token|api key|security|session)\b/i],
-    ["#privacy", /\b(privacy|personal data|pii|email address|retention|delete user)\b/i],
-    ["#a11y", /\b(accessibility|a11y|keyboard|screen reader|wcag|contrast)\b/i],
-    ["#reliability", /\b(reliability|rollback|telemetry|monitor|timeout|latency|availability|deploy|release)\b/i],
-    ["#legal", /\b(legal|license|compliance|claim|copyright)\b/i],
-    ["#design-system", /\b(design system|interface|user experience|\bui\b|\bux\b)\b/i],
-    ["#money", /\b(payment|price|pricing|cost|budget|charge|money)\b/i],
-  ];
-  return rules.filter(([, pattern]) => pattern.test(text)).map(([tag]) => tag);
-}
-
 async function readEvidence(urlValue: unknown): Promise<EvidenceRead> {
   if (!urlValue) return { text: null, scope: "Work item fields only; no evidence link was attached.", sourceUrl: null, revision: null, sha256: null };
   try {
@@ -1788,123 +1839,329 @@ async function readEvidence(urlValue: unknown): Promise<EvidenceRead> {
   }
 }
 
-async function runCriticReview(db: Database, user: User, itemId: number) {
-  const item = await scopedItemOrDenied(db, user, itemId, "Critic review");
-  if (!item) return json({ error: "Work item not found in your POD." }, 404);
+function reviewSigner(env: Env) {
+  const privateKey = String(env.REVIEW_SERVICE_PRIVATE_KEY ?? "");
+  const keyId = String(env.REVIEW_SERVICE_KEY_ID ?? "");
+  const keyVersion = Number(env.REVIEW_SERVICE_KEY_VERSION ?? "");
+  if (!/^[0-9a-f]{64}$/.test(privateKey) || !/^[A-Za-z0-9._:-]{3,128}$/.test(keyId) || !Number.isSafeInteger(keyVersion) || keyVersion < 1) {
+    throw new Error("REVIEW_SIGNER_UNAVAILABLE");
+  }
+  return { privateKey, keyId, keyVersion, publicKey: dispatchPublicKey(privateKey) };
+}
 
-  const evidence = await readEvidence(item.evidence_url);
-  const joinedText = [item.title, item.description, item.next_action, evidence.text].filter(Boolean).join("\n");
-  const tags = deriveTags(joinedText);
-  const findings: Finding[] = [];
-  const dependencies: string[] = [];
-  const impacts: string[] = [];
-  const actions: string[] = [];
-  const addFinding = (finding: Finding) => {
-    if (!findings.some((existing) => existing.title === finding.title)) findings.push(finding);
-  };
+function expectedReviewStage(gate: unknown) {
+  if (gate === "Gate 1 pending") return "PRE_GATE_1_BRIEF";
+  if (gate === "Gate 2 pending") return "GATE_2_EXAM";
+  if (gate === "Gate 3 pending" || gate === "Gate 2 passed") return "GATE_3_BUILD";
+  return null;
+}
 
-  if (item.state === "blocked" && !["Changes requested", "Rework", "Resubmitted"].includes(String(item.decision_status))) {
-    addFinding({ severity: "blocker", title: "Work is already blocked", detail: String(item.next_action), action: "Resolve or explicitly rule on the blocker before advancing the gate." });
-    dependencies.push(`Blocker resolution: ${String(item.next_action)}`);
-  }
-  if (!item.evidence_url) {
-    addFinding({
-      severity: item.decision_status === "Needed now" ? "blocker" : "should-fix",
-      title: "Decision evidence is missing",
-      detail: "The human cannot verify the recommendation against a durable artifact.",
-      action: "Attach the exact brief, exam, build, or observation artifact required by this gate.",
-    });
-  } else if (!evidence.text) {
-    addFinding({ severity: "should-fix", title: "Artifact needs direct human inspection", detail: evidence.scope, action: "Open the evidence link and verify the exact revision before ruling." });
-  }
-  if (!item.assignee_id) {
-    addFinding({ severity: "should-fix", title: "No accountable owner", detail: "The item has no human or agent assigned to resolve findings and execute the next action.", action: "Assign an owner before the item advances." });
-  }
-  if (item.workflow === "Unassigned") {
-    addFinding({ severity: "should-fix", title: "Workflow treatment is undecided", detail: "STEER, Control, and Setup work have different controls and measurement implications.", action: "Assign the treatment before delivery work begins." });
-  }
+function reviewError(error: unknown) {
+  const code = error instanceof Error && /^[A-Z0-9_]+$/.test(error.message) ? error.message : "REVIEW_REQUEST_INVALID";
+  return json({ error: "The signed review request did not satisfy the exact assignment contract.", code }, code === "REVIEW_SIGNER_UNAVAILABLE" ? 503 : 409);
+}
 
-  const gate = String(item.gate ?? "");
-  const evidenceText = evidence.text?.toLowerCase() ?? "";
-  if (gate === "Gate 1 pending" && evidence.text) {
-    const required = ["expected outcome", "what \"done and correct\" means", "out of scope", "risks", "design intent"];
-    const missing = required.filter((section) => !evidenceText.includes(section));
-    if (missing.length) addFinding({ severity: "should-fix", title: "Intent brief coverage is incomplete", detail: `The linked artifact does not clearly expose: ${missing.join(", ")}.`, action: "Clarify these sections before approving Gate 1." });
-    impacts.push("Approval authorizes exam design against this intent; ambiguity will propagate into tests and implementation.");
-  }
-  if (gate === "Gate 2 pending") {
-    const required = ["acceptance tests", "edge cases", "non-functional checks", "outcome instrumentation", "guardrails in force"];
-    const missing = evidence.text ? required.filter((section) => !evidenceText.includes(section)) : required;
-    if (missing.length) addFinding({ severity: evidence.text ? "should-fix" : "blocker", title: "Exam coverage needs confirmation", detail: `The review could not verify: ${missing.join(", ")}.`, action: "Confirm each required section expresses what correct means before approving Gate 2." });
-    else addFinding({ severity: "note", title: "Core Gate 2 sections are present", detail: "The exam exposes acceptance tests, attacks, non-functional checks, instrumentation, and named guardrails.", action: "Read for quality and omissions; presence alone does not prove sufficiency." });
-    impacts.push("Gate 2 approval freezes the exam and permits Builder implementation. Later exam changes require Tech Lead authorization.");
-  }
-  if (gate === "Gate 3 pending") {
-    const hasVerification = /\b(pass|passed|verified|green|successful)\b/i.test(evidence.text ?? "");
-    if (!hasVerification) addFinding({ severity: "blocker", title: "Verified-build evidence is not visible", detail: "Gate 3 needs a verified build, Critic findings, checks, rollout observation, and a rollback path.", action: "Attach the exact verified commit and required check evidence before release approval." });
-    impacts.push("Approval authorizes release to users and must include every tagged domain owner plus the independent-perspective rule.");
-  }
-
-  const defaultClosed = tags.filter((tag) => ["#security", "#privacy", "#money"].includes(tag));
-  if (defaultClosed.length) {
-    addFinding({ severity: "should-fix", title: "Default-closed controls apply", detail: `${defaultClosed.join(", ")} signals require conservative review, named authority, and the mandated cooling-off before Gate 3.`, action: "Confirm the specialist guardrails and cooling-off evidence are planned." });
-    dependencies.push(`Default-closed controls for ${defaultClosed.join(", ")}`);
-  }
-  if (tags.length) dependencies.push(`Derived domain coverage: ${tags.join(", ")}`);
-  if (gate.includes("pending") && ["Needed now", "Resubmitted"].includes(String(item.decision_status))) dependencies.push(`Authenticated ${String(item.decision_authority)} ruling for ${gate}`);
-  if (item.evidence_url) dependencies.push("Exact evidence revision must remain resolvable and match the ruling.");
-  if (/block buzz|railway/i.test(joinedText)) dependencies.push("External agent-operations availability in Block Buzz / Railway.");
-  if (item.workflow === "Setup / excluded") impacts.push("This item is excluded from the STEER-versus-Control outcome comparison; keep its effort out of experiment results.");
-  if (item.state === "blocked") impacts.push("Downstream work should not advance while the item remains blocked.");
-
-  const severityRank = { blocker: 0, "should-fix": 1, note: 2 } as const;
-  findings.sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
-  const cappedFindings = findings.slice(0, 3);
-  for (const finding of cappedFindings) if (finding.severity !== "note") actions.push(finding.action);
-  if (item.evidence_url) actions.push("Open the linked evidence and verify the exact revision, not only this summary.");
-  if (gate.includes("pending") && ["Needed now", "Resubmitted"].includes(String(item.decision_status))) actions.push(`Record the ${gate} ruling with concise evidence-based reasoning.`);
-  const uniqueActions = [...new Set(actions)].slice(0, 4);
-
-  const blockers = cappedFindings.filter((finding) => finding.severity === "blocker").length;
-  const shouldFix = cappedFindings.filter((finding) => finding.severity === "should-fix").length;
-  const recommendation = blockers ? "Resolve blockers before ruling" : shouldFix ? "Review with changes in mind" : "Ready for human review";
-  const summary = blockers
-    ? `The Critic found ${blockers} blocking condition${blockers === 1 ? "" : "s"}. Do not advance until the named action is resolved or explicitly ruled on.`
-    : shouldFix
-      ? `No automatic hard stop was found, but ${shouldFix} material concern${shouldFix === 1 ? "" : "s"} should shape the human review.`
-      : "No material control gap was visible in the reviewed scope. The human must still inspect the evidence and make the gate decision.";
-  const now = new Date().toISOString();
-  const reviewMode = evidence.text ? "structured_artifact_review" : "structured_workspace_review";
-  const confidence = evidence.text ? "Medium" : "Low";
-
-  const result = await db.prepare(
-    `INSERT INTO agent_reviews
-     (item_id, agent_id, review_mode, recommendation, confidence, summary, findings_json,
-      dependencies_json, impacts_json, actions_json, derived_tags_json, evidence_scope,
-      evidence_url, evidence_revision, evidence_sha256, reviewed_item_updated_at, requested_by, created_at)
-     VALUES (?, 'agent-critic', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(
-    itemId,
-    reviewMode,
-    recommendation,
-    confidence,
-    summary,
-    JSON.stringify(cappedFindings),
-    JSON.stringify([...new Set(dependencies)].slice(0, 5)),
-    JSON.stringify([...new Set(impacts)].slice(0, 4)),
-    JSON.stringify(uniqueActions),
-    JSON.stringify(tags),
-    evidence.scope,
-    evidence.sourceUrl,
-    evidence.revision,
-    evidence.sha256,
-    String(item.updated_at),
-    user.id,
-    now,
+async function appendReviewEvent(db: Database, event: Awaited<ReturnType<typeof createSignedReviewEvent>>, actorId: string, createdAt: string) {
+  await db.prepare(`INSERT INTO review_events
+    (assignment_id, event_version, expected_event_version, event_type, payload_json,
+     previous_event_sha256, event_sha256, service_key_id, service_key_version,
+     service_signature, reviewer_key_id, reviewer_key_version, reviewer_signature,
+     actor_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+    event.payload.review_assignment_id, event.payload.event_version, event.payload.expected_event_version,
+    event.payload.event_type, canonicalJson(event.envelope), event.payload.previous_event_sha256,
+    event.eventSha256, event.envelope.service_key_id, event.envelope.service_key_version,
+    event.envelope.service_signature, "reviewer_key_id" in event.envelope ? event.envelope.reviewer_key_id : null,
+    "reviewer_key_version" in event.envelope ? event.envelope.reviewer_key_version : null,
+    "reviewer_signature" in event.envelope ? event.envelope.reviewer_signature : null,
+    actorId, createdAt,
   ).run();
-  await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, 'agent-critic', 'agent_review', ?, ?)")
-    .bind(itemId, `${recommendation} · ${cappedFindings.length} significant finding${cappedFindings.length === 1 ? "" : "s"}`, now).run();
-  return json({ ok: true, reviewId: result.meta?.last_row_id, recommendation }, 201);
+}
+
+async function requestSignedCriticReview(request: Request, db: Database, env: Env, user: User, itemId: number) {
+  const item = await scopedItemOrDenied(db, user, itemId, "signed Critic review assignment");
+  if (!item) return json({ error: "Work item not found in your POD." }, 404);
+  const actor = await memberContext(db, user);
+  if (!actor || actor.kind !== "human") return json({ error: "Only an authenticated human Work Management actor may authorize a review assignment.", code: "REVIEW_AUTHORIZER_INVALID" }, 403);
+  const body = await request.json() as { stage?: unknown; target?: unknown; prior_binding_digests?: unknown };
+  const stage = String(body.stage ?? expectedReviewStage(item.gate) ?? "");
+  if (!stage || stage !== expectedReviewStage(item.gate)) return json({ error: "The requested review stage does not match the authoritative gate state.", code: "REVIEW_STAGE_STALE" }, 409);
+  const primary = item.assignee_id
+    ? await db.prepare("SELECT id, role FROM members WHERE id = ? AND pod_id = ?").bind(item.assignee_id, item.pod_id).first<{ id: string; role: string }>()
+    : null;
+  const reviewer = await db.prepare(`SELECT id, role, agent_key_id, agent_key_version, agent_public_key
+    FROM members WHERE id = 'agent-critic' AND pod_id = ? AND kind = 'agent' AND status = 'enrolled'`)
+    .bind(item.pod_id).first<{ id: string; role: string; agent_key_id: string; agent_key_version: number; agent_public_key: string }>();
+  if (!primary || !reviewer || !reviewer.agent_key_id || !reviewer.agent_key_version || !/^[0-9a-f]{64}$/.test(reviewer.agent_public_key)) {
+    return json({ error: "The primary owner or exact enrolled Critic signing identity is unavailable.", code: "REVIEW_IDENTITY_UNAVAILABLE" }, 409);
+  }
+  const privacyPolicy = await db.prepare(`SELECT * FROM dispatch_privacy_policies WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`)
+    .bind(item.pod_id).first<Record<string, unknown>>();
+  const privacyAllowed = privacyPolicy && Number(privacyPolicy.terminal_retention_days) === 90
+    && (String(privacyPolicy.status) === "ACTIVE" || env.DISPATCH_ALLOW_TEST_PRIVACY_POLICY === "true");
+  if (!privacyAllowed) return json({ error: "Review records are blocked until the 90-day privacy, deletion, and recovery policy is active.", code: "REVIEW_PRIVACY_POLICY_BLOCKED" }, 409);
+  try {
+    const target = body.target as ReviewAssignmentPayload["target"];
+    const targetManifestSha256 = String(target?.target_artifact_manifest_sha256 ?? "");
+    const now = new Date().toISOString();
+    const primaryClaimLineageId = await sha256Hex(canonicalJson({
+      schema: "steer-primary-claim-lineage/v1", workspace_pod_id: item.pod_id,
+      work_item_stable_id: itemId, work_item_key: item.key, workflow: item.workflow,
+      primary_owner_member_id: primary.id, primary_owner_role: primary.role,
+    }));
+    const authorizingEventId = await sha256Hex(canonicalJson({
+      schema: "steer-review-authorization/v1", workspace_pod_id: item.pod_id,
+      work_item_stable_id: itemId, item_revision: item.updated_at, review_stage: stage,
+      target_artifact_manifest_sha256: targetManifestSha256, actor_id: user.id,
+    }));
+    const payload: ReviewAssignmentPayload = {
+      schema: "steer-review-assignment/v1", work_item_stable_id: itemId,
+      work_item_key: String(item.key), workspace_pod_id: String(item.pod_id),
+      workflow: String(item.workflow), primary_claim_lineage_id: primaryClaimLineageId,
+      primary_owner_role: primary.role, primary_owner_member_id: primary.id,
+      review_stage: stage as ReviewAssignmentPayload["review_stage"], target,
+      prior_binding_digests: Array.isArray(body.prior_binding_digests) ? body.prior_binding_digests.map(String) : [],
+      reviewer_role: "Independent Critic", reviewer_member_id: reviewer.id,
+      output_contract: ["Severity-sorted advisory findings capped at three.", "Dependencies, downstream impacts, and fastest safe next actions.", "Exact evidence scope, revision, and content fingerprint."],
+      prohibitions: ["No primary claim or implementation authority.", "No human gate ruling.", "No merge, deployment, release, or closure authority."],
+      authorizing_actor_id: user.id, authorizing_event_id: authorizingEventId,
+      item_revision: String(item.updated_at),
+    };
+    await validateReviewAssignmentPayload(payload);
+    const identity = await buildReviewIdentity(payload);
+    const existing = await db.prepare("SELECT assignment_json FROM review_assignments WHERE assignment_id = ?")
+      .bind(identity.reviewAssignmentId).first<{ assignment_json: string }>();
+    if (existing) return json({ ok: true, idempotent_replay: true, assignment: JSON.parse(existing.assignment_json) });
+    const signer = reviewSigner(env);
+    const ready = await createSignedReviewEvent({ assignmentId: identity.reviewAssignmentId, eventVersion: 0, previousEventSha256: null, eventType: "REVIEW_TARGET_READY", occurredAt: now, targetManifestSha256, actorId: user.id, typedPayload: { item_revision: item.updated_at, clean_target_verified: true }, serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey });
+    const assigned = await createSignedReviewEvent({ assignmentId: identity.reviewAssignmentId, eventVersion: 1, previousEventSha256: ready.eventSha256, eventType: "REVIEW_ASSIGNED", occurredAt: now, targetManifestSha256, actorId: "work-management-authorization", typedPayload: { review_idempotency_key: identity.reviewIdempotencyKey, authorizing_event_id: authorizingEventId, reviewer_member_id: reviewer.id }, serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey });
+    const requested = await createSignedReviewEvent({ assignmentId: identity.reviewAssignmentId, eventVersion: 2, previousEventSha256: assigned.eventSha256, eventType: "REVIEW_REQUESTED", occurredAt: now, targetManifestSha256, actorId: "work-management-authorization", typedPayload: { assignment_event_sha256: assigned.eventSha256, canonical_route: "review-assignment-store" }, serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey });
+    const deleteAfter = new Date(Date.parse(now) + 90 * 24 * 60 * 60 * 1000).toISOString();
+    await db.batch([
+      db.prepare(`INSERT INTO review_assignments
+        (assignment_id, idempotency_key, item_id, pod_id, review_stage, reviewer_member_id,
+         primary_claim_lineage_id, item_revision, target_manifest_sha256, assignment_json,
+         current_state, current_event_version, current_event_sha256, authorizing_actor_id,
+         authorizing_event_id, created_at, delete_after)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REQUESTED', 2, ?, ?, ?, ?, ?)`)
+        .bind(identity.reviewAssignmentId, identity.reviewIdempotencyKey, itemId, item.pod_id, stage,
+          reviewer.id, primaryClaimLineageId, item.updated_at, targetManifestSha256,
+          canonicalJson({ ...payload, review_assignment_id: identity.reviewAssignmentId, review_idempotency_key: identity.reviewIdempotencyKey }),
+          requested.eventSha256, user.id, authorizingEventId, now, deleteAfter),
+      ...[ready, assigned, requested].map((event) => db.prepare(`INSERT INTO review_events
+        (assignment_id, event_version, expected_event_version, event_type, payload_json,
+         previous_event_sha256, event_sha256, service_key_id, service_key_version,
+         service_signature, actor_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+        identity.reviewAssignmentId, event.payload.event_version, event.payload.expected_event_version,
+        event.payload.event_type, canonicalJson(event.envelope), event.payload.previous_event_sha256,
+        event.eventSha256, signer.keyId, signer.keyVersion, event.envelope.service_signature,
+        event.payload.actor_id, now,
+      )),
+      db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at, review_assignment_id) VALUES (?, ?, 'review_requested', ?, ?, ?)")
+        .bind(itemId, user.id, `Signed ${stage} review requested from the enrolled Critic.`, now, identity.reviewAssignmentId),
+      db.prepare(`INSERT OR IGNORE INTO notifications
+        (dedupe_key, item_id, member_id, recipient_role, kind, title, body, channel, status, created_at, review_assignment_id)
+        VALUES (?, ?, ?, 'Independent Critic', 'review_assignment', ?, ?, 'review-assignment-store', 'queued', ?, ?)`)
+        .bind(`review-${identity.reviewAssignmentId}`, itemId, reviewer.id, `${String(item.key)} signed review requested`, `Exact target ${targetManifestSha256}.`, now, identity.reviewAssignmentId),
+    ]);
+    return json({ ok: true, idempotent_replay: false, assignment: { ...payload, review_assignment_id: identity.reviewAssignmentId, review_idempotency_key: identity.reviewIdempotencyKey }, request_event_sha256: requested.eventSha256 }, 201);
+  } catch (error) { return reviewError(error); }
+}
+
+async function acknowledgeSignedReview(request: Request, db: Database, env: Env, user: User, assignmentId: string) {
+  const assignment = await db.prepare(`SELECT a.*, w.updated_at, w.assignee_id, w.workflow,
+      m.agent_key_id, m.agent_key_version, m.agent_public_key
+    FROM review_assignments a JOIN work_items w ON w.id = a.item_id
+    JOIN members actor ON actor.id = ? AND actor.pod_id = a.pod_id
+    JOIN members m ON m.id = a.reviewer_member_id AND m.pod_id = a.pod_id
+    WHERE a.assignment_id = ?`).bind(user.id, assignmentId).first<Record<string, unknown>>();
+  if (!assignment) return json({ error: "Review assignment not found in your POD." }, 404);
+  if (user.id !== assignment.reviewer_member_id) return json({ error: "Only the exact enrolled reviewer may acknowledge this assignment.", code: "REVIEWER_MISMATCH" }, 403);
+  const existing = await db.prepare("SELECT payload_json FROM review_events WHERE assignment_id = ? AND event_type = 'REVIEW_ACKNOWLEDGED'").bind(assignmentId).first<{ payload_json: string }>();
+  const requestEvent = await db.prepare("SELECT event_sha256 FROM review_events WHERE assignment_id = ? AND event_type = 'REVIEW_REQUESTED'").bind(assignmentId).first<{ event_sha256: string }>();
+  const body = await request.json() as Record<string, unknown>;
+  const acknowledgedAt = String(body.acknowledged_at ?? "");
+  const reviewerPayload = { schema: "steer-review-acknowledgement/v1", review_assignment_id: assignmentId, target_artifact_manifest_sha256: assignment.target_manifest_sha256, source_request_event_sha256: requestEvent?.event_sha256, predecessor_event_sha256: requestEvent?.event_sha256, acknowledged_at: acknowledgedAt };
+  if (!requestEvent || String(body.member_id) !== assignment.reviewer_member_id || !Number.isFinite(Date.parse(acknowledgedAt)) || String(body.key_id) !== assignment.agent_key_id || Number(body.key_version) !== Number(assignment.agent_key_version) || !(await verifyReviewerBinding(reviewerPayload, String(body.signature ?? ""), String(assignment.agent_public_key)))) {
+    return json({ error: "The Critic acknowledgement signature or exact assignment binding is invalid.", code: "REVIEW_ACK_SIGNATURE_INVALID" }, 409);
+  }
+  if (existing) {
+    const stored = JSON.parse(existing.payload_json) as { payload?: { payload?: unknown }; reviewer_signature?: string };
+    if (canonicalJson(stored.payload?.payload) !== canonicalJson(reviewerPayload) || stored.reviewer_signature !== body.signature) {
+      return json({ error: "A different acknowledgement already closes this assignment step.", code: "REVIEW_ACK_REPLAY_MISMATCH" }, 409);
+    }
+    return json({ ok: true, idempotent_replay: true, event: stored });
+  }
+  try {
+    const signer = reviewSigner(env);
+    const event = await createSignedReviewEvent({ assignmentId, eventVersion: 3, previousEventSha256: requestEvent.event_sha256, eventType: "REVIEW_ACKNOWLEDGED", occurredAt: acknowledgedAt, targetManifestSha256: String(assignment.target_manifest_sha256), actorId: user.id, typedPayload: reviewerPayload, serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey, reviewerKeyId: String(assignment.agent_key_id), reviewerKeyVersion: Number(assignment.agent_key_version), reviewerSignature: String(body.signature) });
+    await appendReviewEvent(db, event, user.id, acknowledgedAt);
+    return json({ ok: true, idempotent_replay: false, event: event.envelope }, 201);
+  } catch (error) { return reviewError(error); }
+}
+
+type SignedCriticResult = {
+  recommendation: string; confidence: string; summary: string; findings: Finding[];
+  dependencies: string[]; impacts: string[]; actions: string[]; derived_tags: string[];
+  evidence_scope: string; completed_at: string;
+};
+
+function validSignedCriticResult(value: unknown): value is SignedCriticResult {
+  if (!value || typeof value !== "object") return false;
+  const result = value as SignedCriticResult;
+  const allowedSeverity = new Set(["blocker", "should-fix", "note"]);
+  return [result.recommendation, result.confidence, result.summary, result.evidence_scope, result.completed_at].every((entry) => typeof entry === "string" && entry.length > 0 && entry.length <= 4000)
+    && Number.isFinite(Date.parse(result.completed_at))
+    && Array.isArray(result.findings) && result.findings.length <= 3
+    && result.findings.every((finding) => allowedSeverity.has(finding.severity) && [finding.title, finding.detail, finding.action].every((entry) => typeof entry === "string" && entry.length > 0 && entry.length <= 4000))
+    && [result.dependencies, result.impacts, result.actions, result.derived_tags].every((entries) => Array.isArray(entries) && entries.length <= 12 && entries.every((entry) => typeof entry === "string" && entry.length <= 1000));
+}
+
+async function recordSignedReviewResult(request: Request, db: Database, env: Env, user: User, assignmentId: string) {
+  const assignment = await db.prepare(`SELECT a.*, w.updated_at, w.assignee_id, w.workflow,
+      m.agent_key_id, m.agent_key_version, m.agent_public_key
+    FROM review_assignments a JOIN work_items w ON w.id = a.item_id
+    JOIN members actor ON actor.id = ? AND actor.pod_id = a.pod_id
+    JOIN members m ON m.id = a.reviewer_member_id AND m.pod_id = a.pod_id
+    WHERE a.assignment_id = ?`).bind(user.id, assignmentId).first<Record<string, unknown>>();
+  if (!assignment) return json({ error: "Review assignment not found in your POD." }, 404);
+  if (user.id !== assignment.reviewer_member_id) return json({ error: "Only the exact enrolled reviewer may record this result.", code: "REVIEWER_MISMATCH" }, 403);
+  if (String(assignment.updated_at) !== String(assignment.item_revision) || String(assignment.assignee_id) !== String((JSON.parse(String(assignment.assignment_json)) as ReviewAssignmentPayload).primary_owner_member_id) || String(assignment.workflow) !== String((JSON.parse(String(assignment.assignment_json)) as ReviewAssignmentPayload).workflow)) {
+    return json({ error: "The item, owner, workflow, or primary claim binding changed after assignment.", code: "REVIEW_ASSIGNMENT_STALE" }, 409);
+  }
+  const acknowledgement = await db.prepare("SELECT event_sha256 FROM review_events WHERE assignment_id = ? AND event_type = 'REVIEW_ACKNOWLEDGED'").bind(assignmentId).first<{ event_sha256: string }>();
+  if (!acknowledgement) return json({ error: "A signed acknowledgement must precede the review result.", code: "REVIEW_ACK_REQUIRED" }, 409);
+  const existing = await db.prepare("SELECT payload_json FROM review_events WHERE assignment_id = ? AND event_type = 'REVIEW_RESULT_RECORDED'").bind(assignmentId).first<{ payload_json: string }>();
+  const body = await request.json() as Record<string, unknown>;
+  const result = body.result;
+  if (!validSignedCriticResult(result)) return json({ error: "The Critic result does not satisfy the bounded output contract.", code: "REVIEW_RESULT_INVALID" }, 400);
+  const resultSha256 = await sha256Hex(canonicalJson(result));
+  const reviewerPayload = { schema: "steer-review-result/v1", review_assignment_id: assignmentId, target_artifact_manifest_sha256: assignment.target_manifest_sha256, predecessor_event_sha256: acknowledgement.event_sha256, result_sha256: resultSha256, result };
+  if (String(body.member_id) !== assignment.reviewer_member_id || String(body.key_id) !== assignment.agent_key_id || Number(body.key_version) !== Number(assignment.agent_key_version) || !(await verifyReviewerBinding(reviewerPayload, String(body.signature ?? ""), String(assignment.agent_public_key)))) {
+    return json({ error: "The Critic result signature or exact assignment binding is invalid.", code: "REVIEW_RESULT_SIGNATURE_INVALID" }, 409);
+  }
+  if (existing) {
+    const stored = JSON.parse(existing.payload_json) as { payload?: { payload?: unknown }; reviewer_signature?: string };
+    if (canonicalJson(stored.payload?.payload) !== canonicalJson(reviewerPayload) || stored.reviewer_signature !== body.signature) {
+      return json({ error: "A different result already closes this assignment.", code: "REVIEW_RESULT_REPLAY_MISMATCH" }, 409);
+    }
+    return json({ ok: true, idempotent_replay: true, event: stored });
+  }
+  try {
+    const signer = reviewSigner(env);
+    const event = await createSignedReviewEvent({ assignmentId, eventVersion: 4, previousEventSha256: acknowledgement.event_sha256, eventType: "REVIEW_RESULT_RECORDED", occurredAt: result.completed_at, targetManifestSha256: String(assignment.target_manifest_sha256), actorId: user.id, typedPayload: reviewerPayload, serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey, reviewerKeyId: String(assignment.agent_key_id), reviewerKeyVersion: Number(assignment.agent_key_version), reviewerSignature: String(body.signature) });
+    const assignmentPayload = JSON.parse(String(assignment.assignment_json)) as ReviewAssignmentPayload;
+    await db.batch([
+      db.prepare(`INSERT INTO review_events
+        (assignment_id, event_version, expected_event_version, event_type, payload_json,
+         previous_event_sha256, event_sha256, service_key_id, service_key_version,
+         service_signature, reviewer_key_id, reviewer_key_version, reviewer_signature,
+         actor_id, created_at) VALUES (?, 4, 3, 'REVIEW_RESULT_RECORDED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(assignmentId, canonicalJson(event.envelope), acknowledgement.event_sha256, event.eventSha256,
+          signer.keyId, signer.keyVersion, event.envelope.service_signature, assignment.agent_key_id,
+          assignment.agent_key_version, body.signature, user.id, result.completed_at),
+      db.prepare(`INSERT INTO agent_reviews
+        (item_id, agent_id, review_mode, recommendation, confidence, summary, findings_json,
+         dependencies_json, impacts_json, actions_json, derived_tags_json, evidence_scope,
+         evidence_url, evidence_revision, evidence_sha256, reviewed_item_updated_at, requested_by, created_at,
+         review_assignment_id)
+        VALUES (?, ?, 'signed_assignment_review', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(assignment.item_id, user.id, result.recommendation, result.confidence, result.summary,
+          JSON.stringify(result.findings), JSON.stringify(result.dependencies), JSON.stringify(result.impacts),
+          JSON.stringify(result.actions), JSON.stringify(result.derived_tags), result.evidence_scope,
+          assignmentPayload.target.target_artifacts[0]?.url ?? null,
+          assignmentPayload.target.target_git_commit_oid, assignment.target_manifest_sha256,
+          assignment.item_revision, assignment.authorizing_actor_id, result.completed_at, assignmentId),
+      db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at, review_assignment_id) VALUES (?, ?, 'agent_review', ?, ?, ?)")
+        .bind(assignment.item_id, user.id, `${result.recommendation} · signed review recorded`, result.completed_at, assignmentId),
+    ]);
+    return json({ ok: true, idempotent_replay: false, review_assignment_id: assignmentId, result_sha256: resultSha256 }, 201);
+  } catch (error) {
+    const raced = await db.prepare("SELECT event_sha256 FROM review_events WHERE assignment_id = ? AND event_type = 'REVIEW_RESULT_RECORDED'").bind(assignmentId).first<{ event_sha256: string }>();
+    if (raced) return json({ ok: true, idempotent_replay: true, review_assignment_id: assignmentId });
+    return reviewError(error);
+  }
+}
+
+async function manageReviewRetentionHold(request: Request, db: Database, user: User, assignmentId: string) {
+  const member = await memberContext(db, user);
+  if (!member || member.kind !== "human" || !/(Tech Lead|Platform|Ops Lead|Security)/.test(member.role)) {
+    return json({ error: "A named Tech, Platform / Ops, or Security authority must manage review retention holds." }, 403);
+  }
+  const assignment = await db.prepare(`SELECT a.assignment_id FROM review_assignments a
+    JOIN members actor ON actor.id = ? AND actor.pod_id = a.pod_id WHERE a.assignment_id = ?`)
+    .bind(user.id, assignmentId).first<{ assignment_id: string }>();
+  if (!assignment) return json({ error: "Review assignment not found in your POD." }, 404);
+  const body = await request.json() as Record<string, unknown>;
+  const action = String(body.action ?? "");
+  const reasonCode = String(body.reason_code ?? "");
+  if (!["HOLD", "RELEASE"].includes(action) || !/^[A-Z0-9_:-]{3,64}$/.test(reasonCode)) return json({ error: "Use HOLD or RELEASE with a bounded no-PII reason code." }, 400);
+  const now = new Date();
+  const expiry = action === "HOLD" ? Date.parse(String(body.expires_at ?? "")) : now.getTime() + 1000;
+  if (!Number.isFinite(expiry) || expiry <= now.getTime() || expiry > now.getTime() + 365 * 24 * 60 * 60 * 1000) return json({ error: "A hold must have an explicit future expiry no more than 365 days away." }, 400);
+  const holdEventId = crypto.randomUUID();
+  await db.prepare(`INSERT INTO review_retention_holds
+    (hold_event_id, assignment_id, action, reason_code, expires_at, actor_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(holdEventId, assignmentId, action, reasonCode, new Date(expiry).toISOString(), user.id, now.toISOString()).run();
+  return json({ ok: true, hold_event_id: holdEventId, action, expires_at: new Date(expiry).toISOString() }, 201);
+}
+
+async function runReviewRetention(request: Request, db: Database, env: Env) {
+  const expected = String(env.REVIEW_SERVICE_TOKEN ?? "");
+  const provided = request.headers.get("authorization") ?? "";
+  if (expected.length < 32 || provided !== `Bearer ${expected}`) return json({ error: "Review retention service authentication failed." }, 401);
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const now = new Date();
+  const cutoff = body.cutoff_at ? new Date(String(body.cutoff_at)) : now;
+  if (!Number.isFinite(cutoff.getTime()) || cutoff.getTime() > now.getTime() + 60_000) return json({ error: "The retention cutoff is invalid." }, 400);
+  const candidates = await db.prepare(`SELECT a.assignment_id FROM review_assignments a
+    JOIN review_events result ON result.assignment_id = a.assignment_id AND result.event_type = 'REVIEW_RESULT_RECORDED'
+    WHERE unixepoch(result.created_at, '+90 days') <= unixepoch(?)
+      AND NOT EXISTS (
+        SELECT 1 FROM review_retention_holds h
+        WHERE h.assignment_id = a.assignment_id AND h.action = 'HOLD'
+          AND unixepoch(h.expires_at) > unixepoch(?)
+          AND NOT EXISTS (
+            SELECT 1 FROM review_retention_holds release
+            WHERE release.assignment_id = h.assignment_id AND release.action = 'RELEASE'
+              AND unixepoch(release.created_at) >= unixepoch(h.created_at)
+          )
+      ) ORDER BY result.created_at LIMIT 100`).bind(cutoff.toISOString(), cutoff.toISOString()).all<{ assignment_id: string }>();
+  let deleted = 0;
+  for (const candidate of candidates.results ?? []) {
+    const nonce = crypto.randomUUID();
+    const authorizationExpiry = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
+    await db.batch([
+      db.prepare("INSERT OR REPLACE INTO review_retention_authorizations (assignment_id, authorization_nonce, expires_at) VALUES (?, ?, ?)").bind(candidate.assignment_id, nonce, authorizationExpiry),
+      db.prepare("DELETE FROM agent_reviews WHERE review_assignment_id = ?").bind(candidate.assignment_id),
+      db.prepare("DELETE FROM activity WHERE review_assignment_id = ?").bind(candidate.assignment_id),
+      db.prepare("DELETE FROM notifications WHERE review_assignment_id = ?").bind(candidate.assignment_id),
+      db.prepare("DELETE FROM review_events WHERE assignment_id = ?").bind(candidate.assignment_id),
+      db.prepare("DELETE FROM review_retention_holds WHERE assignment_id = ?").bind(candidate.assignment_id),
+      db.prepare("DELETE FROM review_assignments WHERE assignment_id = ?").bind(candidate.assignment_id),
+      db.prepare("DELETE FROM review_retention_authorizations WHERE assignment_id = ? AND authorization_nonce = ?").bind(candidate.assignment_id, nonce),
+    ]);
+    deleted += 1;
+  }
+  await db.prepare("INSERT INTO review_retention_runs (cutoff_at, eligible_count, deleted_count, created_at) VALUES (?, ?, ?, ?)")
+    .bind(cutoff.toISOString(), (candidates.results ?? []).length, deleted, now.toISOString()).run();
+  return json({ ok: true, eligible_count: (candidates.results ?? []).length, deleted_count: deleted });
+}
+
+async function handleSignedReviewService(request: Request, db: Database, env: Env): Promise<Response | null> {
+  const url = new URL(request.url);
+  const acknowledgement = url.pathname.match(/^\/api\/review-assignments\/([0-9a-f]{64})\/acknowledgements$/);
+  const result = url.pathname.match(/^\/api\/review-assignments\/([0-9a-f]{64})\/results$/);
+  if (request.method !== "POST" || (!acknowledgement && !result)) return null;
+  const expected = String(env.REVIEW_SERVICE_TOKEN ?? "");
+  if (expected.length < 32 || request.headers.get("authorization") !== `Bearer ${expected}`) return json({ error: "Signed review service authentication failed." }, 401);
+  const body = await request.clone().json().catch(() => null) as Record<string, unknown> | null;
+  const memberId = String(body?.member_id ?? "");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(memberId)) return json({ error: "An enrolled reviewer member ID is required." }, 400);
+  const reviewerUser: User = { id: memberId, email: null, name: "Enrolled reviewer" };
+  if (acknowledgement) return acknowledgeSignedReview(request, db, env, reviewerUser, acknowledgement[1]);
+  return recordSignedReviewResult(request, db, env, reviewerUser, result![1]);
 }
 
 function reworkAssigneeForGate(gate: string) {
@@ -2530,6 +2787,9 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     await ensureSchema(env.DB);
     const dispatchServiceResponse = await handleDispatchServiceApi(request, env.DB, env);
     if (dispatchServiceResponse) return dispatchServiceResponse;
+    if (request.method === "POST" && url.pathname === "/api/review-retention/run") return runReviewRetention(request, env.DB, env);
+    const signedReviewServiceResponse = await handleSignedReviewService(request, env.DB, env);
+    if (signedReviewServiceResponse) return signedReviewServiceResponse;
     const user = userFrom(request);
     if (!user) return json({ error: "Authentication required." }, 401);
     await ensureCurrentUser(env.DB, user);
@@ -2542,7 +2802,9 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     const economicsMatch = url.pathname.match(/^\/api\/items\/(\d+)\/work-economics$/);
     if (request.method === "PATCH" && economicsMatch) return updateWorkEconomics(request, env.DB, user, Number(economicsMatch[1]));
     const reviewMatch = url.pathname.match(/^\/api\/items\/(\d+)\/reviews$/);
-    if (request.method === "POST" && reviewMatch) return runCriticReview(env.DB, user, Number(reviewMatch[1]));
+    if (request.method === "POST" && reviewMatch) return requestSignedCriticReview(request, env.DB, env, user, Number(reviewMatch[1]));
+    const reviewRetentionHoldMatch = url.pathname.match(/^\/api\/review-assignments\/([0-9a-f]{64})\/retention-holds$/);
+    if (request.method === "POST" && reviewRetentionHoldMatch) return manageReviewRetentionHold(request, env.DB, user, reviewRetentionHoldMatch[1]);
     const dispatchMatch = url.pathname.match(/^\/api\/items\/(\d+)\/dispatch$/);
     if (request.method === "POST" && dispatchMatch) return authorizeAgentDispatch(env.DB, env, user, Number(dispatchMatch[1]));
     const retentionHoldMatch = url.pathname.match(/^\/api\/dispatches\/([0-9a-f]{64})\/retention-holds$/);
