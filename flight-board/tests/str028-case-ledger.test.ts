@@ -3,11 +3,11 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { STR028_CASE_IDS, STR028_FROZEN_SUBSTEPS } from "../lib/str028-manifest";
 
-const ledger = JSON.parse(await readFile(new URL("../../steer/evidence/0028-case-ledger-0fbf1b0.json", import.meta.url), "utf8")) as Record<string, unknown>;
+const ledger = JSON.parse(await readFile(new URL("../../steer/evidence/0028-case-ledger-14c92ed.json", import.meta.url), "utf8")) as Record<string, unknown>;
 
 test("STR-028 measured ledger closes the exact 20-case denominator and both p95 budgets", () => {
   assert.equal(ledger.schema, "steer-str028-case-ledger/v1");
-  assert.equal(ledger.target_commit, "0fbf1b06b4597ce6bfee934c8389a681e73c7891");
+  assert.equal(ledger.target_commit, "14c92ed19fd63f1e08e94c74dd20b395b786881a");
   assert.equal(ledger.denominator, 20);
   assert.deepEqual(ledger.missing_case_ids, []);
   assert.equal(ledger.terminal_ui_feedback_observations, 20);
