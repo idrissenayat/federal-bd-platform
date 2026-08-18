@@ -188,6 +188,82 @@ test("FAIL-01 rejects stale mutation revision r0 against authoritative r1 withou
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM activity WHERE item_id = ?").get(itemId)!.total, 0);
 });
 
+test("SAVE-01 populates an empty optional Work Economics forecast from the authoritative response", async () => {
+  const { db, itemId } = await setup();
+  db.sqlite.prepare("UPDATE work_items SET delivery_forecast_json = NULL WHERE id = ?").run(itemId);
+  const response = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", {
+    section: "deliveryForecast", value: forecast, reason: "SAVE-01 populated forecast",
+  }), { DB: db });
+  assert.equal(response?.status, 200, await response?.text());
+  const stored = JSON.parse(String(db.sqlite.prepare("SELECT delivery_forecast_json FROM work_items WHERE id = ?").get(itemId)!.delivery_forecast_json));
+  assert.equal(stored.acceptedBy, "member-a");
+  assert.equal(db.sqlite.prepare("SELECT action FROM work_economics_events WHERE item_id = ?").get(itemId)!.action, "accepted");
+});
+
+test("SAVE-02 replaces an existing Work Economics forecast with one audited correction", async () => {
+  const { db, itemId } = await setup();
+  const replacement = { ...forecast, nextMilestone: "SAVE-02 corrected milestone", changeReason: "SAVE-02 audited correction" };
+  const response = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", {
+    section: "deliveryForecast", value: replacement, reason: "SAVE-02 audited correction",
+  }), { DB: db });
+  assert.equal(response?.status, 200, await response?.text());
+  const event = db.sqlite.prepare("SELECT action, previous_json, replacement_json FROM work_economics_events WHERE item_id = ?").get(itemId)!;
+  assert.equal(event.action, "corrected");
+  assert.ok(event.previous_json);
+  assert.equal(JSON.parse(String(event.replacement_json)).nextMilestone, "SAVE-02 corrected milestone");
+});
+
+test("SAVE-03 accepts valid lower-bound numeric forecast values", async () => {
+  const { db, itemId } = await setup();
+  const lowerBound = {
+    ...forecast,
+    sizeBand: "XS",
+    humanEffortRanges: [{ role: "Delivery roles", minMinutes: 0, maxMinutes: 0 }],
+    agentCostRanges: [{ provider: "OpenAI", minCost: 0, maxCost: 0, currency: "USD", expectedAttempts: 0 }],
+    complexity: 1, uncertainty: 1, coordination: 1,
+    changeReason: "SAVE-03 valid lower bounds",
+  };
+  const response = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", {
+    section: "deliveryForecast", value: lowerBound, reason: "SAVE-03 valid lower bounds",
+  }), { DB: db });
+  assert.equal(response?.status, 200, await response?.text());
+  const stored = JSON.parse(String(db.sqlite.prepare("SELECT delivery_forecast_json FROM work_items WHERE id = ?").get(itemId)!.delivery_forecast_json));
+  assert.deepEqual(stored.humanEffortRanges[0], { role: "Delivery roles", minMinutes: 0, maxMinutes: 0 });
+  assert.equal(stored.complexity, 1);
+});
+
+test("SAVE-04 accepts valid upper rubric values and long permitted text", async () => {
+  const { db, itemId } = await setup();
+  const longBasis = `SAVE-04 ${"bounded planning detail ".repeat(80)}`.trim();
+  const upperBound = {
+    ...forecast,
+    sizeBand: "XL",
+    humanEffortRanges: [{ role: "Delivery roles", minMinutes: 100_000, maxMinutes: 100_000 }],
+    agentCostRanges: [{ provider: "OpenAI", minCost: 100_000, maxCost: 100_000, currency: "USD", expectedAttempts: 100_000 }],
+    complexity: 5, uncertainty: 5, coordination: 5,
+    basis: longBasis,
+    changeReason: "SAVE-04 valid upper rubric and long text",
+  };
+  const response = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", {
+    section: "deliveryForecast", value: upperBound, reason: "SAVE-04 valid upper rubric and long text",
+  }), { DB: db });
+  assert.equal(response?.status, 200, await response?.text());
+  const stored = JSON.parse(String(db.sqlite.prepare("SELECT delivery_forecast_json FROM work_items WHERE id = ?").get(itemId)!.delivery_forecast_json));
+  assert.equal(stored.basis, longBasis);
+  assert.equal(stored.complexity, 5);
+});
+
+test("FAIL-02 rejects an invalid Work Economics field set without overwriting r1", async () => {
+  const { db, itemId } = await setup();
+  const response = await handleApi(request("member-a", `/api/items/${itemId}/work-economics`, "PATCH", {
+    section: "deliveryForecast", value: { ...forecast, injectedField: "not permitted" }, reason: "FAIL-02 invalid field set",
+  }), { DB: db });
+  assert.equal(response?.status, 400, await response?.clone().text());
+  assert.match(String((await response?.json() as { error: string }).error), /not an allowed field/);
+  assert.equal(db.sqlite.prepare("SELECT delivery_forecast_json FROM work_items WHERE id = ?").get(itemId)!.delivery_forecast_json, JSON.stringify(forecast));
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM work_economics_events WHERE item_id = ?").get(itemId)!.total, 0);
+});
+
 test("FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic", async () => {
   const cases: Array<{ id: string; code: string; mutate(db: D1Database): void }> = [
     {
