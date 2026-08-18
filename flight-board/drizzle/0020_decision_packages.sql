@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS `decision_intents` (
   `current_state` text NOT NULL,
   `current_sequence` integer NOT NULL,
   `current_event_sha256` text NOT NULL,
-  `required_countersignatures` integer NOT NULL DEFAULT 0,
+  `required_countersignatures` integer NOT NULL DEFAULT 1,
   `accepted_countersignatures` integer NOT NULL DEFAULT 0,
   `submitter_id` text NOT NULL,
   `submitter_role` text NOT NULL,
@@ -49,6 +49,19 @@ CREATE TABLE IF NOT EXISTS `decision_proof_events` (
 );
 CREATE INDEX IF NOT EXISTS `idx_decision_proof_events_intent_created` ON `decision_proof_events` (`intent_id`,`created_at`);
 
+CREATE TABLE IF NOT EXISTS `decision_issuer_signers` (
+  `pod_id` text NOT NULL, `key_id` text NOT NULL, `key_version` integer NOT NULL,
+  `public_key` text NOT NULL, `status` text NOT NULL, `activated_by` text NOT NULL,
+  `activation_reason` text NOT NULL, `created_at` text NOT NULL,
+  UNIQUE(`pod_id`,`key_id`,`key_version`)
+);
+CREATE INDEX IF NOT EXISTS `idx_decision_issuer_signers_active` ON `decision_issuer_signers` (`pod_id`,`status`);
+
+CREATE TABLE IF NOT EXISTS `decision_issuer_envelopes` (
+  `intent_id` text PRIMARY KEY NOT NULL, `key_id` text NOT NULL, `key_version` integer NOT NULL,
+  `envelope_json` text NOT NULL, `envelope_sha256` text NOT NULL, `created_at` text NOT NULL
+);
+
 CREATE TRIGGER IF NOT EXISTS `decision_packages_no_update`
 BEFORE UPDATE ON `decision_packages` BEGIN SELECT RAISE(ABORT, 'decision packages are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS `decision_packages_no_delete`
@@ -60,3 +73,9 @@ CREATE TRIGGER IF NOT EXISTS `decision_proof_events_no_update`
 BEFORE UPDATE ON `decision_proof_events` BEGIN SELECT RAISE(ABORT, 'decision proof events are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS `decision_proof_events_no_delete`
 BEFORE DELETE ON `decision_proof_events` BEGIN SELECT RAISE(ABORT, 'decision proof events require governed retention'); END;
+CREATE TRIGGER IF NOT EXISTS `decision_issuer_signers_no_update`
+BEFORE UPDATE ON `decision_issuer_signers` BEGIN SELECT RAISE(ABORT, 'decision issuer signer records are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS `decision_issuer_envelopes_no_update`
+BEFORE UPDATE ON `decision_issuer_envelopes` BEGIN SELECT RAISE(ABORT, 'decision issuer envelopes are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS `decision_issuer_envelopes_no_delete`
+BEFORE DELETE ON `decision_issuer_envelopes` BEGIN SELECT RAISE(ABORT, 'decision issuer envelopes require governed retention'); END;

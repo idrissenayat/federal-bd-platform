@@ -1,4 +1,5 @@
 import { canonicalJson, sha256Hex } from "./dispatch-lifecycle";
+import { ed25519 } from "@noble/curves/ed25519.js";
 
 export type DecisionPackageState =
   | "PENDING_PROOF"
@@ -102,6 +103,80 @@ export function applyDecisionProofState(current: DecisionPackageState, event: "I
 
 export async function decisionDigest(value: unknown) {
   return sha256Hex(canonicalJson(value));
+}
+
+function hexBytes(value: string) {
+  if (!/^[0-9a-f]+$/.test(value) || value.length % 2 !== 0) throw new Error("Expected lowercase hexadecimal bytes.");
+  return Uint8Array.from(value.match(/.{2}/g)?.map((byte) => Number.parseInt(byte, 16)) ?? []);
+}
+
+function bytesHex(value: Uint8Array) {
+  return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function u64be(value: number) {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error("Canonical byte lengths must be non-negative safe integers.");
+  const bytes = new Uint8Array(8);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, Math.floor(value / 4_294_967_296));
+  view.setUint32(4, value >>> 0);
+  return bytes;
+}
+
+function concatBytes(...parts: Uint8Array[]) {
+  const length = parts.reduce((sum, part) => sum + part.length, 0);
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const part of parts) { result.set(part, offset); offset += part.length; }
+  return result;
+}
+
+export function gateReceiptSignedBytes(header: Record<string, unknown>, payload: Record<string, unknown>) {
+  const encoder = new TextEncoder();
+  const domain = encoder.encode("STEER_GATE_RECEIPT_V1\0");
+  const headerBytes = encoder.encode(canonicalJson(header));
+  const payloadBytes = encoder.encode(canonicalJson(payload));
+  return concatBytes(domain, u64be(headerBytes.length), headerBytes, u64be(payloadBytes.length), payloadBytes);
+}
+
+export function decisionIssuerPublicKey(privateKeyHex: string) {
+  if (!/^[0-9a-f]{64}$/.test(privateKeyHex)) throw new Error("The decision issuer private key must be 32-byte lowercase hex.");
+  return bytesHex(ed25519.getPublicKey(hexBytes(privateKeyHex)));
+}
+
+export async function createDecisionIssuerEnvelope(input: {
+  intent: DecisionIntentPayload;
+  privateKeyHex: string;
+  keyId: string;
+  issuerPrincipal: string;
+  issuedAt: string;
+}) {
+  const payload = {
+    schema: "steer.gate-receipt.payload.v1", receipt_id: input.intent.receipt_id,
+    intent_id: input.intent.intent_id, package_id: input.intent.package_id,
+    item_key: input.intent.item_key, decision_kind: input.intent.decision_kind,
+    decision: input.intent.decision, final_reasoning_sha256: await sha256Hex(input.intent.final_reasoning),
+    target: input.intent.target, submitter_principal: input.intent.submitter_principal,
+    submitter_role: input.intent.submitter_role, submitted_at: input.intent.submitted_at,
+    sequence: input.intent.sequence,
+  };
+  const payloadSha256 = await decisionDigest(payload);
+  const header = {
+    schema: "steer.gate-receipt.signature.v1", algorithm: "Ed25519",
+    canonicalization: "RFC8785-JCS", media_type: "application/steer.gate-receipt+json;profile=v1",
+    payload_sha256: payloadSha256, issuer_principal: input.issuerPrincipal,
+    issuer_key_id: input.keyId, purpose: "issuer-attestation", audience: "STEER Work Management",
+    issued_at: input.issuedAt,
+  };
+  const signedBytes = gateReceiptSignedBytes(header, payload);
+  const signature = bytesHex(ed25519.sign(signedBytes, hexBytes(input.privateKeyHex)));
+  return { schema: "steer.gate-receipt.envelope.v1", header, payload, signature };
+}
+
+export async function verifyDecisionIssuerEnvelope(envelope: Awaited<ReturnType<typeof createDecisionIssuerEnvelope>>, publicKeyHex: string) {
+  if (!/^[0-9a-f]{64}$/.test(publicKeyHex) || !/^[0-9a-f]{128}$/.test(envelope.signature)) return false;
+  if (envelope.header.payload_sha256 !== await decisionDigest(envelope.payload)) return false;
+  return ed25519.verify(hexBytes(envelope.signature), gateReceiptSignedBytes(envelope.header, envelope.payload), hexBytes(publicKeyHex));
 }
 
 export async function buildDecisionEvent(input: {

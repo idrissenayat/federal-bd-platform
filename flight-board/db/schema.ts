@@ -208,6 +208,24 @@ export const decisionProofEvents = sqliteTable(
   (table) => [index("idx_decision_proof_events_intent_created").on(table.intentId, table.createdAt), uniqueIndex("uq_decision_proof_events_intent_sequence").on(table.intentId, table.sequence)],
 );
 
+export const decisionIssuerSigners = sqliteTable(
+  "decision_issuer_signers",
+  {
+    podId: text("pod_id").notNull(), keyId: text("key_id").notNull(), keyVersion: integer("key_version").notNull(),
+    publicKey: text("public_key").notNull(), status: text("status").notNull(), activatedBy: text("activated_by").notNull(),
+    activationReason: text("activation_reason").notNull(), createdAt: text("created_at").notNull(),
+  },
+  (table) => [uniqueIndex("uq_decision_issuer_signer").on(table.podId, table.keyId, table.keyVersion), index("idx_decision_issuer_signers_active").on(table.podId, table.status)],
+);
+
+export const decisionIssuerEnvelopes = sqliteTable(
+  "decision_issuer_envelopes",
+  {
+    intentId: text("intent_id").primaryKey(), keyId: text("key_id").notNull(), keyVersion: integer("key_version").notNull(),
+    envelopeJson: text("envelope_json").notNull(), envelopeSha256: text("envelope_sha256").notNull(), createdAt: text("created_at").notNull(),
+  },
+);
+
 export const agentReviews = sqliteTable(
   "agent_reviews",
   {

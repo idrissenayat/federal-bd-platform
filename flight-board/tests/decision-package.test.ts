@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyDecisionProofState, buildDecisionEvent, createUuidV7, decisionDigest, safeDecisionExport, validateDecisionIntent, type DecisionIntentPayload } from "../lib/decision-package";
+import { applyDecisionProofState, buildDecisionEvent, createDecisionIssuerEnvelope, createUuidV7, decisionDigest, decisionIssuerPublicKey, gateReceiptSignedBytes, safeDecisionExport, validateDecisionIntent, verifyDecisionIssuerEnvelope, type DecisionIntentPayload } from "../lib/decision-package";
 
 function intent(): DecisionIntentPayload {
   return {
@@ -44,4 +44,13 @@ test("pending exports cannot be mistaken for approval and events are chained", a
   const exported = safeDecisionExport(payload, "PENDING_PROOF", first.event_sha256);
   assert.equal(exported.effective, false);
   assert.match(exported.notice, /no Gate or RAT effect/);
+});
+
+test("issuer proof signs exact domain-separated canonical receipt bytes", async () => {
+  const privateKey = "1".repeat(64);
+  const envelope = await createDecisionIssuerEnvelope({ intent: intent(), privateKeyHex: privateKey, keyId: "steer-decision-issuer", issuerPrincipal: "decision-proof-service", issuedAt: "2026-08-18T23:10:00Z" });
+  assert.equal(await verifyDecisionIssuerEnvelope(envelope, decisionIssuerPublicKey(privateKey)), true);
+  assert.equal(new TextDecoder().decode(gateReceiptSignedBytes(envelope.header, envelope.payload)).startsWith("STEER_GATE_RECEIPT_V1\0"), true);
+  const transplanted = { ...envelope, payload: { ...envelope.payload, item_key: "STR-999" } };
+  assert.equal(await verifyDecisionIssuerEnvelope(transplanted, decisionIssuerPublicKey(privateKey)), false);
 });
