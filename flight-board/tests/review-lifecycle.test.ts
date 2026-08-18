@@ -117,11 +117,16 @@ test("the STR-028 Gate 3 packet is an exact valid signed-review target", async (
   const packet = JSON.parse(await readFile(new URL("../../steer/evidence/0028-gate-3-review-target.json", import.meta.url), "utf8")) as {
     stage: ReviewAssignmentPayload["review_stage"];
     target: ReviewAssignmentPayload["target"];
+    target_verification: ReviewAssignmentPayload["target_verification"];
     prior_binding_digests: string[];
   };
   assert.equal(packet.stage, "GATE_3_BUILD");
   assert.equal(packet.target.target_artifacts.length, 20);
   assert.equal(await reviewManifestSha256(packet.target), packet.target.target_artifact_manifest_sha256);
+  assert.deepEqual(packet.target_verification.receipt.target, packet.target);
+  assert.equal(packet.target_verification.receipt.verifier_member_id, "agent-test");
+  assert.equal(packet.target_verification.receipt.verifier_key_id, "buzz-roster-v3:test");
+  assert.equal(await verifyReviewerBinding(packet.target_verification.receipt, packet.target_verification.signature, "692f22559c40755774615c070956134867995f07f54c1f2507b905d3b9bb0a52"), true);
   const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
   const oid = packet.target.target_git_commit_oid;
   const commit = execFileSync("git", ["cat-file", "commit", oid], { cwd: repositoryRoot });
@@ -139,10 +144,7 @@ test("the STR-028 Gate 3 packet is an exact valid signed-review target", async (
     ...payload,
     review_stage: packet.stage,
     target: packet.target,
-    target_verification: {
-      ...payload.target_verification,
-      receipt: { ...payload.target_verification.receipt, target: packet.target },
-    },
+    target_verification: packet.target_verification,
     prior_binding_digests: packet.prior_binding_digests,
   });
 });
