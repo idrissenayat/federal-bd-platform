@@ -158,5 +158,17 @@
     "verifier_member_id": "agent-test",
     "verifier_key_id": "buzz-roster-v3:test",
     "signature_verified_by_test": true
+  },
+  "staging_review_assignment": {
+    "created_at": "2026-08-18T18:25:04.175Z",
+    "assignment_id": "a84a6e440734cb6ddc136a610de32fda136264abecaca00bf842fb0a904406a5",
+    "current_state": "REQUESTED",
+    "current_event_version": 2,
+    "target_artifact_manifest_sha256": "3082e2a318f2a8c035217db677d3c12c52b91a1d3d0ba4c80d54e85b744150b3",
+    "older_assignments": {
+      "count": 3,
+      "state": "SUPERSEDED"
+    },
+    "parallel_active_assignments": 0
   }
 }

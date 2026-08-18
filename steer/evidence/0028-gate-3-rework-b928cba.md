@@ -72,4 +72,8 @@ The refreshed packet `steer/evidence/0028-gate-3-review-target.json` has SHA-256
 - artifact manifest SHA-256: `3082e2a318f2a8c035217db677d3c12c52b91a1d3d0ba4c80d54e85b744150b3`
 - verifier: enrolled Test Agent key `buzz-roster-v3:test`, version 3
 
-Next step: submit this exact packet in staging, verify prior assignments are append-only superseded, and obtain a fresh independent Critic PASS/BLOCK ruling. The human Product Lead may then confirm the agent-operated result and make the Gate 3 decision; the human is not asked to repeat the tests.
+## Signed staging assignment
+
+At `2026-08-18T18:25:04.175Z`, staging accepted the exact signed packet and created assignment `a84a6e440734cb6ddc136a610de32fda136264abecaca00bf842fb0a904406a5`. It is the only `REQUESTED` assignment, at event version 2, and is bound to manifest `3082e2a318f2a8c035217db677d3c12c52b91a1d3d0ba4c80d54e85b744150b3`. All three older assignments are append-only `SUPERSEDED`; there are zero parallel active assignments.
+
+Next step: obtain the fresh independent Critic PASS/BLOCK ruling. The human Product Lead may then confirm the agent-operated result and make the Gate 3 decision; the human is not asked to repeat the tests.
