@@ -762,8 +762,9 @@ async function ensureInitialSteerRoute(db: Database, user: User) {
       .bind(podId, buzzRelayHttpUrl, user.id, now),
     db.prepare(`INSERT OR IGNORE INTO agent_channel_memberships
       (pod_id, channel_id, member_id, membership_version, status, created_at)
-      SELECT ?, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'agent-builder', 1, 'active', ?
-      WHERE EXISTS (SELECT 1 FROM members WHERE id = 'agent-builder' AND pod_id = ? AND status = 'enrolled')`)
+      SELECT ?, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', id, 1, 'active', ?
+      FROM members
+      WHERE kind = 'agent' AND status = 'enrolled' AND pod_id = ?`)
       .bind(podId, now, podId),
     db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:builder', agent_key_version = 3, agent_public_key = '1bcd9d68ce9a04cd17bf7e96d71e237654d38eeb26dd8ea5a08ba1259a6baf12', agent_public_key_fingerprint = '6e5b2ac5e26064f99a7e7046aa0235fe8e57e5106438f8314fd6a88b4b14ac06' WHERE id = 'agent-builder'"),
     db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:critic', agent_key_version = 3, agent_public_key = '873eacdb79becf6b5e18f4aec79decad3c80bcce3d3c6c690e6dd773256f12c1', agent_public_key_fingerprint = '959cad86721134a6923a3bc2f951fc75781b7e11ba662d945b036322fee5b4da' WHERE id = 'agent-critic'"),

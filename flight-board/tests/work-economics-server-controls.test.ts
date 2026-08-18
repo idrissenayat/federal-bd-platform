@@ -154,6 +154,33 @@ async function setup() {
   return { db, itemId: Number(result.lastInsertRowid) };
 }
 
+test("bootstrap idempotently enrolls every eligible same-POD agent in the canonical channel", async () => {
+  const db = new D1Database();
+  const first = await handleApi(request("member-a", "/api/bootstrap"), { DB: db });
+  assert.equal(first?.status, 200, await first?.clone().text());
+
+  const eligible = db.sqlite.prepare(`SELECT id FROM members
+    WHERE kind = 'agent' AND status = 'enrolled' AND pod_id = 'steer-flight-team'
+    ORDER BY id`).all().map((row) => String(row.id));
+  const memberships = db.sqlite.prepare(`SELECT member_id FROM agent_channel_memberships
+    WHERE pod_id = 'steer-flight-team'
+      AND channel_id = '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470'
+      AND status = 'active'
+    ORDER BY member_id`).all().map((row) => String(row.member_id));
+
+  assert.ok(eligible.includes("agent-architect"));
+  assert.deepEqual(memberships, eligible);
+
+  db.sqlite.prepare(`INSERT INTO members
+    (id, display_name, kind, role, authority, status, accent, pod_id)
+    VALUES ('agent-inactive', 'Inactive agent', 'agent', 'Test', 'None', 'inactive', 'amber', 'steer-flight-team'),
+           ('agent-other-pod', 'Other POD agent', 'agent', 'Test', 'None', 'enrolled', 'amber', 'other-pod')`).run();
+  const replay = await handleApi(request("member-a", "/api/bootstrap"), { DB: db });
+  assert.equal(replay?.status, 200, await replay?.clone().text());
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM agent_channel_memberships").get()!.count, eligible.length);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM agent_channel_memberships WHERE member_id IN ('agent-inactive', 'agent-other-pod')").get()!.count, 0);
+});
+
 async function reviewTarget() {
   const oid = "f".repeat(40);
   const base = {
@@ -194,7 +221,7 @@ function prepareDispatchAuthorizationSeed(db: D1Database, itemId: number, revisi
     (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
     VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'member-a', 'Test fixture', ?)`)
     .run(acceptedAt);
-  db.sqlite.prepare(`INSERT INTO agent_channel_memberships
+  db.sqlite.prepare(`INSERT OR IGNORE INTO agent_channel_memberships
     (pod_id, channel_id, member_id, membership_version, status, created_at)
     VALUES ('pod-a', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'agent-a', 1, 'active', ?)`)
     .run(acceptedAt);
