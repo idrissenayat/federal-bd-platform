@@ -1,4 +1,4 @@
-type TimestampedItem = { id: number; updated_at: string };
+type TimestampedItem = { id: number; updated_at: string; dispatch_updated_at?: string | null };
 type Identified = { id: number };
 
 export type AuthoritativeItemSnapshot<Item extends TimestampedItem, Activity extends Identified, EconomicsEvent extends Identified> = {
@@ -25,7 +25,15 @@ function mergeById<T extends Identified>(preferred: T[], fallback: T[]) {
 }
 
 function isNewer(left: TimestampedItem, right: TimestampedItem) {
-  return Date.parse(left.updated_at) > Date.parse(right.updated_at);
+  const freshness = (item: TimestampedItem) => Math.max(
+    Date.parse(item.updated_at) || 0,
+    item.dispatch_updated_at ? Date.parse(item.dispatch_updated_at) || 0 : 0,
+  );
+  return freshness(left) > freshness(right);
+}
+
+export function isLatestItemAction(latestActionId: number | undefined, resultActionId: number) {
+  return latestActionId === resultActionId;
 }
 
 export function applyAuthoritativeSnapshot<

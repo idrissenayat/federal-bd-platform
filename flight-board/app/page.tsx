@@ -6,7 +6,7 @@ import { WORK_TYPES } from "../lib/work-economics";
 import { buildForecastProposal } from "../lib/forecast-proposal";
 import { buildValueHypothesisProposal } from "../lib/value-hypothesis-proposal";
 import { acceptedValueHypothesisReady } from "../lib/work-economics-validation";
-import { applyAuthoritativeSnapshot, mergeBootstrapPreservingNewerItems, type AuthoritativeItemSnapshot } from "../lib/post-write";
+import { applyAuthoritativeSnapshot, isLatestItemAction, mergeBootstrapPreservingNewerItems, type AuthoritativeItemSnapshot } from "../lib/post-write";
 import type {
   ActualEconomics,
   AiAdvisory,
@@ -848,7 +848,7 @@ export default function Home() {
   }
 
   function finishItemAction(id: number, actionId: number, scope: ActionScope, state: "success" | "error", message: string) {
-    if (latestMutation.current.get(id) !== actionId) return false;
+    if (!isLatestItemAction(latestMutation.current.get(id), actionId)) return false;
     setItemFeedback((current) => ({ ...current, [id]: { id: actionId, scope, state, message } }));
     return true;
   }
@@ -864,16 +864,17 @@ export default function Home() {
       const expectedRevision = data?.items.find((item) => item.id === id)?.updated_at;
       const result = await api(`/api/items/${id}`, { method: "PATCH", body: JSON.stringify({ ...changes, expectedRevision }) }) as ItemMutationResult;
       const responseReceivedAt = feedbackClock();
-      if (latestMutation.current.get(id) !== actionId) return;
+      if (!isLatestItemAction(latestMutation.current.get(id), actionId)) return;
       applySnapshot(result.snapshot);
       finishItemAction(id, actionId, scope, "success", successMessage);
       emitFeedbackAfterPaint(responseReceivedAt, "steer_work_item_save_feedback_latency_ms", "steer_work_item_save_outcome_total", "success");
       void load({ quiet: true });
     } catch (caught) {
-      finishItemAction(id, actionId, scope, "error", caught instanceof Error ? caught.message : "The item could not be updated. Your input is preserved for correction or retry.");
-      emitFeedbackAfterPaint(caught instanceof ApiRequestError ? caught.responseReceivedAt : feedbackClock(), "steer_work_item_save_feedback_latency_ms", "steer_work_item_save_outcome_total", failureOutcome(caught));
+      if (finishItemAction(id, actionId, scope, "error", caught instanceof Error ? caught.message : "The item could not be updated. Your input is preserved for correction or retry.")) {
+        emitFeedbackAfterPaint(caught instanceof ApiRequestError ? caught.responseReceivedAt : feedbackClock(), "steer_work_item_save_feedback_latency_ms", "steer_work_item_save_outcome_total", failureOutcome(caught));
+      }
     } finally {
-      if (latestMutation.current.get(id) === actionId) setSaving(false);
+      if (isLatestItemAction(latestMutation.current.get(id), actionId)) setSaving(false);
     }
   }
 
@@ -885,7 +886,7 @@ export default function Home() {
       const expectedRevision = data?.items.find((item) => item.id === id)?.updated_at;
       const result = await api(`/api/items/${id}/work-economics`, { method: "PATCH", body: JSON.stringify({ section, value, reason, expectedRevision }) }) as ItemMutationResult;
       const responseReceivedAt = feedbackClock();
-      if (latestMutation.current.get(id) !== actionId) return;
+      if (!isLatestItemAction(latestMutation.current.get(id), actionId)) return;
       applySnapshot(result.snapshot);
       finishItemAction(id, actionId, "economics", "success", section === "valueHypothesis"
         ? "Value hypothesis accepted from the authoritative response. Gate 1 can now be reviewed."
@@ -893,10 +894,11 @@ export default function Home() {
       emitFeedbackAfterPaint(responseReceivedAt, "steer_work_item_save_feedback_latency_ms", "steer_work_item_save_outcome_total", "success");
       void load({ quiet: true });
     } catch (caught) {
-      finishItemAction(id, actionId, "economics", "error", caught instanceof Error ? caught.message : "The Work Economics record could not be updated. Your input is preserved.");
-      emitFeedbackAfterPaint(caught instanceof ApiRequestError ? caught.responseReceivedAt : feedbackClock(), "steer_work_item_save_feedback_latency_ms", "steer_work_item_save_outcome_total", failureOutcome(caught));
+      if (finishItemAction(id, actionId, "economics", "error", caught instanceof Error ? caught.message : "The Work Economics record could not be updated. Your input is preserved.")) {
+        emitFeedbackAfterPaint(caught instanceof ApiRequestError ? caught.responseReceivedAt : feedbackClock(), "steer_work_item_save_feedback_latency_ms", "steer_work_item_save_outcome_total", failureOutcome(caught));
+      }
     } finally {
-      if (latestMutation.current.get(id) === actionId) setSaving(false);
+      if (isLatestItemAction(latestMutation.current.get(id), actionId)) setSaving(false);
     }
   }
 
@@ -1119,7 +1121,7 @@ export default function Home() {
       const result = await api(`/api/items/${item.id}/dispatch`, { method: "POST", body: "{}" }) as ItemMutationResult;
       const responseReceivedAt = feedbackClock();
       if (!result.message) throw new Error("The authorized handoff message was not returned.");
-      if (latestMutation.current.get(item.id) !== actionId) return;
+      if (!isLatestItemAction(latestMutation.current.get(item.id), actionId)) return;
       applySnapshot(result.snapshot);
       try {
         await navigator.clipboard.writeText(result.message);
@@ -1134,10 +1136,11 @@ export default function Home() {
       emitFeedbackAfterPaint(responseReceivedAt, "steer_agent_handoff_feedback_latency_ms", "steer_agent_handoff_outcome_total", result.idempotent_replay ? "duplicate_suppressed" : "queued");
       void load({ quiet: true });
     } catch (caught) {
-      finishItemAction(item.id, actionId, "dispatch", "error", caught instanceof Error ? caught.message : "The agent handoff could not be authorized. No retry was started.");
-      emitFeedbackAfterPaint(caught instanceof ApiRequestError ? caught.responseReceivedAt : feedbackClock(), "steer_agent_handoff_feedback_latency_ms", "steer_agent_handoff_outcome_total", caught instanceof ApiRequestError && caught.status === 409 ? "blocked" : "error");
+      if (finishItemAction(item.id, actionId, "dispatch", "error", caught instanceof Error ? caught.message : "The agent handoff could not be authorized. No retry was started.")) {
+        emitFeedbackAfterPaint(caught instanceof ApiRequestError ? caught.responseReceivedAt : feedbackClock(), "steer_agent_handoff_feedback_latency_ms", "steer_agent_handoff_outcome_total", caught instanceof ApiRequestError && caught.status === 409 ? "blocked" : "error");
+      }
     } finally {
-      setDispatchingId(null);
+      if (isLatestItemAction(latestMutation.current.get(item.id), actionId)) setDispatchingId(null);
     }
   }
 
