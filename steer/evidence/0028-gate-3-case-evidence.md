@@ -1,6 +1,6 @@
 # STR-028 Gate 3 case evidence
 
-Status: **BLOCKED — manual accessibility and provider-backup rulings remain open**
+Status: **READY FOR FRESH INDEPENDENT CRITIC — required human accessibility and provider-recovery rulings recorded**
 
 Target source commit: `251618abb8d60eddd64f9ee9245b73030f33eb08`
 
@@ -9,8 +9,9 @@ Approved Brief: `0f83de8248771d35292ee57b56186493b5b71b1a`
 Frozen Exam: `1be1182774071b4be7ba42f6ec3027f0f0b30e9a`
 
 This record distinguishes the executed isolated non-production fixture matrix
-from the remaining manual UI observations. A green server/ordering fixture is
-not represented as a completed narrow-screen or screen-reader observation.
+from the completed human UI observations. Automated server, ordering, narrow-
+screen, axe, and contrast evidence is not substituted for the separately
+recorded human keyboard and VoiceOver ruling.
 
 ## Fixed case denominator
 
@@ -23,7 +24,7 @@ not represented as a completed narrow-screen or screen-reader observation.
 | DISP-01 | `work-economics-server-controls.test.ts` — “successful dispatch creates one immutable receipt, outbox identity, and QUEUED event across replay”; “service fencing, verified relay delivery, signed agent acknowledgement, and agent read form one idempotent lineage” | Complete synthetic signed-relay fixture PASS; staged blocked-state surface PASS |
 | DISP-02 | Same replay test proves the original receipt/outbox/event IDs are returned without a duplicate | Isolated replay fixture PASS; staged control survives reload |
 | DISP-03 | Service-fencing test uses service authentication, signed acknowledgement, and agent read without a human UI session | Isolated non-interactive service fixture PASS; hosted runtime remains separate issue #52 and is not substituted into this case |
-| DISP-04 | `work-economics-accessibility.test.ts` — named atomic live region, one focus-stable action, and WCAG AA contrast tests | Automated markup/axe/contrast PASS; real 320px staging containment PASS; manual keyboard traversal and screen-reader observation pending |
+| DISP-04 | `work-economics-accessibility.test.ts` — named atomic live region, one focus-stable action, and WCAG AA contrast tests | Automated markup/axe/contrast PASS; real 320px staging containment PASS; human keyboard/VoiceOver PASS recorded 2026-08-18 |
 | FAIL-01 | `work-economics-server-controls.test.ts` — stale r0 against authoritative r1 returns 409 without a durable side effect | Isolated conflict fixture PASS; two-tab staging produced the typed 409, assertive inline alert, preserved attempted value, and focused the error without overwriting the authoritative record |
 | FAIL-02 | Same file — invalid field set rejected without overwriting r1 | Isolated validation fixture PASS; staging version 11 preserved the invalid monetary/unit inputs, focused the assertive inline error, and left the server record unchanged |
 | FAIL-03 | Same file — all frozen F03-A..F03-F pre-receipt conflicts reject with one typed no-PII diagnostic | All isolated substeps PASS |
@@ -80,15 +81,24 @@ The manifest tests separately prove that the signed denominator is exactly these
 - The exact version 11 target was rechecked at `320×800` after the telemetry
   change: body/document `305/305`, drawer and drawer body `290/290`, and zero
   descendants outside the drawer boundary.
+- On 2026-08-18, Idriss Enayat supplied the human accessibility ruling:
+  “STR-028 keyboard/VoiceOver PASS: controls, labels, advisory content, and
+  dispatch status were understandable and keyboard-operable; focus remained
+  visible and predictable.”
+- On 2026-08-18, Idriss Enayat supplied the provider-recovery ruling:
+  “I approve the STR-028 provider-recovery ruling: eligible live identity-linked
+  records are deleted after 90 days; Cloudflare-managed Time Travel history may
+  remain only for the configured recovery window, up to 30 days; recovery access
+  is restricted; and restored data remains subject to the same deletion and hold
+  controls.”
 
 ## Open evidence and rulings
 
-1. Complete manual keyboard traversal and screen-reader checks. The real
-   narrow-screen check now passes, and automated axe, landmark,
-   focus-stability, and contrast tests are green, but they do not replace those
-   two assistive-technology observations.
-2. Record the Privacy/Legal ruling for provider backup recovery. Live D1 rows are
-   deleted after 90 days, but provider Time Travel recovery is not row-purgeable.
-3. Obtain a fresh independent signed Critic result against the exact Gate 3 target.
+1. Obtain a fresh independent signed Critic result against the exact Gate 3 target.
+2. The target fails closed while the latest dispatch privacy policy remains
+   `BLOCKED_BACKUP_RULING`. Before production dispatch is enabled, the approved
+   ruling must be persisted as a new immutable `ACTIVE` policy version. The
+   Critic must determine whether the release-time authenticated activation path
+   is sufficiently evidenced or remains a Gate 3 blocker.
 
 Production, merge, release, closure, and Gate 3 remain unauthorized.
