@@ -365,7 +365,7 @@ body { background: radial-gradient(circle at 8% 8%, rgba(246, 197, 210, .34), tr
 .dispatch-lifecycle > small { color: #574b4f; font-size: 10px; line-height: 1.45; }
 .dispatch-control > footer { align-items: center; display: flex; gap: 12px; justify-content: space-between; padding: 13px 17px; }
 .dispatch-control > footer span { color: var(--muted); font-size: 10px; line-height: 1.45; }
-.dispatch-control > footer button { background: #c85e84; border: 0; border-radius: 8px; color: white; cursor: pointer; font-size: 11px; font-weight: 850; padding: 10px 12px; }
+.dispatch-control > footer button { background: #963553; border: 0; border-radius: 8px; color: white; cursor: pointer; font-size: 11px; font-weight: 850; padding: 10px 12px; }
 .dispatch-control > footer button:disabled { background: #d9cdd1; color: #8d7f84; cursor: not-allowed; }
 .dispatch-authorized { background: #f7faee; border-color: #cbd9ad; }
 .dispatch-authorized > header { background: linear-gradient(90deg, #f5f9e9, #fff4cf); }

@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import { JSDOM } from "jsdom";
 import axe from "axe-core";
-import { WorkEconomicsPanel } from "../app/page";
+import { AgentDispatchControl, WorkEconomicsPanel } from "../app/page";
 import { evaluateForecast, type DeliveryForecast } from "../lib/work-economics";
 
 const forecast: DeliveryForecast = {
@@ -41,4 +41,31 @@ test("rendered Work Economics surface has no serious or critical axe findings", 
 test("primary Work Economics action contrast meets WCAG AA at both gradient endpoints", () => {
   assert.ok(contrast("39232d", "f2b7c9") >= 4.5);
   assert.ok(contrast("39232d", "f4d273") >= 4.5);
+});
+
+test("DISP-04 dispatch control has a named atomic live region and one focus-stable action", async () => {
+  const item = {
+    id: 28, key: "STR-028", title: "Dispatch feedback", description: "Governed dispatch", phase: "Engineer", priority: "Now", workflow: "STEER", work_type: "Reliability", state: "active", gate: "Gate 2 passed", decision_status: "Rework", decision_authority: "Tech Lead", assignee_id: "agent-builder", assignee_name: "Builder", assignee_kind: "agent", next_action: "Run the fixed acceptance matrix", evidence_url: "https://github.com/idrissenayat/federal-bd-platform/blob/47f2c2677f3af2cc90a31ade529b9f86d0ac1e1f/README.md", github_url: "https://github.com/idrissenayat/federal-bd-platform/issues/56", rework_instructions: null, blocked_since: null, pod_id: "pod-a", created_at: "2026-08-18T13:00:00.000Z", closed_at: null, updated_at: "2026-08-18T14:00:00.000Z",
+    work_economics: { valueHypothesis: null, deliveryForecast: forecast, actualEconomics: null, realizedOutcome: null, forecast: evaluateForecast(forecast, { state: "active", decision_status: "Rework" }, "2026-08-18T15:00:00.000Z") },
+    dispatch_authorization: { authorized: true, status: "Authorized" as const, summary: "Every dispatch control is satisfied.", checks: [{ id: "route", label: "Canonical route", detail: "Exact route is active.", met: true }], missing: [], channel: "#steer-team", handoff_message: null },
+  };
+  const html = renderToStaticMarkup(createElement(AgentDispatchControl, { item, dispatching: true, copied: false, onDispatch: () => {} }));
+  const dom = new JSDOM(`<main style="width:320px">${html}</main>`, { runScripts: "dangerously" });
+  dom.window.eval(axe.source);
+  const main = dom.window.document.querySelector("main")!;
+  const button = main.querySelector("button")!;
+  const status = main.querySelector('[role="status"]')!;
+  assert.equal(main.querySelectorAll("button").length, 1);
+  assert.equal(button.getAttribute("aria-describedby"), status.id);
+  assert.equal(button.getAttribute("aria-busy"), "true");
+  assert.equal(status.getAttribute("aria-live"), "polite");
+  assert.equal(status.getAttribute("aria-atomic"), "true");
+  assert.equal(status.getAttribute("aria-label"), "Durable dispatch status");
+  assert.match(status.textContent ?? "", /Authorizing one durable handoff/);
+  const results = await (dom.window as unknown as { axe: typeof axe }).axe.run(main, { rules: { "color-contrast": { enabled: false } } });
+  assert.equal(results.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? "")).length, 0);
+});
+
+test("DISP-04 dispatch action contrast meets WCAG AA", () => {
+  assert.ok(contrast("963553", "ffffff") >= 4.5);
 });
