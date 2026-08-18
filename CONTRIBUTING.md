@@ -20,6 +20,9 @@ By participating, follow the [Code of Conduct](CODE_OF_CONDUCT.md) and
 
 ## Building and reviewing
 
+- Codex supervision or temporary runtime hosting follows the
+  [normative supervision boundary](docs/steer/OPERATING-MODEL.md#normative-codex-supervision-boundary);
+  named agents retain deliverable ownership and run-level attribution.
 - The Builder implements the signed brief against the frozen exam.
 - The Test role owns exam completeness; a Builder must not weaken an exam to pass code.
 - The Critic uses a fresh context and records its review in the pull request.
