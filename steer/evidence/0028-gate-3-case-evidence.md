@@ -1,8 +1,8 @@
 # STR-028 Gate 3 case evidence
 
-Status: **READY FOR FRESH INDEPENDENT CRITIC — required human accessibility and provider-recovery rulings recorded**
+Status: **READY FOR FRESH INDEPENDENT CRITIC — all prior Gate 3 blockers remediated and exercised in owner-only staging**
 
-Target source commit: `251618abb8d60eddd64f9ee9245b73030f33eb08`
+Target source commit: `d7040249d2f9d2e01f49b0cd944a2a547dc578f5`
 
 Approved Brief: `0f83de8248771d35292ee57b56186493b5b71b1a`
 
@@ -43,19 +43,27 @@ The manifest tests separately prove that the signed denominator is exactly these
 
 ## Verification completed
 
-- Full build and test suite: 135 passed (25 JavaScript and 110 TypeScript),
+- Full build and test suite: 143 passed (29 JavaScript and 114 TypeScript),
   0 failed.
 - TypeScript and lint checks: passed on the target source state.
 - Production dependency audit: 0 vulnerabilities.
-- Owner-only staging version 11 deployed with environment revision 1 as
-  deployment `appgdep_6a847df2f9e08191bdab7f163273e1c0`.
+- Owner-only staging version 15 deployed with environment revision 2 as
+  deployment `appgdep_6a8492abc5688191bf64cd97ebf0e745`. The saved version
+  is `appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_2fd9606e584c8191bae1435479a52362`,
+  packaging commit `ac142b72e1f78626b67779fcc726a934cd34c96b`, archive SHA-256
+  `765ee2b41fcbdd6bd2cd2a7d893668bf8099d2c1f198ceb480983ebb63f723e8`,
+  109 files.
 - Populated staging retained all 24 work items (20 open, 4 closed).
 - Desktop staging inspection confirmed the STR-028 action-local dispatch status,
   named atomic live region, one disabled action when authorization is blocked,
   and preserved work-item data.
-- Actual rollback rehearsal: staging was moved to saved version 5, the prior UI
-  was observed, and saved version 8 was redeployed successfully as deployment
-  `appgdep_6a8472b2e2dc81918fb105396251bd17`.
+- Exact-target rollback rehearsal: final version 15 was replaced by saved version
+  14 in 14,978 ms, then exact version 15 was restored in 10,921 ms. RPO was zero.
+  Before rollback, during version 14, and after restore, D1 retained policy v2
+  ACTIVE, one dispatch receipt, one QUEUED outbox row, one dispatch event, one
+  REQUESTED review assignment, and three hash-chained review events with identical
+  IDs and hashes. Replaying the exact review packet after restore returned success
+  without adding an assignment or event.
 - The first real 320×800 staging observation found the STR-028 drawer at
   `clientWidth=290` and `scrollWidth=485`. Source commit `c4278f6` reduced the
   overflow, but staging version 9 still measured `290/356` because Work controls
@@ -74,11 +82,11 @@ The manifest tests separately prove that the signed denominator is exactly these
   was restored through SAVE-02 and confirmed absent after reload.
 - The first FAIL-01 staging run exposed one missing paired outcome observation:
   latency persisted but the independently fired conflict counter did not.
-  Target `251618abb8d60eddd64f9ee9245b73030f33eb08` replaces the two
+  The final target replaces the two
   fire-and-forget requests with one validated D1 batch. The version 11 FAIL-02
   retest persisted telemetry rows 26 and 27 with the same timestamp
   (`2026-08-18T15:45:48.524Z`): latency `12ms` and outcome `validation`.
-- The exact version 11 target was rechecked at `320×800` after the telemetry
+- The contained exact source was rechecked at `320×800` after the telemetry
   change: body/document `305/305`, drawer and drawer body `290/290`, and zero
   descendants outside the drawer boundary.
 - On 2026-08-18, Idriss Enayat supplied the human accessibility ruling:
@@ -91,14 +99,41 @@ The manifest tests separately prove that the signed denominator is exactly these
   remain only for the configured recovery window, up to 30 days; recovery access
   is restricted; and restored data remains subject to the same deletion and hold
   controls.”
+- The approved ruling was activated in staging through the authenticated UI as
+  immutable policy version 2. It binds the complete inventory commit `4dd787c`,
+  ruling commit `d9dbe0b`, actor, role, authorization event, idempotency key, and
+  activation receipt. `DISPATCH_ALLOW_TEST_PRIVACY_POLICY` is absent from
+  environment revision 2.
+- Without the bypass, staging created exactly one durable STR-028 dispatch receipt
+  `8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf`,
+  one `#steer-team` outbox row, and one signed QUEUED event. A clipboard denial
+  remained visible locally and did not permit reauthorization.
+- Without the bypass, staging created exact signed Gate 3 review assignment
+  `ccd80c7e0bdfc17f51233c06fc8c2557e005f395c2d69adc43934fcd921b64fb`
+  for manifest `99a5f291a1ad24cbd41047115f2391afadec952a42dd03c03328ed733c93ff48`
+  and commit-object SHA-256
+  `346f45060d7f7815c115e28b9700e0de6f595f7e3b6971aff728021b9fb192f5`.
+  REVIEW_TARGET_READY, REVIEW_ASSIGNED, and REVIEW_REQUESTED are one ordered,
+  service-signed hash chain; exact replay created no duplicates.
+- A preliminary staging assignment
+  `f4a525b9e51616fc1d1bcc5eace1643e91c312493fe196b3302970268c7ef292`
+  used a client-computed commit-object digest that omitted the Git object header.
+  It remains immutably recorded as a superseded non-production rehearsal and is
+  not the review authority. The corrected packet and exact assignment above pass
+  independent commit-object reconstruction; staging therefore contains two
+  distinct assignments and six events, while replay of either identity remains
+  duplicate-free.
+- The measured ledger `0028-case-ledger-d704024.json` contains all 20 frozen case
+  IDs, one terminal feedback observation per case, every frozen FAIL/REC substep,
+  no missing IDs, no hidden error, stale overwrite, or duplicate dispatch, and
+  measured p95 values of 3 ms for save feedback and 1 ms for handoff feedback
+  against 250 ms budgets.
 
 ## Open evidence and rulings
 
-1. Obtain a fresh independent signed Critic result against the exact Gate 3 target.
-2. The target fails closed while the latest dispatch privacy policy remains
-   `BLOCKED_BACKUP_RULING`. Before production dispatch is enabled, the approved
-   ruling must be persisted as a new immutable `ACTIVE` policy version. The
-   Critic must determine whether the release-time authenticated activation path
-   is sufficiently evidenced or remains a Gate 3 blocker.
+1. Obtain a fresh independent Critic result against exact target
+   `d7040249d2f9d2e01f49b0cd944a2a547dc578f5`, review manifest
+   `99a5f291a1ad24cbd41047115f2391afadec952a42dd03c03328ed733c93ff48`,
+   the final measured ledger, and staging version 15.
 
 Production, merge, release, closure, and Gate 3 remain unauthorized.

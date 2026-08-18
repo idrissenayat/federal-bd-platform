@@ -104,7 +104,7 @@ test("the STR-028 Gate 3 packet is an exact valid signed-review target", async (
     prior_binding_digests: string[];
   };
   assert.equal(packet.stage, "GATE_3_BUILD");
-  assert.equal(packet.target.target_artifacts.length, 19);
+  assert.equal(packet.target.target_artifacts.length, 20);
   assert.equal(await reviewManifestSha256(packet.target), packet.target.target_artifact_manifest_sha256);
   const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
   const oid = packet.target.target_git_commit_oid;
