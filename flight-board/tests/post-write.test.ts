@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { applyAuthoritativeSnapshot, bootstrapReconciliationResult, isLatestItemAction, mergeBootstrapPreservingNewerItems } from "../lib/post-write";
-import { captureConnectedClient } from "./str028-connected-observer";
+import { captureConnectedClient, markAuthoritativeResponseReceived } from "./str028-connected-observer";
 
 type Item = { id: number; updated_at: string; dispatch_updated_at?: string | null; next_action: string };
 type Event = { id: number; detail: string };
@@ -40,10 +40,11 @@ test("ORDER-01 an older bootstrap response cannot overwrite a newer confirmed mu
     items: [{ id: 28, updated_at: "2026-08-17T12:01:30.000Z", next_action: "stale" }],
   };
   const reconciled = mergeBootstrapPreservingNewerItems<State, Item, Event, Event>(confirmed, staleBootstrap);
+  const responseReceivedAt = markAuthoritativeResponseReceived();
   assert.equal(reconciled.items[0].next_action, "newest");
   assert.ok(reconciled.activity.some((event) => event.id === 3));
   assert.equal(bootstrapReconciliationResult(confirmed, staleBootstrap), "stale_suppressed");
-  await captureConnectedClient({ caseId: "ORDER-01", outcome: "success", reconciliation: "stale_suppressed", authoritative: confirmed, visible: reconciled });
+  await captureConnectedClient({ caseId: "ORDER-01", code: "STALE_SUPPRESSED", outcome: "success", reconciliation: "stale_suppressed", authoritative: confirmed, visible: reconciled, responseReceivedAt });
 });
 
 test("a genuinely newer bootstrap response is accepted", () => {
@@ -67,14 +68,16 @@ test("ORDER-03 an older dispatch projection cannot overwrite a newer receipt lif
     items: [{ id: 28, updated_at: "2026-08-17T12:00:00.000Z", dispatch_updated_at: "2026-08-17T12:02:00.000Z", next_action: "queued projection" }],
   };
   const reconciled = mergeBootstrapPreservingNewerItems(current, stale);
+  const responseReceivedAt = markAuthoritativeResponseReceived();
   assert.equal(reconciled.items[0].next_action, "delivered");
-  await captureConnectedClient({ caseId: "ORDER-03", outcome: "duplicate_suppressed", reconciliation: "stale_suppressed", authoritative: current, visible: reconciled });
+  await captureConnectedClient({ caseId: "ORDER-03", code: "STALE_PROJECTION_SUPPRESSED", outcome: "duplicate_suppressed", reconciliation: "stale_suppressed", authoritative: current, visible: reconciled, responseReceivedAt });
 });
 
 test("ORDER-02 and ORDER-04 accept only the latest explicit action result", async () => {
   assert.equal(isLatestItemAction(42, 41), false);
   assert.equal(isLatestItemAction(42, 42), true);
   const visible = { latest_action: 42, stale_action_accepted: isLatestItemAction(42, 41), latest_action_accepted: isLatestItemAction(42, 42) };
-  await captureConnectedClient({ caseId: "ORDER-02", outcome: "success", reconciliation: "stale_suppressed", authoritative: { latest_action: 42 }, visible });
-  await captureConnectedClient({ caseId: "ORDER-04", outcome: "success", reconciliation: "stale_suppressed", authoritative: { latest_action: 42, later_result: "success" }, visible });
+  const responseReceivedAt = markAuthoritativeResponseReceived();
+  await captureConnectedClient({ caseId: "ORDER-02", code: "OLDER_ACTION_SUPPRESSED", outcome: "success", reconciliation: "stale_suppressed", authoritative: { latest_action: 42, activity: original.activity }, visible: { ...visible, activity: original.activity }, responseReceivedAt });
+  await captureConnectedClient({ caseId: "ORDER-04", code: "OLDER_FAILURE_SUPPRESSED", outcome: "success", reconciliation: "stale_suppressed", authoritative: { latest_action: 42, later_result: "success", activity: original.activity }, visible: { ...visible, activity: original.activity }, responseReceivedAt });
 });

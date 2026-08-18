@@ -23,6 +23,23 @@ function tableRows(db: QueryableDatabase | undefined, table: string, columns: st
   return db.sqlite.prepare(`SELECT ${columns} FROM ${table} ORDER BY rowid`).all();
 }
 
+export function markAuthoritativeResponseReceived() {
+  return performance.now();
+}
+
+export function captureDatabaseEvidence(db?: QueryableDatabase) {
+  const database = {
+    receipts: tableRows(db, "dispatch_receipts", "intent_id, lineage_id, authorization_revision, receipt_json"),
+    outbox: tableRows(db, "dispatch_outbox", "intent_id, current_state, current_event_version, current_event_sha256, send_started, terminalization_requested"),
+    events: tableRows(db, "dispatch_events", "intent_id, event_version, event_type, event_sha256"),
+    attempts: tableRows(db, "dispatch_attempts", "intent_id, attempt_number, status, reservation_fence"),
+    authorization_audits: tableRows(db, "dispatch_authorization_audits", "audit_event_id, intent_id, authorization_revision, authorization_json"),
+    activity: tableRows(db, "activity", "id, item_id, action"),
+    economics_events: tableRows(db, "work_economics_events", "id, item_id, section, action"),
+  };
+  return { database, database_sha256: digest(database) };
+}
+
 function outcomeFromResponse(response: Response, body: Record<string, unknown>, dispatch: boolean) {
   if (response.status >= 500) return dispatch ? "error" : "transport";
   if (!response.ok) {
@@ -48,11 +65,18 @@ export async function captureConnectedResponse(input: {
   db?: QueryableDatabase;
   scope: "economics" | "dispatch";
   reconciliation: "fresh" | "stale_suppressed" | "authoritative_reload" | "error";
-  substeps?: Array<{ substep_id: string; result: "pass" | "fail"; code?: string }>;
+  substeps?: Array<{
+    substep_id: string;
+    result: "pass" | "fail";
+    code?: string;
+    database?: Record<string, unknown[]>;
+    database_sha256?: string;
+  }>;
   additional?: Record<string, unknown>;
+  responseReceivedAt?: number;
 }) {
   if (captureCase !== input.caseId) return;
-  const responseReceivedAt = performance.now();
+  const responseReceivedAt = input.responseReceivedAt ?? performance.now();
   if (!input.response) throw new Error(`${input.caseId} did not return an authoritative response.`);
   const text = await input.response.clone().text();
   let parsed: Record<string, unknown>;
@@ -91,15 +115,7 @@ export async function captureConnectedResponse(input: {
   const region = dom.window.document.querySelector<HTMLElement>(feedbackState === "error" ? "[role='alert']" : "[role='status']");
   if (!region) throw new Error(`${input.caseId} did not paint a named local result.`);
   const focusTarget = dom.window.document.activeElement === region ? "inline_error" : dom.window.document.activeElement === initiator ? "initiating_control" : "unexpected";
-  const database = {
-    receipts: tableRows(input.db, "dispatch_receipts", "intent_id, lineage_id, authorization_revision, receipt_json"),
-    outbox: tableRows(input.db, "dispatch_outbox", "intent_id, current_state, current_event_version, current_event_sha256, send_started, terminalization_requested"),
-    events: tableRows(input.db, "dispatch_events", "intent_id, event_version, event_type, event_sha256"),
-    attempts: tableRows(input.db, "dispatch_attempts", "intent_id, attempt_number, status, reservation_fence"),
-    authorization_audits: tableRows(input.db, "dispatch_authorization_audits", "audit_event_id, intent_id, authorization_revision, authorization_json"),
-    activity: tableRows(input.db, "activity", "id, item_id, action"),
-    economics_events: tableRows(input.db, "work_economics_events", "id, item_id, section, action"),
-  };
+  const { database, database_sha256 } = captureDatabaseEvidence(input.db);
   const observation = {
     schema: "steer-str028-connected-observation/v1",
     case_id: input.caseId,
@@ -124,7 +140,7 @@ export async function captureConnectedResponse(input: {
     },
     derived: { outcome, reconciliation: input.reconciliation },
     database,
-    database_sha256: digest(database),
+    database_sha256,
     substeps: input.substeps ?? [],
     additional: input.additional ?? {},
   };
@@ -140,13 +156,15 @@ export async function captureConnectedResponse(input: {
 
 export async function captureConnectedClient(input: {
   caseId: string;
+  code: string;
   outcome: "success" | "conflict" | "transport" | "duplicate_suppressed";
   reconciliation: "stale_suppressed";
   authoritative: unknown;
   visible: unknown;
+  responseReceivedAt?: number;
 }) {
   if (captureCase !== input.caseId) return;
-  const responseReceivedAt = performance.now();
+  const responseReceivedAt = input.responseReceivedAt ?? performance.now();
   const feedbackState = input.outcome === "transport" || input.outcome === "conflict" ? "error" as const : "success" as const;
   const dom = new JSDOM("<!doctype html><html><body><button id='initiator'>Initiating control</button><div id='root'></div></body></html>", { pretendToBeVisual: true });
   const previous = {
@@ -172,14 +190,23 @@ export async function captureConnectedClient(input: {
   const region = dom.window.document.querySelector<HTMLElement>(feedbackState === "error" ? "[role='alert']" : "[role='status']");
   if (!region) throw new Error(`${input.caseId} did not paint its reconciled result.`);
   const focusTarget = dom.window.document.activeElement === region ? "inline_error" : dom.window.document.activeElement === initiator ? "initiating_control" : "unexpected";
+  const database = {
+    receipts: [],
+    outbox: [],
+    events: [],
+    attempts: [],
+    authorization_audits: [],
+    activity: Array.isArray((input.visible as { activity?: unknown[] })?.activity) ? (input.visible as { activity: unknown[] }).activity : [],
+    economics_events: Array.isArray((input.visible as { work_economics_events?: unknown[] })?.work_economics_events) ? (input.visible as { work_economics_events: unknown[] }).work_economics_events : [],
+  };
   const observation = {
     schema: "steer-str028-connected-observation/v1",
     case_id: input.caseId,
-    authoritative_response: { status: 200, body_sha256: digest(input.authoritative), code: null, response_identity: digest(input.authoritative) },
+    authoritative_response: { status: 200, body_sha256: digest(input.authoritative), code: input.code, response_identity: digest(input.authoritative) },
     client: { feedback_state: feedbackState, role: region.getAttribute("role"), aria_live: region.getAttribute("aria-live"), message_sha256: digest(region.textContent ?? ""), focus_target: focusTarget, response_received_at_ms: responseReceivedAt, visible_at_ms: visibleAt, latency_ms: Math.max(0, Math.round(visibleAt - responseReceivedAt)), terminal_feedback_observations: 1 },
     derived: { outcome: input.outcome, reconciliation: input.reconciliation },
-    database: { receipts: [], outbox: [], events: [], attempts: [], authorization_audits: [], activity: [], economics_events: [] },
-    database_sha256: digest([]),
+    database,
+    database_sha256: digest(database),
     substeps: [],
     additional: { visible_sha256: digest(input.visible) },
   };

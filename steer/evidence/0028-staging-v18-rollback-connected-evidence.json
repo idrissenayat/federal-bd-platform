@@ -70,6 +70,112 @@
       "review_retention_runs": 0,
       "dispatch_privacy_policies": 2
     },
+    "checkpoint_hashes": {
+      "before": {
+        "dispatch_receipts": "464e9cfaf93953f9e41ce97a8a2779ec84374f264d8271ff441270087acc8d3e",
+        "dispatch_outbox": "eea823e257eed673c1b6c6f7e90afbd4c73b1390d4aef0b1b566fe26236aca32",
+        "dispatch_events": "87fa57e41b06a2067472e204642c9bb2357b14c87923f1d4d1ac1fef50b45f91",
+        "dispatch_attempts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_authorization_audits": "aa03d1eb8f3da85031e8d9848df2df6cb5a4bbdbb7696fc971f8190234b2da50",
+        "dispatch_security_diagnostics": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_authorizations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_holds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_runs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "activity": "a4f9a1aba8e80ee09a11929be92a054f50d17e2bf0e23fd65c4aed8927bc47bc",
+        "notifications": "1dfe43228a28f020297f99b4f4dbc302fe178ed7fb9f17b349c94f726861fe45",
+        "work_economics_events": "ad9f60d52645a44357e31bd94f619eabaaf21f9d3d5de50890df21d4e710098e",
+        "review_assignments": "0c6c44b6f333c228ac8b995c7760e0a09e62d59b66ee4248a58fb3308b2d8d1b",
+        "review_events": "978eaf1cf808d9560feb2bc582ae3105eda176a6369417e172cfd414fee6188a",
+        "review_retention_authorizations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "review_retention_holds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "review_retention_runs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_privacy_policies": "a9b63def9327d0452ff666567ffedd88e298ab3aa88dd269a8cfd4263910aff7"
+      },
+      "during_v17": {
+        "dispatch_receipts": "464e9cfaf93953f9e41ce97a8a2779ec84374f264d8271ff441270087acc8d3e",
+        "dispatch_outbox": "eea823e257eed673c1b6c6f7e90afbd4c73b1390d4aef0b1b566fe26236aca32",
+        "dispatch_events": "87fa57e41b06a2067472e204642c9bb2357b14c87923f1d4d1ac1fef50b45f91",
+        "dispatch_attempts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_authorization_audits": "aa03d1eb8f3da85031e8d9848df2df6cb5a4bbdbb7696fc971f8190234b2da50",
+        "dispatch_security_diagnostics": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_authorizations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_holds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_runs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "activity": "a4f9a1aba8e80ee09a11929be92a054f50d17e2bf0e23fd65c4aed8927bc47bc",
+        "notifications": "1dfe43228a28f020297f99b4f4dbc302fe178ed7fb9f17b349c94f726861fe45",
+        "work_economics_events": "ad9f60d52645a44357e31bd94f619eabaaf21f9d3d5de50890df21d4e710098e",
+        "review_assignments": "0c6c44b6f333c228ac8b995c7760e0a09e62d59b66ee4248a58fb3308b2d8d1b",
+        "review_events": "978eaf1cf808d9560feb2bc582ae3105eda176a6369417e172cfd414fee6188a",
+        "review_retention_authorizations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "review_retention_holds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "review_retention_runs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_privacy_policies": "a9b63def9327d0452ff666567ffedd88e298ab3aa88dd269a8cfd4263910aff7"
+      },
+      "after_restore": {
+        "dispatch_receipts": "464e9cfaf93953f9e41ce97a8a2779ec84374f264d8271ff441270087acc8d3e",
+        "dispatch_outbox": "eea823e257eed673c1b6c6f7e90afbd4c73b1390d4aef0b1b566fe26236aca32",
+        "dispatch_events": "87fa57e41b06a2067472e204642c9bb2357b14c87923f1d4d1ac1fef50b45f91",
+        "dispatch_attempts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_authorization_audits": "aa03d1eb8f3da85031e8d9848df2df6cb5a4bbdbb7696fc971f8190234b2da50",
+        "dispatch_security_diagnostics": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_authorizations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_holds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_retention_runs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "activity": "a4f9a1aba8e80ee09a11929be92a054f50d17e2bf0e23fd65c4aed8927bc47bc",
+        "notifications": "1dfe43228a28f020297f99b4f4dbc302fe178ed7fb9f17b349c94f726861fe45",
+        "work_economics_events": "ad9f60d52645a44357e31bd94f619eabaaf21f9d3d5de50890df21d4e710098e",
+        "review_assignments": "0c6c44b6f333c228ac8b995c7760e0a09e62d59b66ee4248a58fb3308b2d8d1b",
+        "review_events": "978eaf1cf808d9560feb2bc582ae3105eda176a6369417e172cfd414fee6188a",
+        "review_retention_authorizations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "review_retention_holds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "review_retention_runs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "dispatch_privacy_policies": "a9b63def9327d0452ff666567ffedd88e298ab3aa88dd269a8cfd4263910aff7"
+      }
+    },
+    "checkpoint_identity_projections": {
+      "before": {
+        "intent_id": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf",
+        "lineage_id": "82c01009a1a631b3cdb53ce9ca0fab67b38d0babac473472df9a2ca9c14b50b1",
+        "state": "QUEUED",
+        "event_version": 0,
+        "event_sha256": "fb92da62fc228a59c82aaada545a3fbf089072e9e91852a02a3f459a6be147e9",
+        "attempt_number": 0,
+        "attempt_rows": 0,
+        "send_started": 0,
+        "lease_id": null,
+        "reservation_fence": null,
+        "authorization_revision": "2026-08-18T17:01:20.852Z",
+        "created_at": "2026-08-18T17:01:35.905Z"
+      },
+      "during_v17": {
+        "intent_id": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf",
+        "lineage_id": "82c01009a1a631b3cdb53ce9ca0fab67b38d0babac473472df9a2ca9c14b50b1",
+        "state": "QUEUED",
+        "event_version": 0,
+        "event_sha256": "fb92da62fc228a59c82aaada545a3fbf089072e9e91852a02a3f459a6be147e9",
+        "attempt_number": 0,
+        "attempt_rows": 0,
+        "send_started": 0,
+        "lease_id": null,
+        "reservation_fence": null,
+        "authorization_revision": "2026-08-18T17:01:20.852Z",
+        "created_at": "2026-08-18T17:01:35.905Z"
+      },
+      "after_restore": {
+        "intent_id": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf",
+        "lineage_id": "82c01009a1a631b3cdb53ce9ca0fab67b38d0babac473472df9a2ca9c14b50b1",
+        "state": "QUEUED",
+        "event_version": 0,
+        "event_sha256": "fb92da62fc228a59c82aaada545a3fbf089072e9e91852a02a3f459a6be147e9",
+        "attempt_number": 0,
+        "attempt_rows": 0,
+        "send_started": 0,
+        "lease_id": null,
+        "reservation_fence": null,
+        "authorization_revision": "2026-08-18T17:01:20.852Z",
+        "created_at": "2026-08-18T17:01:35.905Z"
+      }
+    },
     "rpo": "zero governed row or field changes across all 18 tables"
   },
   "in_flight_fail_closed": {
@@ -97,13 +203,59 @@
     },
     "connected_action_matrix": {
       "ledger": "steer/evidence/0028-case-ledger-b928cba.json",
+      "generated_after_exact_rollback": true,
+      "generated_at": "2026-08-18T19:21:39.072Z",
       "terminal_observations": 20,
-      "pending_semantics": "covered by the executable eight-state matrix and production InlineActionFeedback component",
+      "pending_semantics": "captured from the production InlineActionFeedback component in every connected case and repeated in the hosted post-rollback save/conflict smoke",
       "success_observations": 15,
       "failure_observations": 5,
       "all_response_to_paint_observations_passed": true,
-      "save_feedback_p95_ms": 74,
-      "dispatch_feedback_p95_ms": 70
+      "save_feedback_p95_ms": 71,
+      "dispatch_feedback_p95_ms": 73
+    },
+    "hosted_pending_success_conflict_recovery": {
+      "success_attempted_at": "2026-08-18T19:14:52.492Z",
+      "success_pending": {
+        "role": "status",
+        "aria_live": "polite",
+        "message": "Saving… Waiting for the authoritative server response."
+      },
+      "success_terminal_observed_at": "2026-08-18T19:15:06.721Z",
+      "success_terminal": {
+        "role": "status",
+        "aria_live": "polite",
+        "message": "Saved — Next action saved from the authoritative response."
+      },
+      "success_activity_row": {
+        "id": 321,
+        "created_at": "2026-08-18T19:14:56.711Z"
+      },
+      "stale_conflict_attempted_at": "2026-08-18T19:15:22.447Z",
+      "stale_conflict_terminal_observed_at": "2026-08-18T19:15:31.800Z",
+      "stale_conflict_terminal": {
+        "role": "alert",
+        "aria_live": "assertive",
+        "focus_moved_to_alert": true,
+        "input_preserved": true,
+        "message": "Action not completed — This work item changed after you opened it. Your input was preserved; review the authoritative state before retrying."
+      },
+      "stale_conflict_durable_side_effects": 0,
+      "restore_attempted_at": "2026-08-18T19:16:38.359Z",
+      "restore_terminal_observed_at": "2026-08-18T19:16:47.769Z",
+      "restore_terminal": {
+        "role": "status",
+        "aria_live": "polite",
+        "message": "Saved — Next action saved from the authoritative response."
+      },
+      "restore_activity_row": {
+        "id": 322,
+        "created_at": "2026-08-18T19:16:42.524Z"
+      },
+      "authoritative_original_restored": true,
+      "authoritative_restore_reloaded_at": "2026-08-18T19:17:20.021Z",
+      "expected_activity_delta": 2,
+      "observed_activity_delta": 2,
+      "unexpected_activity_delta": 0
     }
   },
   "result": "PASS",

@@ -31,14 +31,14 @@ The executable matrix is `flight-board/tests/str028-agent-accessibility-matrix.t
 
 ## Exact 20-case ledger
 
-`steer/evidence/0028-case-ledger-b928cba.json` is bound to the exact implementation commit and has SHA-256 `a4f12897983e4e3735328fe3443e2bf55ccf2e3e744a93fde69053dbdb76a459`.
+`steer/evidence/0028-case-ledger-b928cba.json` is bound to the exact implementation commit and has SHA-256 `ded821cd82ed6388c6a4a86dffa2824d881155b939a6ad1198bbc6f621dd413e`.
 
-Each case now executes as one connected observation. The executed API or client-authority result is passed directly into the production `InlineActionFeedback` component, the painted role/live/focus state is captured, and the actual D1 emulator rows are snapshotted in that same process. The generator rejects missing or duplicate observations and no longer fabricates outcome, transport, side-effect, focus, or latency fields from the expected-case definition.
+Each case now executes as one connected observation. Timing starts immediately when the authoritative response is returned. That exact response identity is passed directly into the production `InlineActionFeedback` component; the painted role/live/focus state is captured; and the actual D1 emulator rows are snapshotted in that same process. Every frozen FAIL-03, FAIL-04, and REC-04 substep has its own database snapshot and SHA-256. The generator validates the actual HTTP status and typed response code, rejects missing or duplicate observations, and no longer fabricates outcome, transport, side-effect, focus, or latency fields from the expected-case definition.
 
 - 20/20 frozen cases passed; no denominator omissions.
 - 20 terminal UI feedback observations were recorded.
-- Save feedback p95: 74 ms against a 250 ms budget.
-- Handoff feedback p95: 70 ms against a 250 ms budget.
+- Save feedback p95: 71 ms against a 250 ms budget.
+- Handoff feedback p95: 73 ms against a 250 ms budget.
 - Hidden validation/conflict errors: 0.
 - Stale response overwrites: 0.
 - Duplicate dispatches: 0.
@@ -54,9 +54,18 @@ Staging version 18 was rolled back to saved version 17, validated, and restored 
 | v17 → v18 initial callback | `appgdep_6a84aa00cacc819189ff5d406f96f904` | failed before provider deployment; v17 stayed healthy | 1.907 s |
 | v17 → v18 retry | `appgdep_6a84aa179d548191afc6128e12e7f5c8` | succeeded | 7.310 s |
 
-Before, during, and after canonical rows matched across 18 governed tables: receipt, outbox, event, attempt, authorization audit, security diagnostic, dispatch retention, activity, notifications, Work Economics audit, review lineage and retention, and privacy policy. Counts included 320 activity rows, 24 notifications, 46 economics events, 4 review assignments, 15 review events, both privacy policies, and the one live dispatch lineage. RPO was zero.
+Before, during, and after canonical rows matched across 18 governed tables: receipt, outbox, event, attempt, authorization audit, security diagnostic, dispatch retention, activity, notifications, Work Economics audit, review lineage and retention, and privacy policy. Counts included 320 activity rows, 24 notifications, 46 economics events, 4 review assignments, 15 review events, both privacy policies, and the one live dispatch lineage. The machine record now includes a SHA-256 for every table at every checkpoint plus the raw bounded receipt/outbox/event/authorization identity projection. RPO was zero.
 
-The pre-existing queued intent `8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf` was captured before, during v17, and after restoration. It remained `QUEUED` at event version 0 with attempt 0, `send_started=0`, no lease or reservation fence, and no delivery or acknowledgement identity. Thus v17 did not claim, attempt, send, mutate, or duplicate the in-flight operation. After restoration, v18 loaded, the STR-028 drawer opened, the review refresh completed without an alert, and the same durable receipt status was visible.
+The pre-existing queued intent `8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf` was captured before, during v17, and after restoration. It remained `QUEUED` at event version 0 with attempt 0, `send_started=0`, no lease or reservation fence, and no delivery or acknowledgement identity. Thus v17 did not claim, attempt, send, mutate, or duplicate the in-flight operation.
+
+After restoration, Codex also executed a real hosted staging write sequence through the rendered STR-028 drawer:
+
+- Pending: the initiating edit announced `Saving…` with `role=status` and `aria-live=polite`.
+- Success: the server-accepted edit announced `Saved` from the authoritative response; D1 appended activity row 321.
+- Failure: a second tab holding the prior revision was rejected, preserved its input, announced the conflict through `role=alert` and `aria-live=assertive`, moved focus to the alert, and appended no D1 row.
+- Recovery: the current tab restored the exact original next action, announced `Saved`, appended activity row 322, and a fresh reload proved the authoritative original value was restored.
+
+The only D1 delta was the two expected append-only success/restore audit rows. The stale failure produced zero durable side effects. The final connected 20-case ledger was regenerated at `2026-08-18T19:21:39.072Z`, after both the exact rollback/restore and the hosted post-rollback smoke rather than before them.
 
 ## Clean verification
 
@@ -66,6 +75,7 @@ The pre-existing queued intent `8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fb
 - aggregate: 154/154
 - typecheck: PASS
 - lint: PASS
+- repository contract: 3/3 PASS
 - production deployment or data mutation: none
 
 ## Immutable review target
