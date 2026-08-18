@@ -28,11 +28,22 @@ CREATE TABLE IF NOT EXISTS `decision_intents` (
   `accepted_countersignatures` integer NOT NULL DEFAULT 0,
   `submitter_id` text NOT NULL,
   `submitter_role` text NOT NULL,
+  `effective_not_before` text NOT NULL,
+  `signer_policy_version` integer NOT NULL,
   `created_at` text NOT NULL,
   `updated_at` text NOT NULL,
   UNIQUE(`pod_id`,`idempotency_key`)
 );
 CREATE INDEX IF NOT EXISTS `idx_decision_intents_item_created` ON `decision_intents` (`item_id`,`created_at`);
+
+CREATE TABLE IF NOT EXISTS `decision_signer_policies` (
+  `pod_id` text NOT NULL, `policy_version` integer NOT NULL, `operating_mode` text NOT NULL,
+  `required_countersignatures` integer NOT NULL, `cooling_hours` integer NOT NULL,
+  `status` text NOT NULL, `activated_by` text NOT NULL, `activation_reason` text NOT NULL,
+  `ruling_url` text NOT NULL, `ruling_sha256` text NOT NULL, `created_at` text NOT NULL,
+  UNIQUE(`pod_id`,`policy_version`)
+);
+CREATE INDEX IF NOT EXISTS `idx_decision_signer_policies_active` ON `decision_signer_policies` (`pod_id`,`status`,`policy_version`);
 
 CREATE TABLE IF NOT EXISTS `decision_proof_events` (
   `id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -48,6 +59,10 @@ CREATE TABLE IF NOT EXISTS `decision_proof_events` (
   UNIQUE(`intent_id`,`sequence`)
 );
 CREATE INDEX IF NOT EXISTS `idx_decision_proof_events_intent_created` ON `decision_proof_events` (`intent_id`,`created_at`);
+CREATE UNIQUE INDEX IF NOT EXISTS `uq_decision_effect_event` ON `decision_proof_events` (`intent_id`) WHERE `event_type` = 'DECISION_EFFECTIVE';
+
+ALTER TABLE `decisions` ADD COLUMN `decision_intent_id` text;
+CREATE UNIQUE INDEX IF NOT EXISTS `uq_decisions_intent` ON `decisions` (`decision_intent_id`) WHERE `decision_intent_id` IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS `decision_issuer_signers` (
   `pod_id` text NOT NULL, `key_id` text NOT NULL, `key_version` integer NOT NULL,
@@ -79,3 +94,7 @@ CREATE TRIGGER IF NOT EXISTS `decision_issuer_envelopes_no_update`
 BEFORE UPDATE ON `decision_issuer_envelopes` BEGIN SELECT RAISE(ABORT, 'decision issuer envelopes are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS `decision_issuer_envelopes_no_delete`
 BEFORE DELETE ON `decision_issuer_envelopes` BEGIN SELECT RAISE(ABORT, 'decision issuer envelopes require governed retention'); END;
+CREATE TRIGGER IF NOT EXISTS `decision_signer_policies_no_update`
+BEFORE UPDATE ON `decision_signer_policies` BEGIN SELECT RAISE(ABORT, 'decision signer policies are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS `decision_signer_policies_no_delete`
+BEFORE DELETE ON `decision_signer_policies` BEGIN SELECT RAISE(ABORT, 'decision signer policies require governed retention'); END;

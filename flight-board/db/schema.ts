@@ -169,9 +169,10 @@ export const decisions = sqliteTable(
     evidenceUrl: text("evidence_url"),
     evidenceRevision: text("evidence_revision"),
     evidenceSha256: text("evidence_sha256"),
+    decisionIntentId: text("decision_intent_id"),
     createdAt: text("created_at").notNull(),
   },
-  (table) => [index("idx_decisions_item_created").on(table.itemId, table.createdAt)],
+  (table) => [index("idx_decisions_item_created").on(table.itemId, table.createdAt), uniqueIndex("uq_decisions_intent").on(table.decisionIntentId)],
 );
 
 export const decisionPackages = sqliteTable(
@@ -192,10 +193,22 @@ export const decisionIntents = sqliteTable(
     itemId: integer("item_id").notNull(), podId: text("pod_id").notNull(), idempotencyKey: text("idempotency_key").notNull(),
     intentJson: text("intent_json").notNull(), intentSha256: text("intent_sha256").notNull(), currentState: text("current_state").notNull(),
     currentSequence: integer("current_sequence").notNull(), currentEventSha256: text("current_event_sha256").notNull(),
-    requiredCountersignatures: integer("required_countersignatures").notNull().default(0), acceptedCountersignatures: integer("accepted_countersignatures").notNull().default(0),
+    requiredCountersignatures: integer("required_countersignatures").notNull().default(1), acceptedCountersignatures: integer("accepted_countersignatures").notNull().default(0),
     submitterId: text("submitter_id").notNull(), submitterRole: text("submitter_role").notNull(), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
+    effectiveNotBefore: text("effective_not_before").notNull(), signerPolicyVersion: integer("signer_policy_version").notNull(),
   },
   (table) => [index("idx_decision_intents_item_created").on(table.itemId, table.createdAt), uniqueIndex("uq_decision_intents_pod_idempotency").on(table.podId, table.idempotencyKey)],
+);
+
+export const decisionSignerPolicies = sqliteTable(
+  "decision_signer_policies",
+  {
+    podId: text("pod_id").notNull(), policyVersion: integer("policy_version").notNull(),
+    operatingMode: text("operating_mode").notNull(), requiredCountersignatures: integer("required_countersignatures").notNull(),
+    coolingHours: integer("cooling_hours").notNull(), status: text("status").notNull(), activatedBy: text("activated_by").notNull(),
+    activationReason: text("activation_reason").notNull(), rulingUrl: text("ruling_url").notNull(), rulingSha256: text("ruling_sha256").notNull(), createdAt: text("created_at").notNull(),
+  },
+  (table) => [uniqueIndex("uq_decision_signer_policy").on(table.podId, table.policyVersion), index("idx_decision_signer_policies_active").on(table.podId, table.status, table.policyVersion)],
 );
 
 export const decisionProofEvents = sqliteTable(

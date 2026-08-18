@@ -54,6 +54,10 @@ export type DecisionIntentPayload = {
   submitter_principal: string;
   submitter_role: string;
   submitted_at: string;
+  effective_not_before: string;
+  operating_mode: "SOLO_CALIBRATION" | "TEAM";
+  signer_policy_version: number;
+  required_countersignatures: number;
   idempotency_key: string;
   sequence: number;
 };
@@ -86,19 +90,44 @@ export function validateDecisionTarget(target: DecisionTarget) {
 export function validateDecisionIntent(input: DecisionIntentPayload) {
   if (!UUID_V7.test(input.intent_id) || !UUID_V7.test(input.receipt_id) || !UUID_V7.test(input.idempotency_key)) return "Decision identities must be UUIDv7.";
   if (input.sequence !== 1) return "A new decision intent must begin at sequence 1.";
+  if (!Number.isInteger(input.signer_policy_version) || input.signer_policy_version < 1) return "A positive signer policy version is required.";
+  if (!["SOLO_CALIBRATION", "TEAM"].includes(input.operating_mode)) return "A recognized signer operating mode is required.";
+  if (!Number.isInteger(input.required_countersignatures) || input.required_countersignatures < 0) return "The countersignature requirement is invalid.";
+  if (input.operating_mode === "SOLO_CALIBRATION" && input.required_countersignatures !== 0) return "Solo calibration must require zero additional countersigners.";
+  if (input.operating_mode === "TEAM" && input.required_countersignatures < 2) return "Team mode requires at least two distinct countersigners.";
+  const submittedAt = Date.parse(input.submitted_at);
+  const effectiveNotBefore = Date.parse(input.effective_not_before);
+  if (!Number.isFinite(submittedAt) || !Number.isFinite(effectiveNotBefore) || effectiveNotBefore < submittedAt + 24 * 60 * 60 * 1000) return "Default-closed decisions require at least 24 hours of cooling.";
   if (input.final_reasoning.trim().length < 12) return "Human reasoning must contain at least 12 characters.";
   if (!HEX64.test(input.draft_sha256) || !HEX64.test(input.evidence_set_sha256)) return "The advisory and evidence digests are invalid.";
   return validateDecisionTarget(input.target);
 }
 
 export function applyDecisionProofState(current: DecisionPackageState, event: "ISSUER_VERIFIED" | "ISSUER_FAILED" | "COUNTERSIGNATURE_VERIFIED" | "COUNTERSIGNATURE_FAILED" | "SUPERSEDE", required: number, accepted: number): DecisionPackageState {
+  void required;
+  void accepted;
   if (["EFFECTIVE", "SUPERSEDED"].includes(current)) throw new Error("The decision state is terminal.");
   if (event === "SUPERSEDE") return "SUPERSEDED";
   if (event === "ISSUER_FAILED") return "PROOF_FAILED";
   if (event === "COUNTERSIGNATURE_FAILED") return "COUNTERSIGNATURE_FAILED";
-  if (event === "ISSUER_VERIFIED") return required === 0 ? "EFFECTIVE" : "PENDING_COUNTERSIGNATURE";
+  if (event === "ISSUER_VERIFIED") return "PENDING_COUNTERSIGNATURE";
   if (current !== "PENDING_COUNTERSIGNATURE") throw new Error("A countersignature cannot precede issuer verification.");
-  return accepted >= required ? "EFFECTIVE" : "PENDING_COUNTERSIGNATURE";
+  return "PENDING_COUNTERSIGNATURE";
+}
+
+export function decisionFinalizationError(input: {
+  state: DecisionPackageState;
+  requiredCountersignatures: number;
+  acceptedCountersignatures: number;
+  effectiveNotBefore: string;
+  now: string;
+}) {
+  if (input.state !== "PENDING_COUNTERSIGNATURE") return "The intent is not awaiting finalization.";
+  if (input.acceptedCountersignatures < input.requiredCountersignatures) return "Required countersignatures are incomplete.";
+  const effectiveNotBefore = Date.parse(input.effectiveNotBefore);
+  const now = Date.parse(input.now);
+  if (!Number.isFinite(effectiveNotBefore) || !Number.isFinite(now) || now < effectiveNotBefore) return "The 24-hour cooling period has not elapsed.";
+  return null;
 }
 
 export async function decisionDigest(value: unknown) {
@@ -158,6 +187,8 @@ export async function createDecisionIssuerEnvelope(input: {
     decision: input.intent.decision, final_reasoning_sha256: await sha256Hex(input.intent.final_reasoning),
     target: input.intent.target, submitter_principal: input.intent.submitter_principal,
     submitter_role: input.intent.submitter_role, submitted_at: input.intent.submitted_at,
+    effective_not_before: input.intent.effective_not_before, operating_mode: input.intent.operating_mode,
+    signer_policy_version: input.intent.signer_policy_version, required_countersignatures: input.intent.required_countersignatures,
     sequence: input.intent.sequence,
   };
   const payloadSha256 = await decisionDigest(payload);

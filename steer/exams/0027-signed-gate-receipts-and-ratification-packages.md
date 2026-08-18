@@ -9,6 +9,13 @@ REL-01..04, DES-01..02
 **Status:** Corrected Architect draft for independent Test/Critic review and authenticated
 human Gate 2 decision; not approved for implementation
 
+> **Bounded solo-calibration correction — 2026-08-18:** The authenticated Product/Tech
+> owner approved `SOLO_CALIBRATION` as the explicit zero-additional-countersigner policy
+> already permitted by `required_signer_set/v2`. Team mode still requires at least two
+> distinct authenticated human countersigners. STR027-AUTH-003, STR027-EFF-001/003,
+> CORE-10/11, the 24-hour default-closed interval, exact proof, and fresh Critic review
+> remain mandatory. See `steer/evidence/0027-solo-calibration-signer-ruling.md`.
+
 ## Authority and test conventions
 
 Work Management remains authoritative. A repository line, signature service, AI draft,

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyDecisionProofState, buildDecisionEvent, createDecisionIssuerEnvelope, createUuidV7, decisionDigest, decisionIssuerPublicKey, gateReceiptSignedBytes, safeDecisionExport, validateDecisionIntent, verifyDecisionIssuerEnvelope, type DecisionIntentPayload } from "../lib/decision-package";
+import { applyDecisionProofState, buildDecisionEvent, createDecisionIssuerEnvelope, createUuidV7, decisionDigest, decisionFinalizationError, decisionIssuerPublicKey, gateReceiptSignedBytes, safeDecisionExport, validateDecisionIntent, verifyDecisionIssuerEnvelope, type DecisionIntentPayload } from "../lib/decision-package";
 
 function intent(): DecisionIntentPayload {
   return {
@@ -18,6 +18,10 @@ function intent(): DecisionIntentPayload {
     submitter_principal: "human-1",
     submitter_role: "Interim Tech Lead",
     submitted_at: "2026-08-18T23:00:00Z",
+    effective_not_before: "2026-08-19T23:00:00Z",
+    operating_mode: "SOLO_CALIBRATION",
+    signer_policy_version: 1,
+    required_countersignatures: 0,
     idempotency_key: createUuidV7(1_700_000_000_003),
     sequence: 1,
   };
@@ -30,11 +34,27 @@ test("new decision intents are UUIDv7-bound and exact-target validated", () => {
   assert.match(validateDecisionIntent({ ...payload, target: { ...payload.target, commit: "main" } }) ?? "", /exact lowercase Git SHA/);
 });
 
-test("proof and countersignature states stay ineffective until every proof exists", () => {
+test("proof and countersignature events stay ineffective until explicit finalization", () => {
   assert.equal(applyDecisionProofState("PENDING_PROOF", "ISSUER_VERIFIED", 2, 0), "PENDING_COUNTERSIGNATURE");
   assert.equal(applyDecisionProofState("PENDING_COUNTERSIGNATURE", "COUNTERSIGNATURE_VERIFIED", 2, 1), "PENDING_COUNTERSIGNATURE");
-  assert.equal(applyDecisionProofState("PENDING_COUNTERSIGNATURE", "COUNTERSIGNATURE_VERIFIED", 2, 2), "EFFECTIVE");
+  assert.equal(applyDecisionProofState("PENDING_COUNTERSIGNATURE", "COUNTERSIGNATURE_VERIFIED", 2, 2), "PENDING_COUNTERSIGNATURE");
+  assert.equal(applyDecisionProofState("PENDING_PROOF", "ISSUER_VERIFIED", 0, 0), "PENDING_COUNTERSIGNATURE");
   assert.equal(applyDecisionProofState("PENDING_PROOF", "ISSUER_FAILED", 0, 0), "PROOF_FAILED");
+});
+
+test("solo finalization still requires issuer proof and the full cooling period", () => {
+  assert.match(decisionFinalizationError({ state: "PENDING_PROOF", requiredCountersignatures: 0, acceptedCountersignatures: 0, effectiveNotBefore: "2026-08-19T23:00:00Z", now: "2026-08-20T00:00:00Z" }) ?? "", /not awaiting/);
+  assert.match(decisionFinalizationError({ state: "PENDING_COUNTERSIGNATURE", requiredCountersignatures: 0, acceptedCountersignatures: 0, effectiveNotBefore: "2026-08-19T23:00:00Z", now: "2026-08-19T22:59:59Z" }) ?? "", /cooling period/);
+  assert.equal(decisionFinalizationError({ state: "PENDING_COUNTERSIGNATURE", requiredCountersignatures: 0, acceptedCountersignatures: 0, effectiveNotBefore: "2026-08-19T23:00:00Z", now: "2026-08-19T23:00:00Z" }), null);
+  assert.match(decisionFinalizationError({ state: "PENDING_COUNTERSIGNATURE", requiredCountersignatures: 2, acceptedCountersignatures: 1, effectiveNotBefore: "2026-08-19T23:00:00Z", now: "2026-08-20T00:00:00Z" }) ?? "", /incomplete/);
+});
+
+test("solo and team signer-count policies are validated independently", () => {
+  const solo = intent();
+  assert.equal(validateDecisionIntent(solo), null);
+  assert.match(validateDecisionIntent({ ...solo, required_countersignatures: 1 }) ?? "", /zero additional/);
+  assert.match(validateDecisionIntent({ ...solo, operating_mode: "TEAM", required_countersignatures: 1 }) ?? "", /at least two/);
+  assert.match(validateDecisionIntent({ ...solo, effective_not_before: "2026-08-19T22:59:59Z" }) ?? "", /24 hours/);
 });
 
 test("pending exports cannot be mistaken for approval and events are chained", async () => {

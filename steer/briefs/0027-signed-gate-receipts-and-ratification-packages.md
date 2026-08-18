@@ -29,6 +29,16 @@
 > **Exact final correction note — 2026-08-16:** Fresh Critic evidence `4f21bfdf18debafa35965b07ab3a23ca96c0a1ae` is preserved in ancestry. This revision freezes literal nested-object schemas and an acyclic revocation-entry preimage, and uses uniform Bonferroni bounds; no human policy or Gate state changes.
 >
 > **Minimal binding correction note — 2026-08-16:** Fresh Critic evidence `1c3abdedcd4f494c9c3cd51bdf4b814e7b1e8597` is preserved in ancestry. This correction binds the v2 signer set to each countersignature and makes snapshot identity authority-complete; no Gate state or human policy changes.
+>
+> **Solo-calibration ruling — 2026-08-18:** Idriss Enayat, acting as Product Lead and
+> interim Tech Lead, approved the bounded solo-mode interpretation recorded in
+> `steer/evidence/0027-solo-calibration-signer-ruling.md`. In explicit
+> `SOLO_CALIBRATION` mode the signed required-signer set has `required_count=0` and
+> `minimum_distinct_humans=0`; team mode retains the existing nonzero requirement of at
+> least two distinct authenticated humans. Exact-revision proof, separate-session policy,
+> 24-hour default-closed cooling, fresh Critic review, and every other RAT/domain control
+> remain unchanged. This note does not authorize deployment, release, Gate 3, or a
+> production signer.
 
 ## Expected outcome and measurement
 
