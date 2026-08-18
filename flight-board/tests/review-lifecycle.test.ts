@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { schnorr } from "@noble/curves/secp256k1.js";
+import { readFile } from "node:fs/promises";
 import { canonicalJson, sha256Hex } from "../lib/dispatch-lifecycle";
 import { buildReviewIdentity, createSignedReviewEvent, reviewManifestSha256, validateReviewAssignmentPayload, verifyReviewerBinding, type ReviewAssignmentPayload } from "../lib/review-lifecycle";
 
@@ -91,4 +92,22 @@ test("review events are append-only hash chained and reviewer bindings use the e
   const signature = Array.from(schnorr.sign(Uint8Array.from(digest.match(/.{2}/g)!.map((part) => Number.parseInt(part, 16))), reviewerSecret), (byte) => byte.toString(16).padStart(2, "0")).join("");
   assert.equal(await verifyReviewerBinding(acknowledgement, signature, publicKey), true);
   assert.equal(await verifyReviewerBinding({ ...acknowledgement, predecessor_event_sha256: ready.eventSha256 }, signature, publicKey), false);
+});
+
+test("the STR-028 Gate 3 packet is an exact valid signed-review target", async () => {
+  const packet = JSON.parse(await readFile(new URL("../../steer/evidence/0028-gate-3-review-target.json", import.meta.url), "utf8")) as {
+    stage: ReviewAssignmentPayload["review_stage"];
+    target: ReviewAssignmentPayload["target"];
+    prior_binding_digests: string[];
+  };
+  assert.equal(packet.stage, "GATE_3_BUILD");
+  assert.equal(packet.target.target_artifacts.length, 19);
+  assert.equal(await reviewManifestSha256(packet.target), packet.target.target_artifact_manifest_sha256);
+  const payload = await assignment();
+  await validateReviewAssignmentPayload({
+    ...payload,
+    review_stage: packet.stage,
+    target: packet.target,
+    prior_binding_digests: packet.prior_binding_digests,
+  });
 });
