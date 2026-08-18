@@ -90,6 +90,7 @@ async function executeOracle(definition: CaseDefinition) {
     derived: { outcome: CaseDefinition["outcome"]; reconciliation: CaseDefinition["reconciliation"] };
     database: Record<string, unknown[]>;
     database_sha256: string;
+    signals: { stale_ui_recurrence_total: number; duplicate_dispatch_total: number };
     substeps: Array<{ substep_id: string; result: "pass" | "fail"; code?: string; database?: Record<string, unknown[]>; database_sha256?: string }>;
     additional: Record<string, unknown>;
   });
@@ -113,7 +114,11 @@ async function executeOracle(definition: CaseDefinition) {
           : observation.derived.outcome === "validation" ? "VALIDATION_ERROR"
             : observation.authoritative_response.status === 200 ? "OK" : `HTTP_${observation.authoritative_response.status}`));
   const transportPass = observation.authoritative_response.status === definition.transport.http_status && typedCode === definition.transport.typed_code;
-  const resultPass = observation.derived.outcome === definition.outcome && observation.derived.reconciliation === definition.reconciliation && connectedUiPass && substepsPass && transportPass;
+  const signalsPass = Number.isInteger(observation.signals.stale_ui_recurrence_total)
+    && Number.isInteger(observation.signals.duplicate_dispatch_total)
+    && observation.signals.stale_ui_recurrence_total === 0
+    && observation.signals.duplicate_dispatch_total === 0;
+  const resultPass = observation.derived.outcome === definition.outcome && observation.derived.reconciliation === definition.reconciliation && connectedUiPass && substepsPass && transportPass && signalsPass;
   if (!resultPass) throw new Error(`${definition.caseId} connected result diverged from its frozen oracle: ${JSON.stringify({ expected: { outcome: definition.outcome, reconciliation: definition.reconciliation, transport: definition.transport, substeps: expectedSubsteps }, actual: { typedCode, observation } })}`);
   return {
     case_id: definition.caseId,
@@ -141,8 +146,8 @@ async function executeOracle(definition: CaseDefinition) {
       { metric_name: histogram, label_name: "", label_value: "", value: observation.client.latency_ms, case_id: definition.caseId },
       { metric_name: outcomeMetric, label_name: "outcome", label_value: observation.derived.outcome, value: 1, case_id: definition.caseId },
       { metric_name: "steer_post_write_reconciliation_total", label_name: "result", label_value: observation.derived.reconciliation, value: 1, case_id: definition.caseId },
-      { metric_name: "steer_stale_ui_recurrence_total", label_name: "severity", label_value: "critical", value: 0, case_id: definition.caseId },
-      { metric_name: "steer_duplicate_dispatch_total", label_name: "", label_value: "", value: 0, case_id: definition.caseId },
+      { metric_name: "steer_stale_ui_recurrence_total", label_name: "severity", label_value: "critical", value: observation.signals.stale_ui_recurrence_total, case_id: definition.caseId },
+      { metric_name: "steer_duplicate_dispatch_total", label_name: "", label_value: "", value: observation.signals.duplicate_dispatch_total, case_id: definition.caseId },
     ],
     terminal_ui_feedback_observations: observation.client.terminal_feedback_observations,
     substeps: observation.substeps.map((substep) => ({ parent_case_id: definition.caseId, ...substep, seed_reset: true, evidence_ref: `${oracle.file}:${oracle.pattern}` })),
@@ -156,9 +161,9 @@ for (const definition of definitions) cases.push(await executeOracle(definition)
 const saveLatencies = cases.flatMap((entry) => entry.telemetry.filter((metric) => metric.metric_name === "steer_work_item_save_feedback_latency_ms").map((metric) => metric.value));
 const dispatchLatencies = cases.flatMap((entry) => entry.telemetry.filter((metric) => metric.metric_name === "steer_agent_handoff_feedback_latency_ms").map((metric) => metric.value));
 const hiddenValidationOrConflictErrors = cases.filter((entry) => entry.transport_result.http_status >= 400 && entry.actual_evidence.painted_role !== "alert").length;
-const staleResponseOverwrites = cases.filter((entry) => entry.case_id.startsWith("ORDER-") && entry.result !== "pass").length;
-const duplicateDispatches = cases.filter((entry) => ["DISP-02", "REC-01", "REC-02"].includes(entry.case_id) && entry.result !== "pass").length;
-const unresolvedCriticalRecurrences = cases.flatMap((entry) => entry.substeps).filter((substep) => substep.result !== "pass").length;
+const staleResponseOverwrites = cases.flatMap((entry) => entry.telemetry).filter((metric) => metric.metric_name === "steer_stale_ui_recurrence_total").reduce((sum, metric) => sum + metric.value, 0);
+const duplicateDispatches = cases.flatMap((entry) => entry.telemetry).filter((metric) => metric.metric_name === "steer_duplicate_dispatch_total").reduce((sum, metric) => sum + metric.value, 0);
+const unresolvedCriticalRecurrences = staleResponseOverwrites + cases.flatMap((entry) => entry.substeps).filter((substep) => substep.result !== "pass").length;
 const output = {
   schema: "steer-str028-case-ledger/v1",
   target_commit: target,

@@ -31,14 +31,14 @@ The executable matrix is `flight-board/tests/str028-agent-accessibility-matrix.t
 
 ## Exact 20-case ledger
 
-`steer/evidence/0028-case-ledger-b928cba.json` is bound to the exact implementation commit and has SHA-256 `ded821cd82ed6388c6a4a86dffa2824d881155b939a6ad1198bbc6f621dd413e`.
+`steer/evidence/0028-case-ledger-b928cba.json` is bound to the exact implementation commit and has SHA-256 `fcf980d910eb49526dafc1e22e6a6f1e766221373a0ad1d07e77505ab27439ab`.
 
 Each case now executes as one connected observation. Timing starts immediately when the authoritative response is returned. That exact response identity is passed directly into the production `InlineActionFeedback` component; the painted role/live/focus state is captured; and the actual D1 emulator rows are snapshotted in that same process. Every frozen FAIL-03, FAIL-04, and REC-04 substep has its own database snapshot and SHA-256. The generator validates the actual HTTP status and typed response code, rejects missing or duplicate observations, and no longer fabricates outcome, transport, side-effect, focus, or latency fields from the expected-case definition.
 
 - 20/20 frozen cases passed; no denominator omissions.
 - 20 terminal UI feedback observations were recorded.
 - Save feedback p95: 71 ms against a 250 ms budget.
-- Handoff feedback p95: 73 ms against a 250 ms budget.
+- Handoff feedback p95: 86 ms against a 250 ms budget.
 - Hidden validation/conflict errors: 0.
 - Stale response overwrites: 0.
 - Duplicate dispatches: 0.
@@ -65,7 +65,11 @@ After restoration, Codex also executed a real hosted staging write sequence thro
 - Failure: a second tab holding the prior revision was rejected, preserved its input, announced the conflict through `role=alert` and `aria-live=assertive`, moved focus to the alert, and appended no D1 row.
 - Recovery: the current tab restored the exact original next action, announced `Saved`, appended activity row 322, and a fresh reload proved the authoritative original value was restored.
 
-The only D1 delta was the two expected append-only success/restore audit rows. The stale failure produced zero durable side effects. The final connected 20-case ledger was regenerated at `2026-08-18T19:21:39.072Z`, after both the exact rollback/restore and the hosted post-rollback smoke rather than before them.
+The only D1 delta was the two expected append-only success/restore audit rows. The stale failure produced zero durable side effects.
+
+To close the reverted-version boundary directly, Codex then ran a second exact deployment cycle: v18→v17 deployment `appgdep_6a84b26fb81c81918e045dbdbf24a5c3` succeeded, the same pending→success→stale-conflict→recovery flow ran while v17 was live, and v17 appended only expected activity rows 323 and 324. The stale request returned the typed conflict, focused its alert, preserved input, and appended no row. v17 restored the authoritative original value. Deployment `appgdep_6a84b307b6f88191884c6b0a0cc2edfe` then restored v18, and the complete flow was repeated there with only expected rows 325 and 326. Final D1 reads show the original STR-028 value, one unchanged queued receipt/outbox/event, zero attempts, zero send/claim/run deltas, and no new authorization audit.
+
+The final connected ledger was regenerated after this complete live v17/v18 sequence at `2026-08-18T19:34:04.738Z`. Dispatch/recovery action identities now bind to their captured D1 intent IDs. Stale-recurrence values are calculated from authoritative-versus-visible equality, duplicate-dispatch values are calculated from D1 identity/version deltas, and the summary is computed from those captured signals rather than case PASS labels.
 
 ## Clean verification
 

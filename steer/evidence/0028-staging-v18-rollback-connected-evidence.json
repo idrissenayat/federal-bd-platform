@@ -44,6 +44,24 @@
       "rto_ms": 7310
     }
   ],
+  "closure_revalidation_deployment_sequence": [
+    {
+      "operation": "v18 to v17 with live action smoke",
+      "deployment_id": "appgdep_6a84b26fb81c81918e045dbdbf24a5c3",
+      "requested_at": "2026-08-18T19:28:47.920Z",
+      "completed_at": "2026-08-18T19:28:56.159Z",
+      "status": "succeeded",
+      "rto_ms": 8239
+    },
+    {
+      "operation": "v17 to v18 with repeated live action smoke",
+      "deployment_id": "appgdep_6a84b307b6f88191884c6b0a0cc2edfe",
+      "requested_at": "2026-08-18T19:31:19.981Z",
+      "completed_at": "2026-08-18T19:31:27.028Z",
+      "status": "succeeded",
+      "rto_ms": 7047
+    }
+  ],
   "snapshots": {
     "before_at": "2026-08-18T18:48:56.679Z",
     "during_v17_at": "2026-08-18T18:52:40.042Z",
@@ -204,14 +222,14 @@
     "connected_action_matrix": {
       "ledger": "steer/evidence/0028-case-ledger-b928cba.json",
       "generated_after_exact_rollback": true,
-      "generated_at": "2026-08-18T19:21:39.072Z",
+      "generated_at": "2026-08-18T19:34:04.738Z",
       "terminal_observations": 20,
       "pending_semantics": "captured from the production InlineActionFeedback component in every connected case and repeated in the hosted post-rollback save/conflict smoke",
       "success_observations": 15,
       "failure_observations": 5,
       "all_response_to_paint_observations_passed": true,
       "save_feedback_p95_ms": 71,
-      "dispatch_feedback_p95_ms": 73
+      "dispatch_feedback_p95_ms": 86
     },
     "hosted_pending_success_conflict_recovery": {
       "success_attempted_at": "2026-08-18T19:14:52.492Z",
@@ -256,6 +274,133 @@
       "expected_activity_delta": 2,
       "observed_activity_delta": 2,
       "unexpected_activity_delta": 0
+    },
+    "reverted_v17_pending_success_conflict_recovery": {
+      "version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_9125315aee688191861e7acb85be6ce5",
+      "deployment_id": "appgdep_6a84b26fb81c81918e045dbdbf24a5c3",
+      "success_attempted_at": "2026-08-18T19:29:49.727Z",
+      "success_response": {
+        "status": 200,
+        "identity_kind": "authoritative_work_item_revision",
+        "identity": "2026-08-18T19:29:53.883Z"
+      },
+      "success_pending": {
+        "role": "status",
+        "aria_live": "polite",
+        "message": "Saving… Waiting for the authoritative server response."
+      },
+      "success_terminal_observed_at": "2026-08-18T19:29:59.226Z",
+      "success_terminal": {
+        "role": "status",
+        "aria_live": "polite",
+        "message": "Saved — Next action saved from the authoritative response."
+      },
+      "success_activity_row": {
+        "id": 323,
+        "created_at": "2026-08-18T19:29:53.883Z"
+      },
+      "stale_conflict_attempted_at": "2026-08-18T19:30:15.804Z",
+      "stale_conflict_response": {
+        "status": 409,
+        "typed_result": "STALE_REVISION",
+        "authoritative_revision": "2026-08-18T19:29:53.883Z"
+      },
+      "stale_conflict_terminal_observed_at": "2026-08-18T19:30:25.156Z",
+      "stale_conflict_terminal": {
+        "role": "alert",
+        "aria_live": "assertive",
+        "focus_moved_to_alert": true,
+        "input_preserved": true,
+        "message": "Action not completed — This work item changed after you opened it. Your input was preserved; review the authoritative state before retrying."
+      },
+      "stale_conflict_activity_delta": 0,
+      "restore_response": {
+        "status": 200,
+        "identity_kind": "authoritative_work_item_revision",
+        "identity": "2026-08-18T19:30:59.924Z"
+      },
+      "restore_activity_row": {
+        "id": 324,
+        "created_at": "2026-08-18T19:30:59.924Z"
+      },
+      "authoritative_original_restored": true,
+      "expected_activity_delta": 2,
+      "observed_activity_delta": 2,
+      "unexpected_activity_delta": 0
+    },
+    "restored_v18_revalidation_pending_success_conflict_recovery": {
+      "version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_a34f8378043c8191978ef9477cb86d06",
+      "deployment_id": "appgdep_6a84b307b6f88191884c6b0a0cc2edfe",
+      "success_attempted_at": "2026-08-18T19:32:22.400Z",
+      "success_response": {
+        "status": 200,
+        "identity_kind": "authoritative_work_item_revision",
+        "identity": "2026-08-18T19:32:27.547Z"
+      },
+      "success_pending": {
+        "role": "status",
+        "aria_live": "polite",
+        "message": "Saving… Waiting for the authoritative server response."
+      },
+      "success_terminal_observed_at": "2026-08-18T19:32:31.727Z",
+      "success_terminal": {
+        "role": "status",
+        "aria_live": "polite",
+        "message": "Saved — Next action saved from the authoritative response."
+      },
+      "success_activity_row": {
+        "id": 325,
+        "created_at": "2026-08-18T19:32:27.547Z"
+      },
+      "stale_conflict_attempted_at": "2026-08-18T19:32:40.343Z",
+      "stale_conflict_response": {
+        "status": 409,
+        "typed_result": "STALE_REVISION",
+        "authoritative_revision": "2026-08-18T19:32:27.547Z"
+      },
+      "stale_conflict_terminal_observed_at": "2026-08-18T19:32:49.718Z",
+      "stale_conflict_terminal": {
+        "role": "alert",
+        "aria_live": "assertive",
+        "focus_moved_to_alert": true,
+        "input_preserved": true,
+        "message": "Action not completed — This work item changed after you opened it. Your input was preserved; review the authoritative state before retrying."
+      },
+      "stale_conflict_activity_delta": 0,
+      "restore_response": {
+        "status": 200,
+        "identity_kind": "authoritative_work_item_revision",
+        "identity": "2026-08-18T19:33:00.369Z"
+      },
+      "restore_activity_row": {
+        "id": 326,
+        "created_at": "2026-08-18T19:33:00.369Z"
+      },
+      "authoritative_original_restored": true,
+      "expected_activity_delta": 2,
+      "observed_activity_delta": 2,
+      "unexpected_activity_delta": 0
+    },
+    "post_revalidation_dispatch_invariants": {
+      "dispatch_receipts": 1,
+      "dispatch_outbox": 1,
+      "dispatch_events": 1,
+      "dispatch_attempts": 0,
+      "dispatch_authorization_audits": 1,
+      "intent_id": "8329a2206554d7e117df1c1f6e5cf6e97f93ad07cdb876fbbaf3840f7b08b2cf",
+      "state": "QUEUED",
+      "event_version": 0,
+      "attempt_number": 0,
+      "send_started": 0,
+      "lease_id": null,
+      "reservation_fence": null,
+      "delivered_event_id": null,
+      "accepted_acknowledgement_sha256": null,
+      "duplicate_delta": 0,
+      "send_delta": 0,
+      "claim_delta": 0,
+      "run_delta": 0,
+      "authorization_audit_delta": 0
     }
   },
   "result": "PASS",

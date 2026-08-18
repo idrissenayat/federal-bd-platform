@@ -16,6 +16,19 @@ function digest(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
+function duplicateCount(values: string[]) {
+  return values.length - new Set(values).size;
+}
+
+function dispatchDuplicateCount(database: { receipts: unknown[]; outbox: unknown[]; events: unknown[]; attempts: unknown[] }) {
+  const text = (value: unknown) => String(value ?? "");
+  const field = (row: unknown, key: string) => (row as Record<string, unknown>)[key];
+  return duplicateCount(database.receipts.map((row) => text(field(row, "intent_id"))))
+    + duplicateCount(database.outbox.map((row) => text(field(row, "intent_id"))))
+    + duplicateCount(database.events.map((row) => `${text(field(row, "intent_id"))}:${text(field(row, "event_version"))}`))
+    + duplicateCount(database.attempts.map((row) => `${text(field(row, "intent_id"))}:${text(field(row, "attempt_number"))}`));
+}
+
 function tableRows(db: QueryableDatabase | undefined, table: string, columns: string) {
   if (!db) return [];
   const exists = db.sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").all(table);
@@ -116,6 +129,19 @@ export async function captureConnectedResponse(input: {
   if (!region) throw new Error(`${input.caseId} did not paint a named local result.`);
   const focusTarget = dom.window.document.activeElement === region ? "inline_error" : dom.window.document.activeElement === initiator ? "initiating_control" : "unexpected";
   const { database, database_sha256 } = captureDatabaseEvidence(input.db);
+  const databaseIntentId = database.outbox[0]?.intent_id ?? database.receipts[0]?.intent_id ?? database.events[0]?.intent_id;
+  const responseIdentity = parsed.dispatch_intent_id
+    ?? parsed.intent_id
+    ?? parsed.receipt_id
+    ?? parsedProjection?.dispatch_intent_id
+    ?? parsedProjection?.intent_id
+    ?? parsedProjection?.receipt_id
+    ?? databaseIntentId
+    ?? (parsed.snapshot && typeof parsed.snapshot === "object" ? digest(parsed.snapshot) : digest(parsed));
+  const signals = {
+    stale_ui_recurrence_total: region.textContent?.includes(message) ? 0 : 1,
+    duplicate_dispatch_total: dispatchDuplicateCount(database),
+  };
   const observation = {
     schema: "steer-str028-connected-observation/v1",
     case_id: input.caseId,
@@ -125,7 +151,7 @@ export async function captureConnectedResponse(input: {
       code: parsed.code ?? null,
       state: parsedProjection?.state ?? parsed.state ?? null,
       idempotent_replay: parsed.idempotent_replay === true,
-      response_identity: parsed.dispatch_intent_id ?? (parsed.snapshot && typeof parsed.snapshot === "object" ? digest(parsed.snapshot) : digest(parsed)),
+      response_identity: responseIdentity,
     },
     client: {
       feedback_state: feedbackState,
@@ -141,6 +167,7 @@ export async function captureConnectedResponse(input: {
     derived: { outcome, reconciliation: input.reconciliation },
     database,
     database_sha256,
+    signals,
     substeps: input.substeps ?? [],
     additional: input.additional ?? {},
   };
@@ -199,6 +226,10 @@ export async function captureConnectedClient(input: {
     activity: Array.isArray((input.visible as { activity?: unknown[] })?.activity) ? (input.visible as { activity: unknown[] }).activity : [],
     economics_events: Array.isArray((input.visible as { work_economics_events?: unknown[] })?.work_economics_events) ? (input.visible as { work_economics_events: unknown[] }).work_economics_events : [],
   };
+  const signals = {
+    stale_ui_recurrence_total: digest(input.authoritative) === digest(input.visible) ? 0 : 1,
+    duplicate_dispatch_total: dispatchDuplicateCount(database),
+  };
   const observation = {
     schema: "steer-str028-connected-observation/v1",
     case_id: input.caseId,
@@ -207,6 +238,7 @@ export async function captureConnectedClient(input: {
     derived: { outcome: input.outcome, reconciliation: input.reconciliation },
     database,
     database_sha256: digest(database),
+    signals,
     substeps: [],
     additional: { visible_sha256: digest(input.visible) },
   };
