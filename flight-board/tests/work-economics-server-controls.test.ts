@@ -78,6 +78,43 @@ test("general item mutation and dispatch enforce same-POD scope and retain paylo
   assert.ok(denials.every((event) => !String(event.reason).includes("sensitive payload")));
 });
 
+test("successful dispatch creates one immutable receipt, outbox identity, and QUEUED event across replay", async () => {
+  const { db, itemId } = await setup();
+  const revision = "b".repeat(40);
+  const acceptedAt = new Date().toISOString();
+  const currentForecast = { ...forecast, acceptedAt, updatedAt: acceptedAt, earliestCompletion: "2026-08-20T14:00:00.000Z", likelyCompletion: "2026-08-20T18:00:00.000Z", latestCompletion: "2026-08-21T18:00:00.000Z", nextMilestoneAt: "2026-08-19T16:00:00.000Z", phaseExitAt: "2026-08-20T18:00:00.000Z" };
+  db.sqlite.prepare(`UPDATE members SET agent_key_id = 'agent-a-key', agent_key_version = 1,
+    agent_public_key_fingerprint = ? WHERE id = 'agent-a'`).run("a".repeat(64));
+  db.sqlite.prepare(`INSERT INTO workspace_routing
+    (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+    VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'member-a', 'Test fixture', ?)`)
+    .run(acceptedAt);
+  db.sqlite.prepare(`INSERT INTO agent_channel_memberships
+    (pod_id, channel_id, member_id, membership_version, status, created_at)
+    VALUES ('pod-a', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'agent-a', 1, 'active', ?)`)
+    .run(acceptedAt);
+  db.sqlite.prepare("UPDATE work_items SET evidence_url = ?, delivery_forecast_json = ? WHERE id = ?")
+    .run(`https://github.com/idrissenayat/federal-bd-platform/blob/${revision}/steer/exams/0028.md`, JSON.stringify(currentForecast), itemId);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => String(input).includes("raw.githubusercontent.com")
+    ? new Response("# exact approved exam\n", { status: 200 })
+    : originalFetch(input);
+  try {
+    const first = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db });
+    assert.equal(first?.status, 200, await first?.text());
+    const replay = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db });
+    const replayBody = await replay?.json() as { idempotent_replay: boolean; error?: string };
+    assert.equal(replay?.status, 200, JSON.stringify(replayBody));
+    assert.equal(replayBody.idempotent_replay, true);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_receipts").get()!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_outbox").get()!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE event_type = 'QUEUED'").get()!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT channel_name FROM dispatch_outbox").get()!.channel_name, "#steer-team");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("general item mutation rejects a cross-POD assignee", async () => {
   const { db, itemId } = await setup();
   const response = await handleApi(request("member-a", `/api/items/${itemId}`, "PATCH", { assigneeId: "member-b" }), { DB: db });

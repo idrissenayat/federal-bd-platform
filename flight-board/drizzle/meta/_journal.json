@@ -64,6 +64,20 @@
       "when": 1786744680111,
       "tag": "0008_shiny_calypso",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1787058754804,
+      "tag": "0009_chemical_namora",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1787058857698,
+      "tag": "0010_busy_scarlet_spider",
+      "breakpoints": true
     }
   ]
 }

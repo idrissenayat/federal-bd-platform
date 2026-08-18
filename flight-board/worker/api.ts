@@ -10,6 +10,7 @@ import {
   type DeliveryForecast,
 } from "../lib/work-economics";
 import { acceptedValueHypothesisReady, humanAcceptanceState, validateAndNormalizeWorkEconomics, type WorkEconomicsSection } from "../lib/work-economics-validation";
+import { buildDispatchIdentity, exactGitEvidence, STEER_HANDOFF_ROUTE_KEY, validateDispatchRoute, type DispatchRoute } from "../lib/dispatch-control";
 
 type D1Result<T = Record<string, unknown>> = {
   results?: T[];
@@ -396,6 +397,41 @@ async function ensureSchema(db: Database) {
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_role_created ON notifications (recipient_role, created_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_member_status ON notifications (member_id, status)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS workspace_routing (
+      pod_id text NOT NULL, route_key text NOT NULL, configuration_version integer NOT NULL,
+      channel_id text NOT NULL, channel_name text NOT NULL, relay_url text NOT NULL,
+      changed_by text NOT NULL, change_reason text NOT NULL, created_at text NOT NULL,
+      UNIQUE(pod_id, route_key, configuration_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_workspace_routing_active ON workspace_routing (pod_id, route_key, configuration_version)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS agent_channel_memberships (
+      pod_id text NOT NULL, channel_id text NOT NULL, member_id text NOT NULL,
+      membership_version integer NOT NULL, status text NOT NULL, created_at text NOT NULL,
+      UNIQUE(pod_id, channel_id, member_id, membership_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_agent_channel_membership_active ON agent_channel_memberships (pod_id, channel_id, member_id, status)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_receipts (
+      intent_id text PRIMARY KEY NOT NULL, lineage_id text NOT NULL, item_id integer NOT NULL,
+      pod_id text NOT NULL, authorization_revision text NOT NULL, channel_id text NOT NULL,
+      configuration_version integer NOT NULL, receipt_json text NOT NULL, created_at text NOT NULL,
+      terminal_at text, delete_after text
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_receipts_item_created ON dispatch_receipts (item_id, created_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_receipts_lineage ON dispatch_receipts (lineage_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_outbox (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, intent_id text NOT NULL UNIQUE,
+      receipt_id text NOT NULL, member_id text NOT NULL, channel_id text NOT NULL,
+      channel_name text NOT NULL, status text NOT NULL, attempt_number integer NOT NULL DEFAULT 0,
+      last_error_code text, created_at text NOT NULL, updated_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_outbox_status_created ON dispatch_outbox (status, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_events (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, intent_id text NOT NULL,
+      event_version integer NOT NULL, event_type text NOT NULL, prior_state text,
+      resulting_state text, payload_json text NOT NULL, actor_id text NOT NULL, created_at text NOT NULL,
+      UNIQUE(intent_id, event_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_events_intent_created ON dispatch_events (intent_id, created_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS code_reviews (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
       item_id integer NOT NULL,
@@ -420,6 +456,10 @@ async function ensureSchema(db: Database) {
   await ensureColumn(db, "work_items", "actual_economics_json", "actual_economics_json text");
   await ensureColumn(db, "work_items", "realized_outcome_json", "realized_outcome_json text");
   await ensureColumn(db, "members", "pod_id", "pod_id text NOT NULL DEFAULT 'steer-flight-team'");
+  await ensureColumn(db, "members", "agent_key_id", "agent_key_id text");
+  await ensureColumn(db, "members", "agent_key_version", "agent_key_version integer");
+  await ensureColumn(db, "members", "agent_public_key", "agent_public_key text");
+  await ensureColumn(db, "members", "agent_public_key_fingerprint", "agent_public_key_fingerprint text");
   await ensureColumn(db, "work_items", "pod_id", "pod_id text NOT NULL DEFAULT 'steer-flight-team'");
   await ensureColumn(db, "work_items", "work_type", "work_type text NOT NULL DEFAULT 'Unclassified'");
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_work_items_pod_work_type_state ON work_items (pod_id, work_type, state)").run();
@@ -437,6 +477,14 @@ async function ensureSchema(db: Database) {
   await ensureColumn(db, "agent_reviews", "evidence_url", "evidence_url text");
   await ensureColumn(db, "agent_reviews", "evidence_revision", "evidence_revision text");
   await ensureColumn(db, "agent_reviews", "evidence_sha256", "evidence_sha256 text");
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_receipts_no_update
+    BEFORE UPDATE ON dispatch_receipts BEGIN SELECT RAISE(ABORT, 'dispatch receipts are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_receipts_no_delete
+    BEFORE DELETE ON dispatch_receipts BEGIN SELECT RAISE(ABORT, 'dispatch receipts require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_events_no_update
+    BEFORE UPDATE ON dispatch_events BEGIN SELECT RAISE(ABORT, 'dispatch events are append-only'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_events_no_delete
+    BEFORE DELETE ON dispatch_events BEGIN SELECT RAISE(ABORT, 'dispatch events require the governed retention path'); END`).run();
   await db.prepare("PRAGMA optimize").run();
 }
 
@@ -458,6 +506,30 @@ async function ensureHumanSeats(db: Database) {
     db.prepare("INSERT OR IGNORE INTO members (id, display_name, kind, role, authority, status, accent) VALUES ('human-design', 'Open seat', 'human', 'Product Designer', 'Design intent, accessibility, and independent Gate 3 review', 'open', 'violet')"),
     db.prepare("INSERT OR IGNORE INTO members (id, display_name, kind, role, authority, status, accent) VALUES ('human-platform', 'Open seat', 'human', 'Platform / Ops Lead', 'Environment, delivery rails, rollback, telemetry, and agent operations', 'open', 'green')"),
     db.prepare("INSERT OR IGNORE INTO members (id, display_name, kind, role, authority, status, accent) VALUES ('human-security', 'Open seat', 'human', 'Security Owner', 'Required on #security Gate 3 rulings', 'open', 'amber')"),
+  ]);
+}
+
+async function ensureInitialSteerRoute(db: Database, user: User) {
+  const member = await memberContext(db, user);
+  const podId = member?.pod_id ?? "steer-flight-team";
+  const now = new Date().toISOString();
+  await db.batch([
+    db.prepare(`INSERT OR IGNORE INTO workspace_routing
+      (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+      VALUES (?, ?, 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', ?, ?, 'Authenticated human routing decision recorded in STR-028 issue #56.', ?)`)
+      .bind(podId, STEER_HANDOFF_ROUTE_KEY, buzzRelayHttpUrl, user.id, now),
+    db.prepare(`INSERT OR IGNORE INTO agent_channel_memberships
+      (pod_id, channel_id, member_id, membership_version, status, created_at)
+      SELECT ?, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'agent-builder', 1, 'active', ?
+      WHERE EXISTS (SELECT 1 FROM members WHERE id = 'agent-builder' AND pod_id = ? AND status = 'enrolled')`)
+      .bind(podId, now, podId),
+    db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:builder', agent_key_version = 3, agent_public_key = '1bcd9d68ce9a04cd17bf7e96d71e237654d38eeb26dd8ea5a08ba1259a6baf12', agent_public_key_fingerprint = '6e5b2ac5e26064f99a7e7046aa0235fe8e57e5106438f8314fd6a88b4b14ac06' WHERE id = 'agent-builder'"),
+    db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:critic', agent_key_version = 3, agent_public_key = '873eacdb79becf6b5e18f4aec79decad3c80bcce3d3c6c690e6dd773256f12c1', agent_public_key_fingerprint = '959cad86721134a6923a3bc2f951fc75781b7e11ba662d945b036322fee5b4da' WHERE id = 'agent-critic'"),
+    db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:test', agent_key_version = 3, agent_public_key = '692f22559c40755774615c070956134867995f07f54c1f2507b905d3b9bb0a52', agent_public_key_fingerprint = '268d379101b4e095a4da7ac5ac87553a85aa3a97a3a0359d0c5812b46ae55260' WHERE id = 'agent-test'"),
+    db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:scout', agent_key_version = 3, agent_public_key = 'f66f2459a92b793fd40bbf7f38553df37c6674bf273d85dbf85787290cc2237a', agent_public_key_fingerprint = 'd07dfbeedef6fa5bb6dfd36b8f1d1895a6b9cad8a2f3dda62842adaebebb6de1' WHERE id = 'agent-scout'"),
+    db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:architect', agent_key_version = 3, agent_public_key = '9c764661a78b480a324c8da9a5b86cf0224ad992467c324358e88fab4b85b2ea', agent_public_key_fingerprint = 'cbd5ff3144019ebe879e9365d51021c8a208a672e9c70405dd4a9329afdec72f' WHERE id = 'agent-architect'"),
+    db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:docs', agent_key_version = 3, agent_public_key = '2680575df454cefd26835487860724a805502f6285dfe8191251bf7d2bfcbf4d', agent_public_key_fingerprint = '27e3d8f6822c44734835431eab817c28802972aa534caa37a66945803d8d0209' WHERE id = 'agent-docs'"),
+    db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:ops', agent_key_version = 3, agent_public_key = '8ebe6f6dfcedc9c867a1083772a4f40d83da100d663d300ecd99562ebbf05349', agent_public_key_fingerprint = '0569025819601fa9497d7e1272734cf0224abc5edc26f751eefa4be4db9a2450' WHERE id = 'agent-ops'"),
   ]);
 }
 
@@ -625,6 +697,7 @@ async function bootstrap(db: Database, user: User) {
   await ensureCurrentUser(db, user);
   await ensureHumanSeats(db);
   await ensureSeedData(db, user);
+  await ensureInitialSteerRoute(db, user);
   await backfillReworkState(db);
   await backfillApprovedGateOneHandoffs(db);
   await backfillExplicitEngineeringRecords(db);
@@ -705,7 +778,8 @@ async function authorizeAgentDispatch(db: Database, user: User, itemId: number) 
   const actor = await memberContext(db, user);
   if (actor?.kind !== "human") return json({ error: "Only an authenticated human POD member may authorize agent dispatch." }, 403);
   const item = await db.prepare(
-    `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind, m.role AS assignee_role
+    `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind, m.role AS assignee_role,
+            m.agent_key_id, m.agent_key_version, m.agent_public_key_fingerprint
      FROM work_items w JOIN members actor ON actor.id = ? AND actor.pod_id = w.pod_id
      LEFT JOIN members m ON m.id = w.assignee_id WHERE w.id = ?`,
   ).bind(user.id, itemId).first<Record<string, unknown>>();
@@ -720,24 +794,115 @@ async function authorizeAgentDispatch(db: Database, user: User, itemId: number) 
   }
 
   const now = new Date().toISOString();
+  const podId = String(item.pod_id ?? "steer-flight-team");
+  const assigneeId = String(item.assignee_id ?? "");
+  const routeRow = await db.prepare(
+    `SELECT r.*, COALESCE(m.membership_version, 0) AS membership_version,
+            CASE WHEN m.status = 'active' THEN 1 ELSE 0 END AS agent_is_member
+     FROM workspace_routing r
+     LEFT JOIN agent_channel_memberships m
+       ON m.pod_id = r.pod_id AND m.channel_id = r.channel_id AND m.member_id = ?
+      AND m.membership_version = (SELECT MAX(m2.membership_version) FROM agent_channel_memberships m2
+        WHERE m2.pod_id = r.pod_id AND m2.channel_id = r.channel_id AND m2.member_id = ?)
+     WHERE r.pod_id = ? AND r.route_key = ?
+     ORDER BY r.configuration_version DESC LIMIT 1`,
+  ).bind(assigneeId, assigneeId, podId, STEER_HANDOFF_ROUTE_KEY).first<Record<string, unknown>>();
+  const route: DispatchRoute | null = routeRow ? {
+    podId: String(routeRow.pod_id),
+    configurationVersion: Number(routeRow.configuration_version),
+    channelId: String(routeRow.channel_id),
+    channelName: String(routeRow.channel_name),
+    relayUrl: String(routeRow.relay_url),
+    membershipVersion: Number(routeRow.membership_version),
+    agentMemberId: assigneeId,
+    agentIsMember: Boolean(routeRow.agent_is_member),
+  } : null;
+  const routeCheck = validateDispatchRoute(route, podId, assigneeId);
+  if (!route || !routeCheck.ok) return json({ error: routeCheck.detail, code: routeCheck.code, authorization }, 409);
+
+  const agentKeyId = String(item.agent_key_id ?? "");
+  const agentKeyVersion = Number(item.agent_key_version ?? 0);
+  const agentPublicKeyFingerprint = String(item.agent_public_key_fingerprint ?? "");
+  if (!agentKeyId || !Number.isInteger(agentKeyVersion) || agentKeyVersion < 1 || !/^[0-9a-f]{64}$/i.test(agentPublicKeyFingerprint)) {
+    return json({ error: "The assigned agent has no active versioned acknowledgement key enrollment.", code: "AGENT_KEY_NOT_ENROLLED", authorization }, 409);
+  }
+
+  const evidence = await readEvidence(item.evidence_url);
+  const exactEvidence = exactGitEvidence(item.evidence_url);
+  if (!exactEvidence || !evidence.sha256 || evidence.revision !== exactEvidence.revision) {
+    return json({ error: "Dispatch evidence must resolve to an immutable GitHub blob revision and exact content digest.", code: "EVIDENCE_REVISION_UNRESOLVED", authorization }, 409);
+  }
+  let forecastAcceptedAt = "not-required";
+  if (String(item.workflow) === "STEER") {
+    try { forecastAcceptedAt = String((JSON.parse(String(item.delivery_forecast_json)) as Record<string, unknown>).acceptedAt ?? ""); } catch { forecastAcceptedAt = ""; }
+    if (!forecastAcceptedAt) return json({ error: "The accepted forecast has no durable acceptance timestamp.", code: "FORECAST_AUDIT_MISSING", authorization }, 409);
+  }
+  const authorizationRevision = String(item.updated_at);
+  const authorizationAuditEventId = `dispatch-authorize:${itemId}:${authorizationRevision}:${user.id}`;
+  const identity = await buildDispatchIdentity({
+    podId, itemId, itemKey: String(item.key), workflow: String(item.workflow),
+    agentMemberId: assigneeId, agentKeyId, agentKeyVersion, agentPublicKeyFingerprint,
+    authorizationRevision, authorizationAuditEventId, evidenceUrl: exactEvidence.url,
+    evidenceRevision: exactEvidence.revision, evidenceSha256: evidence.sha256,
+    forecastAuditEventId: forecastAcceptedAt, channelId: route.channelId, nextAction: String(item.next_action),
+  });
+  const existing = await db.prepare("SELECT receipt_json FROM dispatch_receipts WHERE intent_id = ?").bind(identity.intentId).first<{ receipt_json: string }>();
+  if (existing) {
+    return json({ ok: true, idempotent_replay: true, receipt: JSON.parse(existing.receipt_json), authorization: { ...authorization, channel: route.channelName }, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
+  }
+
+  const allowedScope = { next_action: String(item.next_action), evidence_url: exactEvidence.url };
+  const prohibitedScope = { merge: true, deploy: true, release: true, human_gate_ruling: true, external_action_beyond_handoff: true };
+  const receipt = {
+    schema: "steer-dispatch-receipt/v1", receipt_id: identity.intentId,
+    dispatch_intent_id: identity.intentId, dispatch_claim_lineage_id: identity.lineageId,
+    workspace_pod_id: podId, work_item_stable_id: itemId, work_item_key: String(item.key),
+    authorization_revision: authorizationRevision, receipt_created_at: now, workflow: String(item.workflow),
+    authoritative_item_state: String(item.state), assigned_role: String(item.assignee_role),
+    enrolled_agent_member_id: assigneeId, enrolled_agent_key_id: agentKeyId,
+    enrolled_agent_key_version: agentKeyVersion, enrolled_agent_public_key_fingerprint: agentPublicKeyFingerprint,
+    allowed_scope: allowedScope, prohibited_scope: prohibitedScope,
+    evidence_url: exactEvidence.url, evidence_revision: exactEvidence.revision, evidence_sha256: evidence.sha256,
+    accepted_forecast_timestamp: forecastAcceptedAt, accepted_forecast_audit_event_id: forecastAcceptedAt,
+    human_authorization_timestamp: now, human_authorization_actor_id: user.id,
+    human_authorization_audit_event_id: authorizationAuditEventId,
+    canonical_channel_id: route.channelId, canonical_channel_name: route.channelName,
+    routing_configuration_version: route.configurationVersion, membership_version: route.membershipVersion,
+    authorized_next_action_sha256: identity.nextActionDigest,
+    acknowledgement_policy: "exact-enrolled-agent-signature-required",
+  };
+  const handoffMessage = `[${String(item.key)}] Authorized handoff to ${String(item.assignee_name)}. Receipt: ${identity.intentId}. Channel: ${route.channelName} (${route.channelId}). Next action: ${String(item.next_action)} Evidence: ${exactEvidence.url} Prohibited: merge, deployment, release, or any human gate ruling without a separate authenticated approval.`;
   await db.batch([
     db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'dispatch_authorized', ?, ?)")
-      .bind(itemId, user.id, `authorized agent handoff to ${String(item.assignee_name)} in ${authorization.channel}`, now),
+      .bind(itemId, user.id, `authorized agent handoff receipt ${identity.intentId} to ${String(item.assignee_name)} in ${route.channelName} (${route.channelId})`, now),
+    db.prepare(`INSERT INTO dispatch_receipts
+      (intent_id, lineage_id, item_id, pod_id, authorization_revision, channel_id, configuration_version, receipt_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(identity.intentId, identity.lineageId, itemId, podId, authorizationRevision, route.channelId, route.configurationVersion, JSON.stringify(receipt), now),
+    db.prepare(`INSERT INTO dispatch_outbox
+      (intent_id, receipt_id, member_id, channel_id, channel_name, status, attempt_number, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'QUEUED', 0, ?, ?)`)
+      .bind(identity.intentId, identity.intentId, assigneeId, route.channelId, route.channelName, now, now),
+    db.prepare(`INSERT INTO dispatch_events
+      (intent_id, event_version, event_type, prior_state, resulting_state, payload_json, actor_id, created_at)
+      VALUES (?, 0, 'QUEUED', NULL, 'QUEUED', ?, ?, ?)`)
+      .bind(identity.intentId, JSON.stringify({ schema: "steer-dispatch-event/v1", dispatch_intent_id: identity.intentId, event_version: 0, expected_event_version: -1, previous_event_sha256: null, event_type: "QUEUED", receipt_id: identity.intentId, routing_configuration_version: route.configurationVersion }), user.id, now),
     db.prepare(
       `INSERT OR IGNORE INTO notifications
        (dedupe_key, item_id, member_id, recipient_role, kind, title, body, channel, status, created_at)
-       VALUES (?, ?, ?, ?, 'agent_handoff', ?, ?, 'Block Buzz', 'queued', ?)`,
+       VALUES (?, ?, ?, ?, 'agent_handoff', ?, ?, ?, 'queued', ?)`,
     ).bind(
-      `dispatch-${itemId}-${now}`,
+      `dispatch-${identity.intentId}`,
       itemId,
       String(item.assignee_id),
       String(item.assignee_role ?? "Assigned agent"),
       `${String(item.key)} authorized for agent handoff`,
-      authorization.handoff_message,
+      handoffMessage,
+      route.channelName,
       now,
     ),
   ]);
-  return json({ ok: true, authorization, message: authorization.handoff_message, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
+  return json({ ok: true, idempotent_replay: false, authorization: { ...authorization, channel: route.channelName }, receipt, message: handoffMessage, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
 }
 
 async function createItem(request: Request, db: Database, user: User) {

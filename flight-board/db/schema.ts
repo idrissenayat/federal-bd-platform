@@ -12,6 +12,10 @@ export const members = sqliteTable(
     status: text("status").notNull().default("available"),
     accent: text("accent").notNull().default("aqua"),
     podId: text("pod_id").notNull().default("steer-flight-team"),
+    agentKeyId: text("agent_key_id"),
+    agentKeyVersion: integer("agent_key_version"),
+    agentPublicKey: text("agent_public_key"),
+    agentPublicKeyFingerprint: text("agent_public_key_fingerprint"),
   },
   (table) => [index("idx_members_kind").on(table.kind)],
 );
@@ -215,6 +219,99 @@ export const notifications = sqliteTable(
   (table) => [
     index("idx_notifications_role_created").on(table.recipientRole, table.createdAt),
     index("idx_notifications_member_status").on(table.memberId, table.status),
+  ],
+);
+
+export const workspaceRouting = sqliteTable(
+  "workspace_routing",
+  {
+    podId: text("pod_id").notNull(),
+    routeKey: text("route_key").notNull(),
+    configurationVersion: integer("configuration_version").notNull(),
+    channelId: text("channel_id").notNull(),
+    channelName: text("channel_name").notNull(),
+    relayUrl: text("relay_url").notNull(),
+    changedBy: text("changed_by").notNull(),
+    changeReason: text("change_reason").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("uq_workspace_routing_pod_key_version").on(table.podId, table.routeKey, table.configurationVersion),
+    index("idx_workspace_routing_active").on(table.podId, table.routeKey, table.configurationVersion),
+  ],
+);
+
+export const agentChannelMemberships = sqliteTable(
+  "agent_channel_memberships",
+  {
+    podId: text("pod_id").notNull(),
+    channelId: text("channel_id").notNull(),
+    memberId: text("member_id").notNull(),
+    membershipVersion: integer("membership_version").notNull(),
+    status: text("status").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("uq_agent_channel_membership").on(table.podId, table.channelId, table.memberId, table.membershipVersion),
+    index("idx_agent_channel_membership_active").on(table.podId, table.channelId, table.memberId, table.status),
+  ],
+);
+
+export const dispatchReceipts = sqliteTable(
+  "dispatch_receipts",
+  {
+    intentId: text("intent_id").primaryKey(),
+    lineageId: text("lineage_id").notNull(),
+    itemId: integer("item_id").notNull(),
+    podId: text("pod_id").notNull(),
+    authorizationRevision: text("authorization_revision").notNull(),
+    channelId: text("channel_id").notNull(),
+    configurationVersion: integer("configuration_version").notNull(),
+    receiptJson: text("receipt_json").notNull(),
+    createdAt: text("created_at").notNull(),
+    terminalAt: text("terminal_at"),
+    deleteAfter: text("delete_after"),
+  },
+  (table) => [
+    index("idx_dispatch_receipts_item_created").on(table.itemId, table.createdAt),
+    index("idx_dispatch_receipts_lineage").on(table.lineageId),
+  ],
+);
+
+export const dispatchOutbox = sqliteTable(
+  "dispatch_outbox",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    intentId: text("intent_id").notNull().unique(),
+    receiptId: text("receipt_id").notNull(),
+    memberId: text("member_id").notNull(),
+    channelId: text("channel_id").notNull(),
+    channelName: text("channel_name").notNull(),
+    status: text("status").notNull(),
+    attemptNumber: integer("attempt_number").notNull().default(0),
+    lastErrorCode: text("last_error_code"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("idx_dispatch_outbox_status_created").on(table.status, table.createdAt)],
+);
+
+export const dispatchEvents = sqliteTable(
+  "dispatch_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    intentId: text("intent_id").notNull(),
+    eventVersion: integer("event_version").notNull(),
+    eventType: text("event_type").notNull(),
+    priorState: text("prior_state"),
+    resultingState: text("resulting_state"),
+    payloadJson: text("payload_json").notNull(),
+    actorId: text("actor_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("uq_dispatch_events_intent_version").on(table.intentId, table.eventVersion),
+    index("idx_dispatch_events_intent_created").on(table.intentId, table.createdAt),
   ],
 );
 

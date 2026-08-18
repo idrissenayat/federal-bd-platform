@@ -1,0 +1,1 @@
+ALTER TABLE `members` ADD `agent_public_key` text;
