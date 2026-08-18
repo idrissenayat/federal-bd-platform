@@ -13,6 +13,7 @@ import { acceptedValueHypothesisReady, humanAcceptanceState, validateAndNormaliz
 import { buildDispatchIdentity, exactGitEvidence, STEER_HANDOFF_ROUTE_KEY, validateDispatchRoute, type DispatchRoute } from "../lib/dispatch-control";
 import { canonicalJson, createSignedDispatchEvent, dispatchPublicKey, sha256Hex, type DispatchState } from "../lib/dispatch-lifecycle";
 import { isStr028CaseId } from "../lib/str028-manifest";
+import { buildDecisionEvent, createUuidV7, decisionDigest, safeDecisionExport, validateDecisionIntent, type DecisionIntentPayload, type PreparedDecisionPackage } from "../lib/decision-package";
 import { buildReviewIdentity, createSignedReviewEvent, validateReviewAssignmentPayload, verifyReviewerBinding, type ReviewAssignmentPayload } from "../lib/review-lifecycle";
 import { buildInitialQueuedEvent, ensureDispatchServiceSigner, handleDispatchServiceApi, type DispatchServiceEnv } from "./dispatch";
 
@@ -388,6 +389,30 @@ async function ensureSchema(db: Database) {
       created_at text NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_decisions_item_created ON decisions (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS decision_packages (
+      package_id text PRIMARY KEY NOT NULL, item_id integer NOT NULL, pod_id text NOT NULL,
+      decision_kind text NOT NULL, target_json text NOT NULL, package_json text NOT NULL,
+      package_sha256 text NOT NULL, evidence_set_sha256 text NOT NULL,
+      preparation_principal text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_decision_packages_item_created ON decision_packages (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS decision_intents (
+      intent_id text PRIMARY KEY NOT NULL, receipt_id text NOT NULL UNIQUE, package_id text NOT NULL,
+      item_id integer NOT NULL, pod_id text NOT NULL, idempotency_key text NOT NULL,
+      intent_json text NOT NULL, intent_sha256 text NOT NULL, current_state text NOT NULL,
+      current_sequence integer NOT NULL, current_event_sha256 text NOT NULL,
+      required_countersignatures integer NOT NULL DEFAULT 0, accepted_countersignatures integer NOT NULL DEFAULT 0,
+      submitter_id text NOT NULL, submitter_role text NOT NULL, created_at text NOT NULL, updated_at text NOT NULL,
+      UNIQUE(pod_id, idempotency_key)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_decision_intents_item_created ON decision_intents (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS decision_proof_events (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, intent_id text NOT NULL, sequence integer NOT NULL,
+      event_type text NOT NULL, resulting_state text NOT NULL, previous_event_sha256 text,
+      event_json text NOT NULL, event_sha256 text NOT NULL, actor_id text NOT NULL, created_at text NOT NULL,
+      UNIQUE(intent_id, sequence)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_decision_proof_events_intent_created ON decision_proof_events (intent_id, created_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS agent_reviews (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
       item_id integer NOT NULL,
@@ -623,6 +648,19 @@ async function ensureSchema(db: Database) {
   await ensureColumn(db, "decisions", "evidence_url", "evidence_url text");
   await ensureColumn(db, "decisions", "evidence_revision", "evidence_revision text");
   await ensureColumn(db, "decisions", "evidence_sha256", "evidence_sha256 text");
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_packages_no_update
+    BEFORE UPDATE ON decision_packages BEGIN SELECT RAISE(ABORT, 'decision packages are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_packages_no_delete
+    BEFORE DELETE ON decision_packages BEGIN SELECT RAISE(ABORT, 'decision packages require governed retention'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_intents_immutable_payload
+    BEFORE UPDATE ON decision_intents WHEN
+      NEW.intent_json != OLD.intent_json OR NEW.intent_sha256 != OLD.intent_sha256 OR
+      NEW.submitter_id != OLD.submitter_id OR NEW.created_at != OLD.created_at
+    BEGIN SELECT RAISE(ABORT, 'decision intent authority is immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_proof_events_no_update
+    BEFORE UPDATE ON decision_proof_events BEGIN SELECT RAISE(ABORT, 'decision proof events are append-only'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_proof_events_no_delete
+    BEFORE DELETE ON decision_proof_events BEGIN SELECT RAISE(ABORT, 'decision proof events require governed retention'); END`).run();
   await ensureColumn(db, "agent_reviews", "evidence_url", "evidence_url text");
   await ensureColumn(db, "agent_reviews", "evidence_revision", "evidence_revision text");
   await ensureColumn(db, "agent_reviews", "evidence_sha256", "evidence_sha256 text");
@@ -2545,6 +2583,123 @@ async function decide(request: Request, db: Database, user: User, itemId: number
   return json({ ok: true, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
 }
 
+function decisionTargetFromEvidence(urlValue: unknown, revisionValue: unknown, shaValue: unknown) {
+  const url = String(urlValue ?? "");
+  const match = url.match(/^https:\/\/github\.com\/idrissenayat\/federal-bd-platform\/blob\/([0-9a-f]{40})\/(steer\/[^?#]+)$/);
+  const revision = String(revisionValue ?? match?.[1] ?? "");
+  const sha256 = String(shaValue ?? "");
+  if (!match || revision !== match[1] || !/^[0-9a-f]{64}$/.test(sha256)) return null;
+  return { repository_uri: "https://github.com/idrissenayat/federal-bd-platform", commit: revision, path: match[2], body_sha256: sha256 };
+}
+
+async function prepareDecisionPackage(db: Database, user: User, itemId: number) {
+  const current = await scopedItemOrDenied(db, user, itemId, "decision package preparation");
+  if (!current) return json({ error: "Work item not found in your POD." }, 404);
+  const review = await db.prepare(
+    `SELECT * FROM agent_reviews WHERE item_id = ? AND reviewed_item_updated_at = ?
+     ORDER BY created_at DESC, id DESC LIMIT 1`,
+  ).bind(itemId, String(current.updated_at)).first<Record<string, unknown>>();
+  if (!review) return json({ error: "A fresh exact-item Critic review is required before preparing a decision package." }, 409);
+  const target = decisionTargetFromEvidence(review.evidence_url ?? current.evidence_url, review.evidence_revision, review.evidence_sha256);
+  if (!target) return json({ error: "The current evidence is not bound to an exact repository commit and SHA-256." }, 409);
+  const parseList = (value: unknown) => {
+    try { const parsed = JSON.parse(String(value ?? "[]")); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+  };
+  const findings = parseList(review.findings_json) as Array<Record<string, unknown>>;
+  const risks = findings.map((finding) => String(finding.title ?? finding.detail ?? "")).filter(Boolean).slice(0, 12);
+  const dependencies = parseList(review.dependencies_json).map(String).filter(Boolean).slice(0, 12);
+  const recommendation = String(review.recommendation ?? "").toLowerCase().includes("change") || findings.some((finding) => String(finding.severity) === "blocker")
+    ? "CHANGES_REQUESTED" as const : "APPROVED" as const;
+  const evidence = [{ url: String(review.evidence_url), revision: target.commit, sha256: target.body_sha256 }];
+  const evidenceSetSha256 = await decisionDigest(evidence);
+  const now = new Date().toISOString();
+  const packageId = createUuidV7();
+  const prepared: PreparedDecisionPackage = {
+    schema: "steer-decision-package/v1", package_id: packageId, item_key: String(current.key),
+    decision_kind: String(current.gate), target, recommendation,
+    summary: String(review.summary ?? "Review the exact evidence and record an independent human ruling."),
+    proposed_reasoning: recommendation === "APPROVED"
+      ? `I reviewed the exact ${String(current.gate)} evidence at ${target.commit} and find it sufficient for this gate.`
+      : `Required change: ${risks[0] ?? "Resolve the current Critic finding and return exact revised evidence."}`,
+    evidence, risks, missing: dependencies, required_role: String(current.decision_authority),
+    consequence: recommendation === "APPROVED" ? "If deliberately submitted and later proven effective, the work may advance under the gate policy." : "The work remains blocked until revised evidence is reviewed.",
+    preparation: { principal_id: "steer-critic-preparation-v1", model: "recorded-agent-review", config_version: "str027-package-v1", evidence_set_sha256: evidenceSetSha256 },
+    prepared_at: now,
+  };
+  const packageSha256 = await decisionDigest(prepared);
+  await db.prepare(`INSERT INTO decision_packages
+    (package_id, item_id, pod_id, decision_kind, target_json, package_json, package_sha256,
+     evidence_set_sha256, preparation_principal, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(packageId, itemId, String(current.pod_id), String(current.gate), JSON.stringify(target), JSON.stringify(prepared), packageSha256, evidenceSetSha256, prepared.preparation.principal_id, now).run();
+  return json({ package: prepared, package_sha256: packageSha256, advisory: true, decision_created: false }, 201);
+}
+
+async function createDecisionIntent(request: Request, db: Database, user: User, itemId: number) {
+  const current = await scopedItemOrDenied(db, user, itemId, "decision intent submission");
+  if (!current) return json({ error: "Work item not found in your POD." }, 404);
+  const member = await memberContext(db, user);
+  const gate = String(current.gate);
+  const authorized = member?.kind === "human" && (
+    (gate === "Gate 1 pending" && member.role.includes("Product Lead")) ||
+    (gate === "Gate 2 pending" && member.role.includes("Tech Lead")) ||
+    (gate === "Gate 3 pending" && member.role.includes("Product Lead") && member.role.includes("Tech Lead"))
+  );
+  if (!authorized) return json({ error: `Your recorded human role is not authorized to submit intent for ${gate}.` }, 403);
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  const packageId = String(body?.package_id ?? "");
+  const decision = String(body?.decision ?? "");
+  const finalReasoning = String(body?.final_reasoning ?? "").trim();
+  const idempotencyKey = String(body?.idempotency_key ?? "");
+  if (!["APPROVED", "CHANGES_REQUESTED"].includes(decision)) return json({ error: "Select one explicit human ruling." }, 400);
+  const prepared = await db.prepare("SELECT * FROM decision_packages WHERE package_id = ? AND item_id = ? AND pod_id = ?")
+    .bind(packageId, itemId, String(current.pod_id)).first<Record<string, unknown>>();
+  if (!prepared) return json({ error: "The immutable prepared package was not found for this work item." }, 404);
+  const existing = await db.prepare("SELECT * FROM decision_intents WHERE pod_id = ? AND idempotency_key = ?")
+    .bind(String(current.pod_id), idempotencyKey).first<Record<string, unknown>>();
+  if (existing) {
+    const prior = JSON.parse(String(existing.intent_json)) as DecisionIntentPayload;
+    if (prior.package_id !== packageId || prior.decision !== decision || prior.final_reasoning !== finalReasoning) return json({ error: "The idempotency key is already bound to different decision bytes." }, 409);
+    return json(safeDecisionExport(prior, String(existing.current_state) as "PENDING_PROOF", String(existing.current_event_sha256)));
+  }
+  const target = JSON.parse(String(prepared.target_json)) as DecisionIntentPayload["target"];
+  const draft = JSON.parse(String(prepared.package_json)) as PreparedDecisionPackage;
+  const now = new Date().toISOString();
+  const intent: DecisionIntentPayload = {
+    schema: "steer-decision-intent/v1", intent_id: createUuidV7(), receipt_id: createUuidV7(), package_id: packageId,
+    item_key: String(current.key), decision_kind: gate, decision, final_reasoning: finalReasoning,
+    draft_sha256: await decisionDigest(draft), evidence_set_sha256: String(prepared.evidence_set_sha256), target,
+    submitter_principal: user.id, submitter_role: member.role, submitted_at: now, idempotency_key: idempotencyKey, sequence: 1,
+  };
+  const validationError = validateDecisionIntent(intent);
+  if (validationError) return json({ error: validationError }, 400);
+  const intentSha256 = await decisionDigest(intent);
+  const eventResult = await buildDecisionEvent({ intent_id: intent.intent_id, sequence: 1, previous_event_sha256: null, event_type: "INTENT_RECORDED", resulting_state: "PENDING_PROOF", actor_id: user.id, occurred_at: now, payload: { receipt_id: intent.receipt_id, package_id: packageId, intent_sha256: intentSha256 } });
+  await db.batch([
+    db.prepare(`INSERT INTO decision_intents
+      (intent_id, receipt_id, package_id, item_id, pod_id, idempotency_key, intent_json, intent_sha256,
+       current_state, current_sequence, current_event_sha256, required_countersignatures,
+       accepted_countersignatures, submitter_id, submitter_role, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_PROOF', 1, ?, 0, 0, ?, ?, ?, ?)`).bind(
+      intent.intent_id, intent.receipt_id, packageId, itemId, String(current.pod_id), idempotencyKey,
+      JSON.stringify(intent), intentSha256, eventResult.event_sha256, user.id, member.role, now, now,
+    ),
+    db.prepare(`INSERT INTO decision_proof_events
+      (intent_id, sequence, event_type, resulting_state, previous_event_sha256, event_json, event_sha256, actor_id, created_at)
+      VALUES (?, 1, 'INTENT_RECORDED', 'PENDING_PROOF', NULL, ?, ?, ?, ?)`).bind(intent.intent_id, JSON.stringify(eventResult.event), eventResult.event_sha256, user.id, now),
+    db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'decision_intent', ?, ?)")
+      .bind(itemId, user.id, `${gate} intent recorded as PENDING_PROOF; no gate effect until required proof and countersignatures verify.`, now),
+  ]);
+  return json(safeDecisionExport(intent, "PENDING_PROOF", eventResult.event_sha256), 201);
+}
+
+async function exportDecisionIntent(db: Database, user: User, intentId: string) {
+  const row = await db.prepare(`SELECT i.* FROM decision_intents i
+    JOIN members m ON m.id = ? AND m.pod_id = i.pod_id WHERE i.intent_id = ?`)
+    .bind(user.id, intentId).first<Record<string, unknown>>();
+  if (!row) return json({ error: "Decision receipt not found in your POD." }, 404);
+  return json(safeDecisionExport(JSON.parse(String(row.intent_json)) as DecisionIntentPayload, String(row.current_state) as "PENDING_PROOF", String(row.current_event_sha256)));
+}
+
 async function transitionItem(request: Request, db: Database, user: User, itemId: number) {
   const actor = await memberContext(db, user);
   if (actor?.kind !== "human") return json({ error: "Only an authenticated human POD member may transition authoritative workflow state." }, 403);
@@ -3041,6 +3196,12 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "POST" && workflowMatch) return transitionItem(request, env.DB, user, Number(workflowMatch[1]));
     const decisionMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decisions$/);
     if (request.method === "POST" && decisionMatch) return decide(request, env.DB, user, Number(decisionMatch[1]));
+    const decisionPackageMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decision-packages$/);
+    if (request.method === "POST" && decisionPackageMatch) return prepareDecisionPackage(env.DB, user, Number(decisionPackageMatch[1]));
+    const decisionIntentMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decision-intents$/);
+    if (request.method === "POST" && decisionIntentMatch) return createDecisionIntent(request, env.DB, user, Number(decisionIntentMatch[1]));
+    const decisionExportMatch = url.pathname.match(/^\/api\/decision-intents\/([0-9a-f-]{36})\/export$/);
+    if (request.method === "GET" && decisionExportMatch) return exportDecisionIntent(env.DB, user, decisionExportMatch[1]);
     const notificationMatch = url.pathname.match(/^\/api\/notifications\/(\d+)\/read$/);
     if (request.method === "POST" && notificationMatch) return markNotificationRead(env.DB, user, Number(notificationMatch[1]));
     return json({ error: "Not found." }, 404);

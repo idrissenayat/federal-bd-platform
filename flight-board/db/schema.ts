@@ -174,6 +174,40 @@ export const decisions = sqliteTable(
   (table) => [index("idx_decisions_item_created").on(table.itemId, table.createdAt)],
 );
 
+export const decisionPackages = sqliteTable(
+  "decision_packages",
+  {
+    packageId: text("package_id").primaryKey(), itemId: integer("item_id").notNull(), podId: text("pod_id").notNull(),
+    decisionKind: text("decision_kind").notNull(), targetJson: text("target_json").notNull(), packageJson: text("package_json").notNull(),
+    packageSha256: text("package_sha256").notNull(), evidenceSetSha256: text("evidence_set_sha256").notNull(),
+    preparationPrincipal: text("preparation_principal").notNull(), createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_decision_packages_item_created").on(table.itemId, table.createdAt)],
+);
+
+export const decisionIntents = sqliteTable(
+  "decision_intents",
+  {
+    intentId: text("intent_id").primaryKey(), receiptId: text("receipt_id").notNull().unique(), packageId: text("package_id").notNull(),
+    itemId: integer("item_id").notNull(), podId: text("pod_id").notNull(), idempotencyKey: text("idempotency_key").notNull(),
+    intentJson: text("intent_json").notNull(), intentSha256: text("intent_sha256").notNull(), currentState: text("current_state").notNull(),
+    currentSequence: integer("current_sequence").notNull(), currentEventSha256: text("current_event_sha256").notNull(),
+    requiredCountersignatures: integer("required_countersignatures").notNull().default(0), acceptedCountersignatures: integer("accepted_countersignatures").notNull().default(0),
+    submitterId: text("submitter_id").notNull(), submitterRole: text("submitter_role").notNull(), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("idx_decision_intents_item_created").on(table.itemId, table.createdAt), uniqueIndex("uq_decision_intents_pod_idempotency").on(table.podId, table.idempotencyKey)],
+);
+
+export const decisionProofEvents = sqliteTable(
+  "decision_proof_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }), intentId: text("intent_id").notNull(), sequence: integer("sequence").notNull(),
+    eventType: text("event_type").notNull(), resultingState: text("resulting_state").notNull(), previousEventSha256: text("previous_event_sha256"),
+    eventJson: text("event_json").notNull(), eventSha256: text("event_sha256").notNull(), actorId: text("actor_id").notNull(), createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_decision_proof_events_intent_created").on(table.intentId, table.createdAt), uniqueIndex("uq_decision_proof_events_intent_sequence").on(table.intentId, table.sequence)],
+);
+
 export const agentReviews = sqliteTable(
   "agent_reviews",
   {
