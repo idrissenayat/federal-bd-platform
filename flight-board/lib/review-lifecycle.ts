@@ -12,6 +12,21 @@ export type ReviewTarget = {
   target_artifact_manifest_sha256: string;
 };
 
+export type TargetVerificationReceipt = {
+  schema: "steer-target-verification/v1";
+  target: ReviewTarget;
+  verified_at: string;
+  verification_method: "git-cat-file-and-sha256-bytes";
+  verifier_member_id: string;
+  verifier_key_id: string;
+  verifier_key_version: number;
+};
+
+export type TargetVerificationEnvelope = {
+  receipt: TargetVerificationReceipt;
+  signature: string;
+};
+
 export type ReviewAssignmentPayload = {
   schema: "steer-review-assignment/v1";
   work_item_stable_id: number;
@@ -23,6 +38,7 @@ export type ReviewAssignmentPayload = {
   primary_owner_member_id: string;
   review_stage: ReviewStage;
   target: ReviewTarget;
+  target_verification: TargetVerificationEnvelope;
   prior_binding_digests: string[];
   reviewer_role: "Independent Critic";
   reviewer_member_id: string;
@@ -37,11 +53,12 @@ const hex64 = /^[0-9a-f]{64}$/;
 const gitSha1 = /^[0-9a-f]{40}$/;
 const safeToken = /^[A-Za-z0-9][A-Za-z0-9._:/-]{2,255}$/;
 
-export async function reviewManifestSha256(target: Omit<ReviewTarget, "target_artifact_manifest_sha256" | "target_commit_object_sha256">) {
+export async function reviewManifestSha256(target: Omit<ReviewTarget, "target_artifact_manifest_sha256">) {
   return sha256Hex(canonicalJson({
     schema: "steer-review-artifact-manifest/v1",
     target_git_object_format: target.target_git_object_format,
     target_git_commit_oid: target.target_git_commit_oid,
+    target_commit_object_sha256: target.target_commit_object_sha256,
     artifacts: target.target_artifacts,
   }));
 }
@@ -74,6 +91,12 @@ export async function validateReviewAssignmentPayload(payload: ReviewAssignmentP
   }
   const manifest = await reviewManifestSha256(target);
   if (manifest !== target.target_artifact_manifest_sha256) throw new Error("REVIEW_TARGET_MANIFEST_MISMATCH");
+  const verification = payload.target_verification;
+  if (!verification || verification.receipt?.schema !== "steer-target-verification/v1" || !/^[0-9a-f]{128}$/.test(verification.signature ?? "")) throw new Error("REVIEW_TARGET_VERIFICATION_INVALID");
+  const receipt = verification.receipt;
+  if (canonicalJson(receipt.target) !== canonicalJson(target)) throw new Error("REVIEW_TARGET_VERIFICATION_MISMATCH");
+  if (receipt.verification_method !== "git-cat-file-and-sha256-bytes" || !Number.isFinite(Date.parse(receipt.verified_at))) throw new Error("REVIEW_TARGET_VERIFICATION_INVALID");
+  if (!safeToken.test(receipt.verifier_member_id) || !safeToken.test(receipt.verifier_key_id) || !Number.isSafeInteger(receipt.verifier_key_version) || receipt.verifier_key_version < 1) throw new Error("REVIEW_TARGET_VERIFIER_INVALID");
 }
 
 export async function buildReviewIdentity(payload: ReviewAssignmentPayload) {
@@ -87,7 +110,7 @@ export async function createSignedReviewEvent(input: {
   assignmentId: string;
   eventVersion: number;
   previousEventSha256: string | null;
-  eventType: "REVIEW_TARGET_READY" | "REVIEW_ASSIGNED" | "REVIEW_REQUESTED" | "REVIEW_ACKNOWLEDGED" | "REVIEW_RESULT_RECORDED";
+  eventType: "REVIEW_TARGET_READY" | "REVIEW_ASSIGNED" | "REVIEW_REQUESTED" | "REVIEW_ACKNOWLEDGED" | "REVIEW_RESULT_RECORDED" | "REVIEW_SUPERSEDED";
   occurredAt: string;
   targetManifestSha256: string;
   actorId: string;

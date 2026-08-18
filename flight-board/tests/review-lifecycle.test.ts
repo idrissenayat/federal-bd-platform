@@ -21,12 +21,17 @@ async function assignment(): Promise<ReviewAssignmentPayload> {
   const targetBase = {
     target_git_object_format: "sha1" as const,
     target_git_commit_oid: oid,
+    target_commit_object_sha256: "a".repeat(64),
     target_artifacts: paths.map((path, index) => ({
       path,
       url: `https://github.com/idrissenayat/federal-bd-platform/blob/${oid}/${path}`,
       size_bytes: 100 + index,
       sha256: String(index + 1).padStart(64, "0"),
     })),
+  };
+  const target = {
+    ...targetBase,
+    target_artifact_manifest_sha256: await reviewManifestSha256(targetBase),
   };
   return {
     schema: "steer-review-assignment/v1",
@@ -38,10 +43,18 @@ async function assignment(): Promise<ReviewAssignmentPayload> {
     primary_owner_role: "Discovery Agent",
     primary_owner_member_id: "agent-scout",
     review_stage: "PRE_GATE_1_BRIEF",
-    target: {
-      ...targetBase,
-      target_commit_object_sha256: "a".repeat(64),
-      target_artifact_manifest_sha256: await reviewManifestSha256(targetBase),
+    target,
+    target_verification: {
+      receipt: {
+        schema: "steer-target-verification/v1",
+        target,
+        verified_at: "2026-08-18T13:59:00.000Z",
+        verification_method: "git-cat-file-and-sha256-bytes",
+        verifier_member_id: "agent-test",
+        verifier_key_id: "test-verifier-key",
+        verifier_key_version: 1,
+      },
+      signature: "f".repeat(128),
     },
     prior_binding_digests: ["b".repeat(64)],
     reviewer_role: "Independent Critic",
@@ -62,6 +75,7 @@ test("review assignment identity uses the exact canonical target and replays det
   const changed = structuredClone(payload);
   changed.target.target_artifacts[0].sha256 = "d".repeat(64);
   changed.target.target_artifact_manifest_sha256 = await reviewManifestSha256(changed.target);
+  changed.target_verification.receipt.target = structuredClone(changed.target);
   assert.notEqual((await buildReviewIdentity(changed)).reviewAssignmentId, first.reviewAssignmentId);
 });
 
@@ -72,9 +86,11 @@ test("review assignment rejects moving URLs, unsorted artifacts, and manifest mi
   const unsorted = await assignment();
   unsorted.target.target_artifacts.reverse();
   unsorted.target.target_artifact_manifest_sha256 = await reviewManifestSha256(unsorted.target);
+  unsorted.target_verification.receipt.target = structuredClone(unsorted.target);
   await assert.rejects(validateReviewAssignmentPayload(unsorted), /REVIEW_TARGET_ARTIFACT_ORDER_INVALID/);
   const mismatch = await assignment();
   mismatch.target.target_artifact_manifest_sha256 = "e".repeat(64);
+  mismatch.target_verification.receipt.target = structuredClone(mismatch.target);
   await assert.rejects(validateReviewAssignmentPayload(mismatch), /REVIEW_TARGET_MANIFEST_MISMATCH/);
 });
 
@@ -123,6 +139,10 @@ test("the STR-028 Gate 3 packet is an exact valid signed-review target", async (
     ...payload,
     review_stage: packet.stage,
     target: packet.target,
+    target_verification: {
+      ...payload.target_verification,
+      receipt: { ...payload.target_verification.receipt, target: packet.target },
+    },
     prior_binding_digests: packet.prior_binding_digests,
   });
 });

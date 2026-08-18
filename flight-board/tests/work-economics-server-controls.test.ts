@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { schnorr } from "@noble/curves/secp256k1.js";
@@ -19,8 +19,9 @@ const dispatchEnv = {
   REVIEW_SERVICE_TOKEN: "test-review-service-token-000000000000000000",
 };
 
-const privacyInventory = await readFile(new URL("../../steer/evidence/0028-dispatch-data-inventory.md", import.meta.url), "utf8");
-const privacyRuling = await readFile(new URL("../../steer/evidence/0028-gate-3-case-evidence.md", import.meta.url), "utf8");
+const repositoryRoot = new URL("../../", import.meta.url);
+const privacyInventory = execFileSync("git", ["show", "4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14:steer/evidence/0028-dispatch-data-inventory.md"], { cwd: repositoryRoot, encoding: "utf8" });
+const privacyRuling = execFileSync("git", ["show", "d9dbe0b70e812f680ae23fad2ce4ffafc6e65229:steer/evidence/0028-gate-3-case-evidence.md"], { cwd: repositoryRoot, encoding: "utf8" });
 const privacyInventoryUrl = "https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md";
 const privacyInventorySha256 = "c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d";
 const privacyRulingUrl = "https://github.com/idrissenayat/federal-bd-platform/blob/d9dbe0b70e812f680ae23fad2ce4ffafc6e65229/steer/evidence/0028-gate-3-case-evidence.md";
@@ -131,10 +132,14 @@ function completedActual(cycleMinutes: number) {
 async function setup() {
   const db = new D1Database();
   const initialized = await handleApi(request("member-a", "/api/bootstrap"), { DB: db });
-  assert.equal(initialized?.status, 200);
+  assert.equal(initialized?.status, 200, await initialized?.clone().text());
   db.sqlite.prepare("UPDATE members SET role = 'Platform / Ops Lead', pod_id = 'pod-a' WHERE id = 'member-a'").run();
   db.sqlite.prepare("INSERT INTO members (id, display_name, email, kind, role, authority, status, accent, pod_id) VALUES ('member-b', 'Other POD', 'member-b@example.test', 'human', 'Tech Lead', 'Gate 2', 'available', 'aqua', 'pod-b')").run();
   db.sqlite.prepare("INSERT INTO members (id, display_name, kind, role, authority, status, accent, pod_id) VALUES ('agent-a', 'Builder', 'agent', 'Builder', 'Build', 'enrolled', 'coral', 'pod-a')").run();
+  const verifierSecret = new Uint8Array(32); verifierSecret[31] = 19;
+  db.sqlite.prepare(`UPDATE members SET pod_id = 'pod-a', agent_key_id = 'verifier-key',
+    agent_key_version = 1, agent_public_key = ?, agent_public_key_fingerprint = ?
+    WHERE id = 'agent-test'`).run(hex(schnorr.getPublicKey(verifierSecret)), "9".repeat(64));
   const result = db.sqlite.prepare(`INSERT INTO work_items
     (key,title,description,phase,priority,workflow,state,gate,decision_status,decision_authority,assignee_id,next_action,evidence_url,github_url,pod_id,delivery_owner_id,delivery_forecast_json,created_by,created_at,updated_at)
     VALUES ('STR-900','Server controls','Exercise every server control','Engineer','Now','STEER','active','Gate 2 passed','Rework','Tech Lead','agent-a','Run the exact independent retest evidence.','https://github.com/idrissenayat/federal-bd-platform/blob/main/README.md','https://github.com/idrissenayat/federal-bd-platform/issues/31','pod-a','member-a',?,'member-a','2026-08-14T14:00:00.000Z','2026-08-14T14:00:00.000Z')`).run(JSON.stringify(forecast));
@@ -153,6 +158,7 @@ async function reviewTarget() {
   const base = {
     target_git_object_format: "sha1" as const,
     target_git_commit_oid: oid,
+    target_commit_object_sha256: "b".repeat(64),
     target_artifacts: [{
       path: "steer/evidence/0028-gate-3-build.md",
       url: `https://github.com/idrissenayat/federal-bd-platform/blob/${oid}/steer/evidence/0028-gate-3-build.md`,
@@ -160,7 +166,22 @@ async function reviewTarget() {
       sha256: "a".repeat(64),
     }],
   };
-  return { ...base, target_commit_object_sha256: "b".repeat(64), target_artifact_manifest_sha256: await reviewManifestSha256(base) };
+  return { ...base, target_artifact_manifest_sha256: await reviewManifestSha256(base) };
+}
+
+async function reviewPacket(targetInput?: Awaited<ReturnType<typeof reviewTarget>>) {
+  const target = targetInput ?? await reviewTarget();
+  const verifierSecret = new Uint8Array(32); verifierSecret[31] = 19;
+  const receipt = {
+    schema: "steer-target-verification/v1" as const,
+    target,
+    verified_at: "2026-08-18T15:59:00.000Z",
+    verification_method: "git-cat-file-and-sha256-bytes" as const,
+    verifier_member_id: "agent-test",
+    verifier_key_id: "verifier-key",
+    verifier_key_version: 1,
+  };
+  return { target, target_verification: { receipt, signature: await signBinding(receipt, verifierSecret) } };
 }
 
 function prepareDispatchAuthorizationSeed(db: D1Database, itemId: number, revision = "a".repeat(40)) {
@@ -273,8 +294,13 @@ test("privacy activation is authenticated, ruling-bound, immutable, CAS-safe, an
     db.sqlite.prepare(`UPDATE members SET pod_id = 'pod-a', agent_key_id = 'critic-key',
       agent_key_version = 1, agent_public_key = ?, agent_public_key_fingerprint = ?
       WHERE id = 'agent-critic'`).run(hex(schnorr.getPublicKey(criticSecret)), "c".repeat(64));
+    const verifierSecret = new Uint8Array(32); verifierSecret[31] = 19;
+    db.sqlite.prepare(`UPDATE members SET pod_id = 'pod-a', agent_key_id = 'verifier-key',
+      agent_key_version = 1, agent_public_key = ?, agent_public_key_fingerprint = ?
+      WHERE id = 'agent-test'`).run(hex(schnorr.getPublicKey(verifierSecret)), "9".repeat(64));
+    const verifiedTarget = await reviewPacket();
     const reviewCreated = await handleApi(request("member-a", `/api/items/${itemId}/reviews`, "POST", {
-      stage: "GATE_3_BUILD", target: await reviewTarget(), prior_binding_digests: [],
+      stage: "GATE_3_BUILD", ...verifiedTarget, prior_binding_digests: [],
     }), { DB: db, ...dispatchEnv, DISPATCH_ALLOW_TEST_PRIVACY_POLICY: undefined });
     assert.equal(reviewCreated?.status, 201, await reviewCreated?.clone().text());
   } finally {
@@ -1063,16 +1089,36 @@ test("Critic review requires exact target assignment, signed acknowledgement, an
   db.sqlite.prepare(`UPDATE members SET pod_id = 'pod-a', agent_key_id = 'critic-key',
     agent_key_version = 1, agent_public_key = ?, agent_public_key_fingerprint = ?
     WHERE id = 'agent-critic'`).run(criticPublicKey, "c".repeat(64));
-  const target = await reviewTarget();
+  const { target, target_verification } = await reviewPacket();
 
-  const created = await handleApi(request("member-a", `/api/items/${itemId}/reviews`, "POST", { stage: "GATE_3_BUILD", target, prior_binding_digests: ["d".repeat(64)] }), { DB: db, ...dispatchEnv });
+  const wrongTarget = { ...target, target_commit_object_sha256: "c".repeat(64) };
+  wrongTarget.target_artifact_manifest_sha256 = await reviewManifestSha256(wrongTarget);
+  const rejected = await handleApi(request("member-a", `/api/items/${itemId}/reviews`, "POST", { stage: "GATE_3_BUILD", target: wrongTarget, target_verification, prior_binding_digests: ["d".repeat(64)] }), { DB: db, ...dispatchEnv });
+  assert.equal(rejected?.status, 409, await rejected?.clone().text());
+  assert.equal((await rejected?.json() as { code: string }).code, "REVIEW_TARGET_VERIFICATION_MISMATCH");
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM review_assignments WHERE item_id = ?").get(itemId)!.total, 0);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM review_events").get()!.total, 0);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM activity WHERE review_assignment_id IS NOT NULL").get()!.total, 0);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM notifications WHERE review_assignment_id IS NOT NULL").get()!.total, 0);
+
+  const preliminaryTarget = structuredClone(target);
+  preliminaryTarget.target_artifacts[0].sha256 = "e".repeat(64);
+  preliminaryTarget.target_artifact_manifest_sha256 = await reviewManifestSha256(preliminaryTarget);
+  const preliminaryPacket = await reviewPacket(preliminaryTarget);
+  const preliminary = await handleApi(request("member-a", `/api/items/${itemId}/reviews`, "POST", { stage: "GATE_3_BUILD", ...preliminaryPacket, prior_binding_digests: ["d".repeat(64)] }), { DB: db, ...dispatchEnv });
+  assert.equal(preliminary?.status, 201, await preliminary?.clone().text());
+  const preliminaryId = ((await preliminary?.json()) as { assignment: { review_assignment_id: string } }).assignment.review_assignment_id;
+
+  const created = await handleApi(request("member-a", `/api/items/${itemId}/reviews`, "POST", { stage: "GATE_3_BUILD", target, target_verification, prior_binding_digests: ["d".repeat(64)] }), { DB: db, ...dispatchEnv });
   assert.equal(created?.status, 201, await created?.clone().text());
   const createdBody = await created?.json() as { assignment: { review_assignment_id: string }; request_event_sha256: string };
   const assignmentId = createdBody.assignment.review_assignment_id;
   assert.match(assignmentId, /^[0-9a-f]{64}$/);
   assert.deepEqual(db.sqlite.prepare("SELECT event_type FROM review_events WHERE assignment_id = ? ORDER BY event_version").all(assignmentId).map((row) => row.event_type), ["REVIEW_TARGET_READY", "REVIEW_ASSIGNED", "REVIEW_REQUESTED"]);
+  assert.equal(db.sqlite.prepare("SELECT current_state FROM review_assignments WHERE assignment_id = ?").get(preliminaryId)!.current_state, "SUPERSEDED");
+  assert.deepEqual(db.sqlite.prepare("SELECT event_type FROM review_events WHERE assignment_id = ? ORDER BY event_version").all(preliminaryId).map((row) => row.event_type), ["REVIEW_TARGET_READY", "REVIEW_ASSIGNED", "REVIEW_REQUESTED", "REVIEW_SUPERSEDED"]);
 
-  const replay = await handleApi(request("member-a", `/api/items/${itemId}/reviews`, "POST", { stage: "GATE_3_BUILD", target, prior_binding_digests: ["d".repeat(64)] }), { DB: db, ...dispatchEnv });
+  const replay = await handleApi(request("member-a", `/api/items/${itemId}/reviews`, "POST", { stage: "GATE_3_BUILD", target, target_verification, prior_binding_digests: ["d".repeat(64)] }), { DB: db, ...dispatchEnv });
   assert.equal(replay?.status, 200, await replay?.clone().text());
   assert.equal((await replay?.json() as { idempotent_replay: boolean }).idempotent_replay, true);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM review_events WHERE assignment_id = ?").get(assignmentId)!.total, 3);
@@ -1095,6 +1141,7 @@ test("Critic review requires exact target assignment, signed acknowledgement, an
   const acknowledgementSignature = await signBinding(acknowledgementPayload, criticSecret);
   const acknowledged = await handleApi(reviewAgentRequest(`/api/review-assignments/${assignmentId}/acknowledgements`, { acknowledged_at: acknowledgedAt, key_id: "critic-key", key_version: 1, signature: acknowledgementSignature }), { DB: db, ...dispatchEnv });
   assert.equal(acknowledged?.status, 201, await acknowledged?.clone().text());
+  assert.equal(db.sqlite.prepare("SELECT current_state FROM review_assignments WHERE assignment_id = ?").get(assignmentId)!.current_state, "ACKNOWLEDGED");
   const acknowledgedBody = await acknowledged?.json() as { event: { payload: { event_sha256?: string } } };
   const acknowledgementEventSha256 = String(db.sqlite.prepare("SELECT event_sha256 FROM review_events WHERE assignment_id = ? AND event_type = 'REVIEW_ACKNOWLEDGED'").get(assignmentId)!.event_sha256);
 
@@ -1102,6 +1149,7 @@ test("Critic review requires exact target assignment, signed acknowledgement, an
   const resultSignature = await signBinding(resultPayload, criticSecret);
   const recorded = await handleApi(reviewAgentRequest(`/api/review-assignments/${assignmentId}/results`, { result, key_id: "critic-key", key_version: 1, signature: resultSignature }), { DB: db, ...dispatchEnv });
   assert.equal(recorded?.status, 201, await recorded?.clone().text());
+  assert.equal(db.sqlite.prepare("SELECT current_state FROM review_assignments WHERE assignment_id = ?").get(assignmentId)!.current_state, "RESULT_RECORDED");
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM agent_reviews WHERE item_id = ? AND review_mode = 'signed_assignment_review'").get(itemId)!.total, 1);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM review_events WHERE assignment_id = ?").get(assignmentId)!.total, 5);
 

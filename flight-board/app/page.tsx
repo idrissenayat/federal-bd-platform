@@ -992,12 +992,12 @@ export default function Home() {
     setReviewingIds((current) => current.includes(itemId) ? current : [...current, itemId]);
     setError(null);
     try {
-      const packet = JSON.parse(packetJson) as { target?: unknown; prior_binding_digests?: unknown };
+      const packet = JSON.parse(packetJson) as { target?: unknown; target_verification?: unknown; prior_binding_digests?: unknown };
       const target = packet.target ?? packet;
       const priorBindingDigests = Array.isArray(packet.prior_binding_digests) ? packet.prior_binding_digests : [];
       await api(`/api/items/${itemId}/reviews`, {
         method: "POST",
-        body: JSON.stringify({ target, prior_binding_digests: priorBindingDigests }),
+        body: JSON.stringify({ target, target_verification: packet.target_verification, prior_binding_digests: priorBindingDigests }),
       });
       setReviewTargetItemId(null);
       setReviewTargetJson("");
@@ -1409,7 +1409,7 @@ export default function Home() {
           <form className="modal-card review-target-modal" role="dialog" aria-modal="true" aria-labelledby="review-target-title" onSubmit={(event) => { event.preventDefault(); void requestAgentReview(reviewTargetItemId, reviewTargetJson); }}>
             <header><div><span>Signed independent review</span><h2 id="review-target-title">Attach the exact immutable target</h2></div><button type="button" aria-label="Close signed review target" onClick={() => { setReviewTargetItemId(null); setReviewTargetJson(""); }}>×</button></header>
             <p className="modal-intro">Paste the agent-prepared review target packet. The server validates the commit, every immutable GitHub artifact, the canonical manifest digest, the current gate, and the enrolled Critic identity before it creates one signed assignment.</p>
-            <label>Exact review target packet JSON<textarea required value={reviewTargetJson} onChange={(event) => setReviewTargetJson(event.target.value)} spellCheck={false} placeholder={'{"target":{"target_git_object_format":"sha1",…},"prior_binding_digests":[…]}'}/></label>
+            <label>Verified review target packet JSON<textarea required value={reviewTargetJson} onChange={(event) => setReviewTargetJson(event.target.value)} spellCheck={false} placeholder={'{"target":{…},"target_verification":{"receipt":{…},"signature":"…"},"prior_binding_digests":[…]}'}/></label>
             <footer><button type="button" className="secondary-button" onClick={() => { setReviewTargetItemId(null); setReviewTargetJson(""); }}>Cancel</button><button type="submit" className="decision-button" disabled={reviewingIds.includes(reviewTargetItemId) || !reviewTargetJson.trim()}>{reviewingIds.includes(reviewTargetItemId) ? "Creating signed assignment…" : "Create signed Critic assignment"}</button></footer>
           </form>
         </div>

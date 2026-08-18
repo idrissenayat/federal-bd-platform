@@ -637,8 +637,17 @@ async function ensureSchema(db: Database) {
   await ensureColumn(db, "dispatch_privacy_policies", "activation_receipt_sha256", "activation_receipt_sha256 text");
   await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_dispatch_privacy_policy_event ON dispatch_privacy_policies (authorization_event_id) WHERE authorization_event_id IS NOT NULL").run();
   await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_dispatch_privacy_policy_idempotency ON dispatch_privacy_policies (pod_id, idempotency_key) WHERE idempotency_key IS NOT NULL").run();
-  await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_assignments_no_update
-    BEFORE UPDATE ON review_assignments BEGIN SELECT RAISE(ABORT, 'review assignments are immutable'); END`).run();
+  await db.prepare("DROP TRIGGER IF EXISTS review_assignments_no_update").run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_assignments_immutable_authority
+    BEFORE UPDATE ON review_assignments WHEN
+      NEW.assignment_id != OLD.assignment_id OR NEW.idempotency_key != OLD.idempotency_key OR
+      NEW.item_id != OLD.item_id OR NEW.pod_id != OLD.pod_id OR NEW.review_stage != OLD.review_stage OR
+      NEW.reviewer_member_id != OLD.reviewer_member_id OR NEW.primary_claim_lineage_id != OLD.primary_claim_lineage_id OR
+      NEW.item_revision != OLD.item_revision OR NEW.target_manifest_sha256 != OLD.target_manifest_sha256 OR
+      NEW.assignment_json != OLD.assignment_json OR NEW.authorizing_actor_id != OLD.authorizing_actor_id OR
+      NEW.authorizing_event_id != OLD.authorizing_event_id OR NEW.created_at != OLD.created_at OR
+      NEW.delete_after != OLD.delete_after
+    BEGIN SELECT RAISE(ABORT, 'review assignment authority is immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_assignments_no_delete
     BEFORE DELETE ON review_assignments WHEN NOT EXISTS (
       SELECT 1 FROM review_retention_authorizations a WHERE a.assignment_id = OLD.assignment_id AND unixepoch(a.expires_at) > unixepoch('now')
@@ -2021,20 +2030,27 @@ function reviewError(error: unknown) {
 }
 
 async function appendReviewEvent(db: Database, event: Awaited<ReturnType<typeof createSignedReviewEvent>>, actorId: string, createdAt: string) {
-  await db.prepare(`INSERT INTO review_events
-    (assignment_id, event_version, expected_event_version, event_type, payload_json,
-     previous_event_sha256, event_sha256, service_key_id, service_key_version,
-     service_signature, reviewer_key_id, reviewer_key_version, reviewer_signature,
-     actor_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
-    event.payload.review_assignment_id, event.payload.event_version, event.payload.expected_event_version,
-    event.payload.event_type, canonicalJson(event.envelope), event.payload.previous_event_sha256,
-    event.eventSha256, event.envelope.service_key_id, event.envelope.service_key_version,
-    event.envelope.service_signature, "reviewer_key_id" in event.envelope ? event.envelope.reviewer_key_id : null,
-    "reviewer_key_version" in event.envelope ? event.envelope.reviewer_key_version : null,
-    "reviewer_signature" in event.envelope ? event.envelope.reviewer_signature : null,
-    actorId, createdAt,
-  ).run();
+  const terminalAt = ["REVIEW_RESULT_RECORDED", "REVIEW_SUPERSEDED"].includes(event.payload.event_type) ? createdAt : null;
+  await db.batch([
+    db.prepare(`INSERT INTO review_events
+      (assignment_id, event_version, expected_event_version, event_type, payload_json,
+       previous_event_sha256, event_sha256, service_key_id, service_key_version,
+       service_signature, reviewer_key_id, reviewer_key_version, reviewer_signature,
+       actor_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+      event.payload.review_assignment_id, event.payload.event_version, event.payload.expected_event_version,
+      event.payload.event_type, canonicalJson(event.envelope), event.payload.previous_event_sha256,
+      event.eventSha256, event.envelope.service_key_id, event.envelope.service_key_version,
+      event.envelope.service_signature, "reviewer_key_id" in event.envelope ? event.envelope.reviewer_key_id : null,
+      "reviewer_key_version" in event.envelope ? event.envelope.reviewer_key_version : null,
+      "reviewer_signature" in event.envelope ? event.envelope.reviewer_signature : null,
+      actorId, createdAt,
+    ),
+    db.prepare(`UPDATE review_assignments SET current_state = ?, current_event_version = ?,
+      current_event_sha256 = ?, terminal_at = COALESCE(?, terminal_at) WHERE assignment_id = ?`)
+      .bind(event.payload.event_type.replace("REVIEW_", ""), event.payload.event_version,
+        event.eventSha256, terminalAt, event.payload.review_assignment_id),
+  ]);
 }
 
 async function requestSignedCriticReview(request: Request, db: Database, env: Env, user: User, itemId: number) {
@@ -2042,7 +2058,7 @@ async function requestSignedCriticReview(request: Request, db: Database, env: En
   if (!item) return json({ error: "Work item not found in your POD." }, 404);
   const actor = await memberContext(db, user);
   if (!actor || actor.kind !== "human") return json({ error: "Only an authenticated human Work Management actor may authorize a review assignment.", code: "REVIEW_AUTHORIZER_INVALID" }, 403);
-  const body = await request.json() as { stage?: unknown; target?: unknown; prior_binding_digests?: unknown };
+  const body = await request.json() as { stage?: unknown; target?: unknown; target_verification?: unknown; prior_binding_digests?: unknown };
   const stage = String(body.stage ?? expectedReviewStage(item.gate) ?? "");
   if (!stage || stage !== expectedReviewStage(item.gate)) return json({ error: "The requested review stage does not match the authoritative gate state.", code: "REVIEW_STAGE_STALE" }, 409);
   const primary = item.assignee_id
@@ -2076,6 +2092,7 @@ async function requestSignedCriticReview(request: Request, db: Database, env: En
       workflow: String(item.workflow), primary_claim_lineage_id: primaryClaimLineageId,
       primary_owner_role: primary.role, primary_owner_member_id: primary.id,
       review_stage: stage as ReviewAssignmentPayload["review_stage"], target,
+      target_verification: body.target_verification as ReviewAssignmentPayload["target_verification"],
       prior_binding_digests: Array.isArray(body.prior_binding_digests) ? body.prior_binding_digests.map(String) : [],
       reviewer_role: "Independent Critic", reviewer_member_id: reviewer.id,
       output_contract: ["Severity-sorted advisory findings capped at three.", "Dependencies, downstream impacts, and fastest safe next actions.", "Exact evidence scope, revision, and content fingerprint."],
@@ -2084,14 +2101,44 @@ async function requestSignedCriticReview(request: Request, db: Database, env: En
       item_revision: String(item.updated_at),
     };
     await validateReviewAssignmentPayload(payload);
+    const verification = payload.target_verification;
+    const verifier = await db.prepare(`SELECT id, role, agent_key_id, agent_key_version, agent_public_key
+      FROM members WHERE id = ? AND pod_id = ? AND kind = 'agent' AND status = 'enrolled'`)
+      .bind(verification.receipt.verifier_member_id, item.pod_id)
+      .first<{ id: string; role: string; agent_key_id: string; agent_key_version: number; agent_public_key: string }>();
+    if (!verifier || verifier.role !== "Verification Agent" || verifier.id === reviewer.id ||
+      verifier.agent_key_id !== verification.receipt.verifier_key_id ||
+      Number(verifier.agent_key_version) !== verification.receipt.verifier_key_version ||
+      !/^[0-9a-f]{64}$/.test(verifier.agent_public_key) ||
+      !(await verifyReviewerBinding(verification.receipt, verification.signature, verifier.agent_public_key))) {
+      throw new Error("REVIEW_TARGET_VERIFICATION_SIGNATURE_INVALID");
+    }
+    if (Date.parse(verification.receipt.verified_at) > Date.now() + 5 * 60 * 1000) throw new Error("REVIEW_TARGET_VERIFICATION_INVALID");
     const identity = await buildReviewIdentity(payload);
     const existing = await db.prepare("SELECT assignment_json FROM review_assignments WHERE assignment_id = ?")
       .bind(identity.reviewAssignmentId).first<{ assignment_json: string }>();
     if (existing) return json({ ok: true, idempotent_replay: true, assignment: JSON.parse(existing.assignment_json) });
     const signer = reviewSigner(env);
-    const ready = await createSignedReviewEvent({ assignmentId: identity.reviewAssignmentId, eventVersion: 0, previousEventSha256: null, eventType: "REVIEW_TARGET_READY", occurredAt: now, targetManifestSha256, actorId: user.id, typedPayload: { item_revision: item.updated_at, clean_target_verified: true }, serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey });
+    const targetVerificationReceiptSha256 = await sha256Hex(canonicalJson(verification));
+    const ready = await createSignedReviewEvent({ assignmentId: identity.reviewAssignmentId, eventVersion: 0, previousEventSha256: null, eventType: "REVIEW_TARGET_READY", occurredAt: now, targetManifestSha256, actorId: user.id, typedPayload: { item_revision: item.updated_at, target_verification_receipt_sha256: targetVerificationReceiptSha256, verifier_member_id: verifier.id, verifier_key_id: verifier.agent_key_id, verifier_key_version: verifier.agent_key_version }, serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey });
     const assigned = await createSignedReviewEvent({ assignmentId: identity.reviewAssignmentId, eventVersion: 1, previousEventSha256: ready.eventSha256, eventType: "REVIEW_ASSIGNED", occurredAt: now, targetManifestSha256, actorId: "work-management-authorization", typedPayload: { review_idempotency_key: identity.reviewIdempotencyKey, authorizing_event_id: authorizingEventId, reviewer_member_id: reviewer.id }, serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey });
     const requested = await createSignedReviewEvent({ assignmentId: identity.reviewAssignmentId, eventVersion: 2, previousEventSha256: assigned.eventSha256, eventType: "REVIEW_REQUESTED", occurredAt: now, targetManifestSha256, actorId: "work-management-authorization", typedPayload: { assignment_event_sha256: assigned.eventSha256, canonical_route: "review-assignment-store" }, serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey });
+    const priorAssignments = await db.prepare(`SELECT a.assignment_id, a.target_manifest_sha256,
+        e.event_version, e.event_sha256
+      FROM review_assignments a JOIN review_events e ON e.assignment_id = a.assignment_id
+       AND e.event_version = (SELECT MAX(last_event.event_version) FROM review_events last_event WHERE last_event.assignment_id = a.assignment_id)
+      WHERE a.item_id = ? AND a.review_stage = ? AND a.assignment_id != ?
+       AND NOT EXISTS (SELECT 1 FROM review_events terminal WHERE terminal.assignment_id = a.assignment_id
+         AND terminal.event_type IN ('REVIEW_RESULT_RECORDED','REVIEW_SUPERSEDED'))`)
+      .bind(itemId, stage, identity.reviewAssignmentId)
+      .all<{ assignment_id: string; target_manifest_sha256: string; event_version: number; event_sha256: string }>();
+    const supersededEvents = await Promise.all((priorAssignments.results ?? []).map((prior) => createSignedReviewEvent({
+      assignmentId: prior.assignment_id, eventVersion: Number(prior.event_version) + 1,
+      previousEventSha256: prior.event_sha256, eventType: "REVIEW_SUPERSEDED", occurredAt: now,
+      targetManifestSha256: prior.target_manifest_sha256, actorId: "work-management-authorization",
+      typedPayload: { successor_review_assignment_id: identity.reviewAssignmentId, reason: "new-independently-verified-target" },
+      serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey,
+    })));
     const deleteAfter = new Date(Date.parse(now) + 90 * 24 * 60 * 60 * 1000).toISOString();
     await db.batch([
       db.prepare(`INSERT INTO review_assignments
@@ -2104,6 +2151,21 @@ async function requestSignedCriticReview(request: Request, db: Database, env: En
           reviewer.id, primaryClaimLineageId, item.updated_at, targetManifestSha256,
           canonicalJson({ ...payload, review_assignment_id: identity.reviewAssignmentId, review_idempotency_key: identity.reviewIdempotencyKey }),
           requested.eventSha256, user.id, authorizingEventId, now, deleteAfter),
+      ...supersededEvents.flatMap((event) => [
+        db.prepare(`INSERT INTO review_events
+          (assignment_id, event_version, expected_event_version, event_type, payload_json,
+           previous_event_sha256, event_sha256, service_key_id, service_key_version,
+           service_signature, actor_id, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+          event.payload.review_assignment_id, event.payload.event_version, event.payload.expected_event_version,
+          event.payload.event_type, canonicalJson(event.envelope), event.payload.previous_event_sha256,
+          event.eventSha256, signer.keyId, signer.keyVersion, event.envelope.service_signature,
+          event.payload.actor_id, now,
+        ),
+        db.prepare(`UPDATE review_assignments SET current_state = 'SUPERSEDED', current_event_version = ?,
+          current_event_sha256 = ?, terminal_at = ? WHERE assignment_id = ?`)
+          .bind(event.payload.event_version, event.eventSha256, now, event.payload.review_assignment_id),
+      ]),
       ...[ready, assigned, requested].map((event) => db.prepare(`INSERT INTO review_events
         (assignment_id, event_version, expected_event_version, event_type, payload_json,
          previous_event_sha256, event_sha256, service_key_id, service_key_version,
@@ -2133,6 +2195,7 @@ async function acknowledgeSignedReview(request: Request, db: Database, env: Env,
     JOIN members m ON m.id = a.reviewer_member_id AND m.pod_id = a.pod_id
     WHERE a.assignment_id = ?`).bind(user.id, assignmentId).first<Record<string, unknown>>();
   if (!assignment) return json({ error: "Review assignment not found in your POD." }, 404);
+  if (assignment.current_state === "SUPERSEDED") return json({ error: "This review assignment was superseded by a newer independently verified target.", code: "REVIEW_ASSIGNMENT_SUPERSEDED" }, 409);
   if (user.id !== assignment.reviewer_member_id) return json({ error: "Only the exact enrolled reviewer may acknowledge this assignment.", code: "REVIEWER_MISMATCH" }, 403);
   const existing = await db.prepare("SELECT payload_json FROM review_events WHERE assignment_id = ? AND event_type = 'REVIEW_ACKNOWLEDGED'").bind(assignmentId).first<{ payload_json: string }>();
   const requestEvent = await db.prepare("SELECT event_sha256 FROM review_events WHERE assignment_id = ? AND event_type = 'REVIEW_REQUESTED'").bind(assignmentId).first<{ event_sha256: string }>();
@@ -2182,6 +2245,7 @@ async function recordSignedReviewResult(request: Request, db: Database, env: Env
     JOIN members m ON m.id = a.reviewer_member_id AND m.pod_id = a.pod_id
     WHERE a.assignment_id = ?`).bind(user.id, assignmentId).first<Record<string, unknown>>();
   if (!assignment) return json({ error: "Review assignment not found in your POD." }, 404);
+  if (assignment.current_state === "SUPERSEDED") return json({ error: "This review assignment was superseded by a newer independently verified target.", code: "REVIEW_ASSIGNMENT_SUPERSEDED" }, 409);
   if (user.id !== assignment.reviewer_member_id) return json({ error: "Only the exact enrolled reviewer may record this result.", code: "REVIEWER_MISMATCH" }, 403);
   if (String(assignment.updated_at) !== String(assignment.item_revision) || String(assignment.assignee_id) !== String((JSON.parse(String(assignment.assignment_json)) as ReviewAssignmentPayload).primary_owner_member_id) || String(assignment.workflow) !== String((JSON.parse(String(assignment.assignment_json)) as ReviewAssignmentPayload).workflow)) {
     return json({ error: "The item, owner, workflow, or primary claim binding changed after assignment.", code: "REVIEW_ASSIGNMENT_STALE" }, 409);
@@ -2217,6 +2281,9 @@ async function recordSignedReviewResult(request: Request, db: Database, env: Env
         .bind(assignmentId, canonicalJson(event.envelope), acknowledgement.event_sha256, event.eventSha256,
           signer.keyId, signer.keyVersion, event.envelope.service_signature, assignment.agent_key_id,
           assignment.agent_key_version, body.signature, user.id, result.completed_at),
+      db.prepare(`UPDATE review_assignments SET current_state = 'RESULT_RECORDED', current_event_version = 4,
+        current_event_sha256 = ?, terminal_at = ? WHERE assignment_id = ?`)
+        .bind(event.eventSha256, result.completed_at, assignmentId),
       db.prepare(`INSERT INTO agent_reviews
         (item_id, agent_id, review_mode, recommendation, confidence, summary, findings_json,
          dependencies_json, impacts_json, actions_json, derived_tags_json, evidence_scope,

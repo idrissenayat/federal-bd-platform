@@ -149,7 +149,7 @@
       }
     ],
     "target_commit_object_sha256": "346f45060d7f7815c115e28b9700e0de6f595f7e3b6971aff728021b9fb192f5",
-    "target_artifact_manifest_sha256": "99a5f291a1ad24cbd41047115f2391afadec952a42dd03c03328ed733c93ff48"
+    "target_artifact_manifest_sha256": "38bcede151569077ec925b292a7fecf13214c5c493cf88a802a359712320f46e"
   },
   "prior_binding_digests": [
     "4776f295226a75ad17651efafb86b698825bdde2c177ed07a231903d52c0f7af",

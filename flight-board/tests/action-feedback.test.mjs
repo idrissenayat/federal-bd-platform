@@ -86,11 +86,12 @@ test("named human can activate the exact STR-028 policy from an accessible authe
   assert.match(page, /Privacy policy version \$\{result\.policy_version\} is active/);
 });
 
-test("signed Critic requests require an explicit immutable target packet", () => {
+test("signed Critic requests require an independently verified immutable target packet", () => {
   assert.match(page, /Attach the exact immutable target/);
-  assert.match(page, /Exact review target packet JSON/);
+  assert.match(page, /Verified review target packet JSON/);
   assert.match(page, /const packet = JSON\.parse\(packetJson\)/);
   assert.match(page, /const target = packet\.target \?\? packet/);
+  assert.match(page, /target_verification: packet\.target_verification/);
   assert.doesNotMatch(page, /\/reviews`, \{ method: "POST", body: "\{\}" \}/);
   assert.doesNotMatch(page, /reviewNeedsRefresh\(item\)[\s\S]{0,120}requestAgentReview\(item\.id\)/);
 });

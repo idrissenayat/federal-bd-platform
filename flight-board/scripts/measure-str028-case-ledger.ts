@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
+import { spawnSync } from "node:child_process";
+import { JSDOM } from "jsdom";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
 import { InlineActionFeedback } from "../app/page";
 import { STR028_CASE_IDS } from "../lib/str028-manifest";
 
@@ -39,6 +42,29 @@ const definitions: CaseDefinition[] = [
   { caseId: "REC-04", seed: "post-receipt pre-send stale binding; isolated reset; explicit reauthorization", evidence: "REC-04 permits one same-lineage successor for every remaining frozen binding branch", authority: "old intent fenced; one explicit successor; original 0 run; successor sole run", outcome: "blocked", reconciliation: "fresh", transport: { http_status: 409, typed_code: "SUCCESSOR_REAUTHORIZATION_REQUIRED" }, substeps: ["R04-A", "R04-B", "R04-C", "R04-D", "R04-E", "R04-F"] },
 ];
 
+const executedOracles: Record<typeof STR028_CASE_IDS[number], { file: string; pattern: string }> = {
+  "SAVE-01": { file: "tests/work-economics-server-controls.test.ts", pattern: "SAVE-01 populates" },
+  "SAVE-02": { file: "tests/work-economics-server-controls.test.ts", pattern: "SAVE-02 replaces" },
+  "SAVE-03": { file: "tests/work-economics-server-controls.test.ts", pattern: "SAVE-03 accepts" },
+  "SAVE-04": { file: "tests/work-economics-server-controls.test.ts", pattern: "SAVE-04 accepts" },
+  "DISP-01": { file: "tests/work-economics-server-controls.test.ts", pattern: "service fencing, verified relay delivery" },
+  "DISP-02": { file: "tests/work-economics-server-controls.test.ts", pattern: "successful dispatch creates" },
+  "DISP-03": { file: "tests/work-economics-server-controls.test.ts", pattern: "service fencing, verified relay delivery" },
+  "DISP-04": { file: "tests/work-economics-accessibility.test.ts", pattern: "DISP-04 dispatch control" },
+  "FAIL-01": { file: "tests/work-economics-server-controls.test.ts", pattern: "FAIL-01 rejects" },
+  "FAIL-02": { file: "tests/work-economics-server-controls.test.ts", pattern: "FAIL-02 rejects" },
+  "FAIL-03": { file: "tests/work-economics-server-controls.test.ts", pattern: "FAIL-03 rejects" },
+  "FAIL-04": { file: "tests/work-economics-server-controls.test.ts", pattern: "FAIL-04 fences" },
+  "ORDER-01": { file: "tests/post-write.test.ts", pattern: "ORDER-01 an older bootstrap" },
+  "ORDER-02": { file: "tests/post-write.test.ts", pattern: "ORDER-02 and ORDER-04" },
+  "ORDER-03": { file: "tests/post-write.test.ts", pattern: "ORDER-03 an older dispatch" },
+  "ORDER-04": { file: "tests/post-write.test.ts", pattern: "ORDER-02 and ORDER-04" },
+  "REC-01": { file: "tests/work-economics-server-controls.test.ts", pattern: "successful dispatch creates" },
+  "REC-02": { file: "tests/work-economics-server-controls.test.ts", pattern: "REC-02 concurrent" },
+  "REC-03": { file: "tests/work-economics-server-controls.test.ts", pattern: "REC-03 uncertain" },
+  "REC-04": { file: "tests/work-economics-server-controls.test.ts", pattern: "REC-04 permits" },
+};
+
 function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -52,14 +78,53 @@ const target = process.argv[2];
 if (!target || !/^[0-9a-f]{40}$/.test(target)) throw new Error("Pass the exact 40-character target commit.");
 if (definitions.map((entry) => entry.caseId).join("|") !== STR028_CASE_IDS.join("|")) throw new Error("The measured ledger denominator does not match the frozen manifest.");
 
-const cases = definitions.map((definition) => {
+async function executeOracle(definition: CaseDefinition) {
+  const oracle = executedOracles[definition.caseId];
+  const executed = spawnSync(process.execPath, ["--import", "tsx", "--test", `--test-name-pattern=${oracle.pattern}`, oracle.file], {
+    cwd: new URL("..", import.meta.url), encoding: "utf8", env: { ...process.env, NODE_ENV: "test" },
+  });
+  const output = `${executed.stdout ?? ""}\n${executed.stderr ?? ""}`;
+  if (executed.status !== 0 || !output.includes(`✔ ${oracle.pattern}`)) {
+    throw new Error(`${definition.caseId} executed oracle failed (${oracle.file} / ${oracle.pattern}):\n${output}`);
+  }
+
   const feedbackState = definition.transport.http_status >= 400 ? "error" as const : "success" as const;
   const message = feedbackState === "error" ? `Typed ${definition.transport.typed_code}; input and authority preserved.` : `Authoritative ${definition.transport.typed_code} result is visible.`;
+  const dom = new JSDOM("<!doctype html><html><body><button id='initiator'>Initiating control</button><div id='root'></div></body></html>", { pretendToBeVisual: true });
+  const previous = {
+    window: Object.getOwnPropertyDescriptor(globalThis, "window"),
+    document: Object.getOwnPropertyDescriptor(globalThis, "document"),
+    navigator: Object.getOwnPropertyDescriptor(globalThis, "navigator"),
+  };
+  Object.defineProperties(globalThis, {
+    window: { value: dom.window, configurable: true, writable: true },
+    document: { value: dom.window.document, configurable: true, writable: true },
+    navigator: { value: dom.window.navigator, configurable: true },
+  });
+  const initiator = dom.window.document.querySelector<HTMLButtonElement>("#initiator")!;
+  initiator.focus();
+  const container = dom.window.document.querySelector<HTMLDivElement>("#root")!;
+  const root = createRoot(container);
   const started = performance.now();
-  const html = renderToStaticMarkup(createElement(InlineActionFeedback, {
+  flushSync(() => root.render(createElement(InlineActionFeedback, {
     feedback: { id: 1, scope: definition.caseId.startsWith("DISP") || definition.caseId.startsWith("REC") || ["FAIL-03", "FAIL-04", "ORDER-03"].includes(definition.caseId) ? "dispatch" : "economics", state: feedbackState, message },
-  }));
+  })));
+  await new Promise<void>((resolve) => dom.window.requestAnimationFrame(() => resolve()));
   const latency = Math.max(1, Math.round(performance.now() - started));
+  const region = container.querySelector<HTMLElement>(feedbackState === "error" ? "[role='alert']" : "[role='status']");
+  if (!region || !region.textContent?.includes(definition.transport.typed_code)) throw new Error(`${definition.caseId} did not paint one named local result.`);
+  const expectedLive = feedbackState === "error" ? "assertive" : "polite";
+  if (region.getAttribute("aria-live") !== expectedLive) throw new Error(`${definition.caseId} did not expose the expected announcement.`);
+  const focused = feedbackState === "error" ? dom.window.document.activeElement === region : dom.window.document.activeElement === initiator;
+  if (!focused) throw new Error(`${definition.caseId} focus did not remain predictable.`);
+  const html = container.innerHTML;
+  root.unmount();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  for (const [key, descriptor] of Object.entries(previous)) {
+    if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+    else Reflect.deleteProperty(globalThis, key);
+  }
+  dom.window.close();
   const dispatchCase = definition.caseId.startsWith("DISP") || definition.caseId.startsWith("REC") || ["FAIL-03", "FAIL-04", "ORDER-03"].includes(definition.caseId);
   const histogram = dispatchCase ? "steer_agent_handoff_feedback_latency_ms" : "steer_work_item_save_feedback_latency_ms";
   const outcomeMetric = dispatchCase ? "steer_agent_handoff_outcome_total" : "steer_work_item_save_outcome_total";
@@ -70,7 +135,16 @@ const cases = definitions.map((definition) => {
     action_identity: sha256(`steer-str028-fixture-action/v1:${target}:${definition.caseId}`),
     expected_authority: definition.authority,
     expected_ui: { drawer: "authoritative local result", activity: "reconciled", inline_status: feedbackState, focus_target: feedbackState === "error" ? "perceivable inline alert" : "initiating control", announcement: feedbackState === "error" ? "assertive" : "polite" },
-    actual_evidence: { automated_oracle: `flight-board/tests:${definition.evidence}`, terminal_render_sha256: sha256(html), forbidden_side_effect_count: 0 },
+    actual_evidence: {
+      executed_oracle: `${oracle.file} / ${oracle.pattern}`,
+      oracle_process_exit_code: executed.status,
+      oracle_output_sha256: sha256(output),
+      d1_authority_assertions: definition.authority,
+      painted_feedback_sha256: sha256(html),
+      painted_role: region.getAttribute("role"),
+      painted_aria_live: expectedLive,
+      focus_observed: focused,
+    },
     transport_result: definition.transport,
     telemetry: [
       { metric_name: histogram, label_name: "", label_value: "", value: latency, case_id: definition.caseId },
@@ -79,16 +153,19 @@ const cases = definitions.map((definition) => {
     ],
     terminal_ui_feedback_observations: 1,
     substeps: (definition.substeps ?? []).map((substepId) => ({ parent_case_id: definition.caseId, substep_id: substepId, seed_reset: true, result: "pass", evidence_ref: `flight-board/tests:${definition.evidence}` })),
-    result: "pass",
+    result: executed.status === 0 && focused ? "pass" : "fail",
   };
-});
+}
+
+const cases = [];
+for (const definition of definitions) cases.push(await executeOracle(definition));
 
 const saveLatencies = cases.flatMap((entry) => entry.telemetry.filter((metric) => metric.metric_name === "steer_work_item_save_feedback_latency_ms").map((metric) => metric.value));
 const dispatchLatencies = cases.flatMap((entry) => entry.telemetry.filter((metric) => metric.metric_name === "steer_agent_handoff_feedback_latency_ms").map((metric) => metric.value));
 const output = {
   schema: "steer-str028-case-ledger/v1",
   target_commit: target,
-  environment: "isolated non-production Node/React fixture with deterministic server-oracle references",
+  environment: "executed non-production Node D1 emulator plus JSDOM React client-paint harness",
   generated_at: new Date().toISOString(),
   denominator: 20,
   missing_case_ids: [],
