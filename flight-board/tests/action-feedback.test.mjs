@@ -37,7 +37,11 @@ test("drawer mutations use authoritative snapshots and action-local feedback", (
 
 test("narrow drawers contain governed forms and long audit evidence", () => {
   assert.match(css, /\.item-drawer \{ overflow-x: hidden; \}/);
+  assert.match(css, /\.drawer-body, \.detail-section, \.field-grid, \.field-grid label,[^}]*min-width: 0;/s);
+  assert.match(css, /\.field-grid input, \.field-grid select,[^}]*max-width: 100%; width: 100%;/s);
   assert.match(css, /\.economics-form-grid input[^}]*max-width: 100%; width: 100%;/s);
+  assert.match(css, /\.dispatch-checks > div \{ grid-template-columns: 23px minmax\(0, 1fr\); \}/);
+  assert.match(css, /\.dispatch-checks small[^}]*overflow-wrap: anywhere;/s);
   assert.match(css, /\.activity-row \{ grid-template-columns: 24px minmax\(0, 1fr\); \}/);
   assert.match(css, /\.activity-row p[^}]*overflow-wrap: anywhere;/s);
   assert.match(css, /\.record-advisory small[^}]*overflow-wrap: anywhere;/s);

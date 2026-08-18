@@ -644,13 +644,19 @@ body { font-size: 14px; }
 
 /* Keep governed records and immutable audit evidence inside a narrow drawer. */
 .item-drawer { overflow-x: hidden; }
-.drawer-body, .detail-section, .work-economics, .economics-record,
+.drawer-body, .detail-section, .field-grid, .field-grid label,
+.work-economics, .economics-record,
 .economics-record form, .economics-form-grid, .economics-form-grid label,
+.dispatch-control, .dispatch-checks, .dispatch-checks > div,
+.dispatch-checks > div > div, .dispatch-control > footer,
 .activity-row, .activity-row > div { min-width: 0; }
+.field-grid input, .field-grid select,
 .economics-form-grid input, .economics-form-grid select,
-.economics-form-grid textarea { max-width: 100%; width: 100%; }
+.economics-form-grid textarea { box-sizing: border-box; max-width: 100%; width: 100%; }
+.dispatch-checks > div { grid-template-columns: 23px minmax(0, 1fr); }
 .activity-row { grid-template-columns: 24px minmax(0, 1fr); }
 .activity-row p, .economics-authority p, .economics-authority small,
-.system-guidance p, .record-advisory p, .record-advisory small {
+.system-guidance p, .record-advisory p, .record-advisory small,
+.dispatch-checks small, .dispatch-control > footer span {
   overflow-wrap: anywhere;
 }
