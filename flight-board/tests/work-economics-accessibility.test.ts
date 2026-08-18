@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import { JSDOM } from "jsdom";
 import axe from "axe-core";
-import { WorkEconomicsPanel } from "../app/page";
+import { AgentDispatchControl, cycleDrawerFocus, InlineActionFeedback, WorkEconomicsPanel } from "../app/page";
 import { evaluateForecast, type DeliveryForecast } from "../lib/work-economics";
 
 const forecast: DeliveryForecast = {
@@ -41,4 +41,74 @@ test("rendered Work Economics surface has no serious or critical axe findings", 
 test("primary Work Economics action contrast meets WCAG AA at both gradient endpoints", () => {
   assert.ok(contrast("39232d", "f2b7c9") >= 4.5);
   assert.ok(contrast("39232d", "f4d273") >= 4.5);
+});
+
+test("DISP-04 dispatch control has a named atomic live region and one focus-stable action", async () => {
+  const item = {
+    id: 28, key: "STR-028", title: "Dispatch feedback", description: "Governed dispatch", phase: "Engineer", priority: "Now", workflow: "STEER", work_type: "Reliability", state: "active", gate: "Gate 2 passed", decision_status: "Rework", decision_authority: "Tech Lead", assignee_id: "agent-builder", assignee_name: "Builder", assignee_kind: "agent", next_action: "Run the fixed acceptance matrix", evidence_url: "https://github.com/idrissenayat/federal-bd-platform/blob/47f2c2677f3af2cc90a31ade529b9f86d0ac1e1f/README.md", github_url: "https://github.com/idrissenayat/federal-bd-platform/issues/56", rework_instructions: null, blocked_since: null, pod_id: "pod-a", created_at: "2026-08-18T13:00:00.000Z", closed_at: null, updated_at: "2026-08-18T14:00:00.000Z",
+    work_economics: { valueHypothesis: null, deliveryForecast: forecast, actualEconomics: null, realizedOutcome: null, forecast: evaluateForecast(forecast, { state: "active", decision_status: "Rework" }, "2026-08-18T15:00:00.000Z") },
+    dispatch_authorization: { authorized: true, status: "Authorized" as const, summary: "Every dispatch control is satisfied.", checks: [{ id: "route", label: "Canonical route", detail: "Exact route is active.", met: true }], missing: [], channel: "#steer-team", handoff_message: null },
+  };
+  const html = renderToStaticMarkup(createElement(AgentDispatchControl, { item, dispatching: true, copied: false, onDispatch: () => {} }));
+  const dom = new JSDOM(`<main style="width:320px">${html}</main>`, { runScripts: "dangerously" });
+  dom.window.eval(axe.source);
+  const main = dom.window.document.querySelector("main")!;
+  const button = main.querySelector("button")!;
+  const status = main.querySelector('[role="status"]')!;
+  assert.equal(main.querySelectorAll("button").length, 1);
+  assert.equal(button.getAttribute("aria-describedby"), status.id);
+  assert.equal(button.getAttribute("aria-busy"), "true");
+  assert.equal(status.getAttribute("aria-live"), "polite");
+  assert.equal(status.getAttribute("aria-atomic"), "true");
+  assert.equal(status.getAttribute("aria-label"), "Durable dispatch status");
+  assert.match(status.textContent ?? "", /Authorizing one durable handoff/);
+  const results = await (dom.window as unknown as { axe: typeof axe }).axe.run(main, { rules: { "color-contrast": { enabled: false } } });
+  assert.equal(results.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? "")).length, 0);
+});
+
+test("DISP-04 dispatch action contrast meets WCAG AA", () => {
+  assert.ok(contrast("963553", "ffffff") >= 4.5);
+});
+
+test("AT-17 local pending, success, and failure regions have named live semantics", async () => {
+  const states = [
+    { id: 1, scope: "economics" as const, state: "pending" as const, message: "Waiting for the authoritative response." },
+    { id: 2, scope: "economics" as const, state: "success" as const, message: "The authoritative record is visible." },
+    { id: 3, scope: "economics" as const, state: "error" as const, message: "The transport failed; input is preserved for explicit retry." },
+  ];
+  for (const feedback of states) {
+    const html = renderToStaticMarkup(createElement(InlineActionFeedback, { feedback }));
+    const dom = new JSDOM(`<main>${html}</main>`, { runScripts: "dangerously" });
+    dom.window.eval(axe.source);
+    const region = dom.window.document.querySelector(feedback.state === "error" ? '[role="alert"]' : '[role="status"]')!;
+    assert.equal(region.getAttribute("aria-live"), feedback.state === "error" ? "assertive" : "polite");
+    assert.ok(region.textContent?.includes(feedback.message));
+    if (feedback.state === "error") assert.equal(region.getAttribute("tabindex"), "-1");
+    const results = await (dom.window as unknown as { axe: typeof axe }).axe.run(dom.window.document.querySelector("main")!, { rules: { "color-contrast": { enabled: false } } });
+    assert.equal(results.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? "")).length, 0);
+  }
+});
+
+test("AT-17 drawer focus remains inside the visible dialog", () => {
+  const dom = new JSDOM(`<button id="origin">Open drawer</button><aside role="dialog"><button id="first">Close</button><input id="middle"><button id="last">Save</button></aside>`);
+  const document = dom.window.document;
+  const drawer = document.querySelector("aside") as HTMLElement;
+  const first = document.querySelector("#first") as HTMLElement;
+  const last = document.querySelector("#last") as HTMLElement;
+  const origin = document.querySelector("#origin") as HTMLElement;
+  for (const element of drawer.querySelectorAll<HTMLElement>("button,input")) {
+    element.getClientRects = () => [{ x: 0, y: 0, width: 10, height: 10, top: 0, right: 10, bottom: 10, left: 0, toJSON: () => ({}) }] as unknown as DOMRectList;
+  }
+
+  last.focus();
+  assert.equal(cycleDrawerFocus(drawer, false), true);
+  assert.equal(document.activeElement, first);
+
+  first.focus();
+  assert.equal(cycleDrawerFocus(drawer, true), true);
+  assert.equal(document.activeElement, last);
+
+  origin.focus();
+  assert.equal(cycleDrawerFocus(drawer, false), true);
+  assert.equal(document.activeElement, first);
 });

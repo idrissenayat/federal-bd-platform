@@ -1,10 +1,13 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { buildApprovalReasoningDraft, recommendGateDecision } from "./decision-reasoning";
 import { WORK_TYPES } from "../lib/work-economics";
 import { buildForecastProposal } from "../lib/forecast-proposal";
 import { buildValueHypothesisProposal } from "../lib/value-hypothesis-proposal";
+import { acceptedValueHypothesisReady } from "../lib/work-economics-validation";
+import { applyAuthoritativeSnapshot, bootstrapReconciliationResult, isLatestItemAction, mergeBootstrapPreservingNewerItems, type AuthoritativeItemSnapshot } from "../lib/post-write";
+import { isStr028CaseId } from "../lib/str028-manifest";
 import type {
   ActualEconomics,
   AiAdvisory,
@@ -54,6 +57,11 @@ type WorkItem = {
   updated_at: string;
   work_economics: WorkEconomicsRecord;
   dispatch_authorization: AgentDispatchAuthorization;
+  dispatch_intent_id?: string | null;
+  dispatch_state?: string | null;
+  dispatch_event_version?: number | null;
+  dispatch_authorization_revision?: string | null;
+  dispatch_updated_at?: string | null;
 };
 
 type WorkEconomicsEvent = {
@@ -181,7 +189,13 @@ type Bootstrap = {
   work_economics_events: WorkEconomicsEvent[];
   pull_forecast: PullForecast;
   service_level_distributions: ServiceLevelDistribution[];
+  privacy_policy: { policy_version: number; status: string; inventory_url: string; inventory_sha256: string; ruling_url: string | null; ruling_sha256: string | null; authorization_event_id: string | null; activation_receipt_sha256: string | null } | null;
 };
+
+type ItemMutationSnapshot = AuthoritativeItemSnapshot<WorkItem, Activity, WorkEconomicsEvent>;
+type ItemMutationResult = { ok: true; snapshot: ItemMutationSnapshot; message?: string; idempotent_replay?: boolean };
+type ActionScope = "controls" | "economics" | "dispatch" | "next-action";
+type ActionFeedback = { id: number; scope: ActionScope; state: "pending" | "success" | "error"; message: string };
 
 type BuzzStatus = {
   online: boolean;
@@ -310,12 +324,56 @@ async function api(path: string, init?: RequestInit) {
   try {
     data = JSON.parse(body) as { error?: string };
   } catch {
-    throw new Error(response.ok
+    throw new ApiRequestError(response.ok
       ? "The service returned an unreadable response. Refresh and try again."
-      : `The service is temporarily unavailable (HTTP ${response.status}). Refresh and try again.`);
+      : `The service is temporarily unavailable (HTTP ${response.status}). Refresh and try again.`, response.status);
   }
-  if (!response.ok) throw new Error(data.error ?? "The request could not be completed.");
+  if (!response.ok) throw new ApiRequestError(data.error ?? "The request could not be completed.", response.status);
   return data;
+}
+
+class ApiRequestError extends Error {
+  readonly responseReceivedAt = feedbackClock();
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
+function feedbackClock() { return performance.now(); }
+
+type TelemetryObservation = { metric_name: string; label_name?: string; label_value?: string; value: number; case_id?: string };
+
+function activeStr028CaseId() {
+  if (typeof window === "undefined") return undefined;
+  const value = new URLSearchParams(window.location.search).get("str028_case") ?? "";
+  return isStr028CaseId(value) ? value : undefined;
+}
+
+function emitTelemetryBatch(observations: TelemetryObservation[]) {
+  void fetch("/api/telemetry", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      observations: observations.map((observation) => ({ label_name: "", label_value: "", ...observation })),
+    }),
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
+function emitTelemetry(observation: TelemetryObservation) {
+  emitTelemetryBatch([observation]);
+}
+
+function emitFeedbackAfterPaint(receivedAt: number, histogram: string, outcomeMetric: string, outcome: string) {
+  requestAnimationFrame(() => {
+    const case_id = activeStr028CaseId();
+    emitTelemetryBatch([
+      { metric_name: histogram, value: Math.max(0, Math.round(performance.now() - receivedAt)), case_id },
+      { metric_name: outcomeMetric, label_name: "outcome", label_value: outcome, value: 1, case_id },
+    ]);
+  });
+}
+
+function failureOutcome(error: unknown) {
+  return error instanceof ApiRequestError ? error.status === 409 ? "conflict" : error.status >= 400 && error.status < 500 ? "validation" : "transport" : "transport";
 }
 
 function StatusPill({ value, kind }: { value: string; kind?: string }) {
@@ -329,6 +387,70 @@ function Avatar({ name, kind = "human", accent = "aqua" }: { name: string | null
 
 function Empty({ title, copy }: { title: string; copy: string }) {
   return <div className="empty-panel"><span>✓</span><h3>{title}</h3><p>{copy}</p></div>;
+}
+
+export function InlineActionFeedback({ feedback }: { feedback: ActionFeedback | null }) {
+  const region = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (feedback?.state === "error") region.current?.focus();
+  }, [feedback?.id, feedback?.state]);
+  if (!feedback) return null;
+  const title = feedback.state === "pending" ? "Saving…" : feedback.state === "success" ? "Saved" : "Action not completed";
+  return <div
+    ref={region}
+    className={`inline-action-feedback inline-action-${feedback.state}`}
+    role={feedback.state === "error" ? "alert" : "status"}
+    aria-live={feedback.state === "error" ? "assertive" : "polite"}
+    tabIndex={feedback.state === "error" ? -1 : undefined}
+  ><strong>{title}</strong><span>{feedback.message}</span></div>;
+}
+
+const drawerFocusableSelector = [
+  "button:not([disabled])",
+  "a[href]",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
+export function cycleDrawerFocus(drawer: HTMLElement, backwards: boolean) {
+  const focusable = Array.from(drawer.querySelectorAll<HTMLElement>(drawerFocusableSelector))
+    .filter((element) => !element.hasAttribute("hidden") && element.getClientRects().length > 0);
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  const active = drawer.ownerDocument.activeElement;
+  if (!first || !last) {
+    drawer.focus();
+    return true;
+  }
+  if (backwards && (active === first || !drawer.contains(active))) {
+    last.focus();
+    return true;
+  }
+  if (!backwards && (active === last || !drawer.contains(active))) {
+    first.focus();
+    return true;
+  }
+  return false;
+}
+
+function NextActionEditor({ item, saving, feedback, onSave }: {
+  item: WorkItem;
+  saving: boolean;
+  feedback: ActionFeedback | null;
+  onSave: (value: string) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(item.next_action);
+  async function save() {
+    const value = draft.trim();
+    if (value !== item.next_action) await onSave(value);
+  }
+  return <section className="detail-section next-section">
+    <div><h3>Next action</h3><span>Keep this executable and unambiguous.</span></div>
+    <textarea value={draft} disabled={saving} onChange={(event) => setDraft(event.target.value)} onBlur={() => void save()} aria-describedby={`next-action-feedback-${item.id}`} />
+    <div id={`next-action-feedback-${item.id}`}><InlineActionFeedback feedback={feedback} /></div>
+  </section>;
 }
 
 function datetimeLocal(value: string | null | undefined) {
@@ -492,7 +614,7 @@ export function WorkEconomicsPanel({ item, events, members, serviceLevels, curre
     <ForecastSummary item={item} />
     <div className={`forecast-callout forecast-${economics.forecast.state.replace(" ", "-")}`}><strong>{economics.forecast.state === "unknown" ? "Owner forecast required" : `${economics.forecast.state} · ${economics.forecast.confidence} confidence`}</strong><p>{economics.forecast.reason}</p>{economics.forecast.nextMilestoneAt && <small>Next: {economics.forecast.nextMilestone} · {formatDate(economics.forecast.nextMilestoneAt)} · Updated {economics.forecast.lastUpdatedAt ? formatDate(economics.forecast.lastUpdatedAt) : "unknown"}</small>}</div>
 
-    <details className="economics-record" open={!value}><summary><span>01</span><div><strong>Value hypothesis</strong><small>{value ? `${value.outcomeMetric}: ${value.baseline} → ${value.target} ${value.unit}` : "AI proposal ready · human review only"}</small></div><b>{proposedValue.confidence}</b></summary><form key={value?.acceptedAt ?? proposedValue.advisory?.createdAt} onSubmit={submitValue}>
+    <details id={`value-hypothesis-${item.id}`} className="economics-record" open={!value}><summary><span>01</span><div><strong>Value hypothesis</strong><small>{value ? `${value.outcomeMetric}: ${value.baseline} → ${value.target} ${value.unit}` : "AI proposal ready · human review only"}</small></div><b>{proposedValue.confidence}</b></summary><form key={value?.acceptedAt ?? proposedValue.advisory?.createdAt} onSubmit={submitValue}>
       <RecordAdvisory advisory={proposedValue.advisory} acceptanceState={value?.acceptanceState ?? proposedValue.acceptanceState} />
       <div className="economics-form-grid economics-governance-row"><label>Value treatment<select name="valueMode" defaultValue={proposedValue.valueMode}><option value="non-monetary">Non-monetary native unit</option><option value="monetary">Monetary · currency and period required</option></select></label></div>
       <div className="economics-form-grid"><label>Primary value type<select name="primaryType" defaultValue={proposedValue.primaryType}>{["revenue or mission enablement", "user/customer outcome", "time or operating-cost reduction", "risk, security, compliance, or reliability improvement", "learning or option value", "platform capability or reuse"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Beneficiary<input name="beneficiary" defaultValue={proposedValue.beneficiary} required /></label><label>Outcome metric<input name="outcomeMetric" defaultValue={proposedValue.outcomeMetric} required /></label><label>Baseline<input name="baseline" defaultValue={proposedValue.baseline} required /></label><label>Target<input name="target" defaultValue={proposedValue.target} required /></label><label>Native unit<input name="unit" defaultValue={proposedValue.unit} required /></label><label>Observation date<input name="observationDate" type="date" defaultValue={proposedValue.observationDate.slice(0, 10)} required /></label><label>Outcome owner label<input name="outcomeOwner" defaultValue={proposedValue.outcomeOwner} required /></label><label>Named outcome owner<select name="outcomeOwnerId" defaultValue={proposedValue.outcomeOwnerId}>{members.filter((member) => member.kind === "human").map((member) => <option key={member.id} value={member.id}>{member.display_name} · {member.role}</option>)}</select></label><label>Impact<select name="impact" defaultValue={proposedValue.impact}>{["Low", "Medium", "High"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Time criticality<select name="timeCriticality" defaultValue={proposedValue.timeCriticality}>{["Low", "Medium", "High"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Strategic alignment<select name="strategicAlignment" defaultValue={proposedValue.strategicAlignment}>{["Low", "Medium", "High"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Confidence<select name="confidence" defaultValue={proposedValue.confidence}>{["low", "medium", "high"].map((option) => <option key={option}>{option}</option>)}</select></label><label>Currency if monetary<input name="currency" defaultValue={proposedValue.currency ?? ""} /></label><label>Measurement period<input name="period" defaultValue={proposedValue.period ?? ""} /></label>{proposedValue.advisory && <label>AI proposal ruling<select name="acceptanceState" defaultValue={value?.acceptanceState === "human edited" ? "human edited" : "human accepted"}><option value="human accepted">Accept unchanged</option><option value="human edited">Accept with human edits</option></select></label>}<label className="span-two">Evidence URL · human verifies before acceptance<input name="evidence" type="url" defaultValue={proposedValue.evidence} required /></label><label className="span-two">Visible assumptions / limitations<textarea name="assumptions" defaultValue={proposedValue.assumptions} required /></label><label className="span-two">Audit reason<input name="auditReason" defaultValue="Product Lead reviewed the AI-prepared value hypothesis and exact evidence before acceptance." required /></label></div><button disabled={saving}>{saving ? "Saving…" : value ? "Save audited correction" : "Accept AI-prepared value hypothesis"}</button>
@@ -523,11 +645,20 @@ export function WorkEconomicsPanel({ item, events, members, serviceLevels, curre
   </section>;
 }
 
-function AgentDispatchControl({ item, dispatching, copied, onDispatch }: { item: WorkItem; dispatching: boolean; copied: boolean; onDispatch: () => void }) {
+export function AgentDispatchControl({ item, dispatching, copied, onDispatch }: { item: WorkItem; dispatching: boolean; copied: boolean; onDispatch: () => void }) {
   const authorization = item.dispatch_authorization;
-  return <section className={`dispatch-control ${authorization.authorized ? "dispatch-authorized" : "dispatch-blocked"}`}>
+  const currentReceipt = Boolean(item.dispatch_intent_id) && item.dispatch_authorization_revision === item.updated_at;
+  const dispatchState = item.dispatch_state ? item.dispatch_state.replaceAll("_", " ") : null;
+  const statusText = dispatching
+    ? "Authorizing one durable handoff"
+    : item.dispatch_intent_id
+      ? `${dispatchState} · event v${item.dispatch_event_version ?? 0}`
+      : authorization.authorized
+        ? "Ready for authorization"
+        : "Authorization blocked";
+  return <section className={`dispatch-control ${authorization.authorized ? "dispatch-authorized" : "dispatch-blocked"}`} aria-labelledby={`dispatch-heading-${item.id}`}>
     <header>
-      <div><span>Agent work authorization</span><h3>{authorization.authorized ? "Ready for a controlled Buzz handoff" : "Buzz cannot start this work"}</h3></div>
+      <div><span>Agent work authorization</span><h3 id={`dispatch-heading-${item.id}`}>{authorization.authorized ? "Ready for a controlled Buzz handoff" : "Buzz cannot start this work"}</h3></div>
       <StatusPill value={authorization.status} kind={authorization.authorized ? "ready" : "blocked"} />
     </header>
     <p>{authorization.summary}</p>
@@ -535,9 +666,14 @@ function AgentDispatchControl({ item, dispatching, copied, onDispatch }: { item:
       {authorization.checks.map((check) => <div className={check.met ? "met" : "missing"} key={check.id}><span>{check.met ? "✓" : "!"}</span><div><strong>{check.label}</strong><small>{check.detail}</small></div></div>)}
     </div>
     <div className="dispatch-rule"><strong>One rule</strong><p>The Flight Board authorizes and assigns. Buzz coordinates the conversation. GitHub proves the implementation.</p></div>
+    <div id={`dispatch-status-${item.id}`} className="dispatch-lifecycle" role="status" aria-live="polite" aria-atomic="true" aria-label="Durable dispatch status">
+      <span>Durable handoff</span>
+      <strong>{statusText}</strong>
+      <small>{item.dispatch_intent_id ? `Receipt ${item.dispatch_intent_id.slice(0, 12)} · updated ${item.dispatch_updated_at ? formatDate(item.dispatch_updated_at) : "not recorded"}` : "No receipt has been created."}</small>
+    </div>
     <footer>
       <span>{authorization.authorized ? `Handoff destination: ${authorization.channel}` : "Resolve the missing controls above in this work item."}</span>
-      <button type="button" disabled={!authorization.authorized || dispatching} onClick={onDispatch}>{dispatching ? "Authorizing…" : copied ? "Handoff copied ✓" : "Authorize & copy Buzz handoff"}</button>
+      <button type="button" aria-describedby={`dispatch-status-${item.id}`} aria-busy={dispatching} disabled={!authorization.authorized || dispatching || currentReceipt} onClick={onDispatch}>{dispatching ? "Authorizing…" : currentReceipt ? "Receipt already recorded" : copied ? "Handoff copied ✓" : "Authorize & copy Buzz handoff"}</button>
     </footer>
   </section>;
 }
@@ -679,9 +815,13 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reviewingIds, setReviewingIds] = useState<number[]>([]);
+  const [reviewTargetItemId, setReviewTargetItemId] = useState<number | null>(null);
+  const [reviewTargetJson, setReviewTargetJson] = useState("");
   const [decisionChoice, setDecisionChoice] = useState("");
   const [decisionReasoning, setDecisionReasoning] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [reloadError, setReloadError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [buzzOpen, setBuzzOpen] = useState(false);
   const [buzzStatus, setBuzzStatus] = useState<BuzzStatus | null>(null);
@@ -696,32 +836,61 @@ export default function Home() {
   const [codeAction, setCodeAction] = useState<"ACCEPT" | "REQUEST_CHANGES" | "MERGE">("ACCEPT");
   const [codeReasoning, setCodeReasoning] = useState("");
   const [mergeConfirmation, setMergeConfirmation] = useState("");
+  const [itemFeedback, setItemFeedback] = useState<Record<number, ActionFeedback>>({});
+  const loadSequence = useRef(0);
+  const mutationSequence = useRef(0);
+  const latestMutation = useRef(new Map<number, number>());
+  const drawerRef = useRef<HTMLDialogElement>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const drawerReturnFocus = useRef<HTMLElement | null>(null);
 
-  async function load() {
+  async function load(options: { quiet?: boolean } = {}) {
+    const sequence = ++loadSequence.current;
     try {
       const payload = await api("/api/bootstrap") as Bootstrap;
-      setData(payload);
-      setError(null);
+      if (sequence !== loadSequence.current) return false;
+      setData((current) => {
+        emitTelemetry({ metric_name: "steer_post_write_reconciliation_total", label_name: "result", label_value: bootstrapReconciliationResult(current, payload), value: 1, case_id: activeStr028CaseId() });
+        return current ? mergeBootstrapPreservingNewerItems(current, payload) : payload;
+      });
+      setReloadError(null);
+      if (!options.quiet) setError(null);
+      return true;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The workspace could not be loaded.");
+      if (sequence === loadSequence.current) {
+        emitTelemetry({ metric_name: "steer_post_write_reconciliation_total", label_name: "result", label_value: "error", value: 1, case_id: activeStr028CaseId() });
+        const message = caught instanceof Error ? caught.message : "The workspace could not be loaded.";
+        if (options.quiet) setReloadError(message);
+        else setError(message);
+      }
+      return false;
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
   }
 
   useEffect(() => {
     let active = true;
+    const sequence = ++loadSequence.current;
     api("/api/bootstrap")
       .then((payload) => {
-        if (!active) return;
-        setData(payload as Bootstrap);
+        if (!active || sequence !== loadSequence.current) return;
+        setData((current) => {
+          const incoming = payload as Bootstrap;
+          emitTelemetry({ metric_name: "steer_post_write_reconciliation_total", label_name: "result", label_value: bootstrapReconciliationResult(current, incoming), value: 1, case_id: activeStr028CaseId() });
+          return current ? mergeBootstrapPreservingNewerItems(current, incoming) : incoming;
+        });
+        setReloadError(null);
         setError(null);
       })
       .catch((caught: unknown) => {
-        if (active) setError(caught instanceof Error ? caught.message : "The workspace could not be loaded.");
+        if (active && sequence === loadSequence.current) {
+          emitTelemetry({ metric_name: "steer_post_write_reconciliation_total", label_name: "result", label_value: "error", value: 1, case_id: activeStr028CaseId() });
+          setError(caught instanceof Error ? caught.message : "The workspace could not be loaded.");
+        }
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active && sequence === loadSequence.current) setLoading(false);
       });
     return () => { active = false; };
   }, []);
@@ -740,32 +909,80 @@ export default function Home() {
   const changeRequestDraft = freshSelectedReview ? buildChangeRequestDraft(freshSelectedReview) : "";
   const approvalReasoningDraft = selected && freshSelectedReview ? buildApprovalReasoningDraft(selected, freshSelectedReview) : "";
   const gateRecommendation = freshSelectedReview ? recommendGateDecision(freshSelectedReview) : null;
+  const gateOneValueReady = selected?.gate !== "Gate 1 pending" || acceptedValueHypothesisReady(selected.work_economics.valueHypothesis);
+  const approvalPrerequisiteMissing = decisionChoice === "APPROVED" && !gateOneValueReady;
   const activeDecisionDraft = decisionChoice === "APPROVED" ? approvalReasoningDraft : decisionChoice === "CHANGES_REQUESTED" ? changeRequestDraft : "";
   const decisionItems = data?.items.filter((item) => ["Needed now", "Resubmitted"].includes(item.decision_status)) ?? [];
   const blockedItems = data?.items.filter((item) => item.state === "blocked") ?? [];
   const activeItems = data?.items.filter((item) => item.state === "active") ?? [];
+  const activeDrawerId = selected?.id ?? null;
 
-  async function updateItem(id: number, changes: Record<string, unknown>) {
+  useEffect(() => {
+    if (activeDrawerId === null || decisionOpen || codeReviewOpen || reviewTargetItemId) return;
+    const frame = requestAnimationFrame(() => drawerCloseRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [activeDrawerId, decisionOpen, codeReviewOpen, reviewTargetItemId]);
+
+  function beginItemAction(id: number, scope: ActionScope, message: string) {
+    const actionId = ++mutationSequence.current;
+    latestMutation.current.set(id, actionId);
+    setItemFeedback((current) => ({ ...current, [id]: { id: actionId, scope, state: "pending", message } }));
+    setError(null);
+    return actionId;
+  }
+
+  function finishItemAction(id: number, actionId: number, scope: ActionScope, state: "success" | "error", message: string) {
+    if (!isLatestItemAction(latestMutation.current.get(id), actionId)) return false;
+    setItemFeedback((current) => ({ ...current, [id]: { id: actionId, scope, state, message } }));
+    return true;
+  }
+
+  function applySnapshot(snapshot: ItemMutationSnapshot) {
+    setData((current) => current ? applyAuthoritativeSnapshot(current, snapshot) : current);
+  }
+
+  async function updateItem(id: number, changes: Record<string, unknown>, scope: ActionScope = "controls", successMessage = "The authoritative work item was saved.") {
+    const actionId = beginItemAction(id, scope, "Waiting for the authoritative server response.");
     setSaving(true);
     try {
-      await api(`/api/items/${id}`, { method: "PATCH", body: JSON.stringify(changes) });
-      await load();
+      const expectedRevision = data?.items.find((item) => item.id === id)?.updated_at;
+      const result = await api(`/api/items/${id}`, { method: "PATCH", body: JSON.stringify({ ...changes, expectedRevision }) }) as ItemMutationResult;
+      const responseReceivedAt = feedbackClock();
+      if (!isLatestItemAction(latestMutation.current.get(id), actionId)) return;
+      applySnapshot(result.snapshot);
+      finishItemAction(id, actionId, scope, "success", successMessage);
+      emitFeedbackAfterPaint(responseReceivedAt, "steer_work_item_save_feedback_latency_ms", "steer_work_item_save_outcome_total", "success");
+      void load({ quiet: true });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The item could not be updated.");
+      if (finishItemAction(id, actionId, scope, "error", caught instanceof Error ? caught.message : "The item could not be updated. Your input is preserved for correction or retry.")) {
+        emitFeedbackAfterPaint(caught instanceof ApiRequestError ? caught.responseReceivedAt : feedbackClock(), "steer_work_item_save_feedback_latency_ms", "steer_work_item_save_outcome_total", failureOutcome(caught));
+      }
     } finally {
-      setSaving(false);
+      if (isLatestItemAction(latestMutation.current.get(id), actionId)) setSaving(false);
     }
   }
 
   async function updateWorkEconomics(id: number, section: EconomicsSection, value: Record<string, unknown>, reason: string) {
+    const actionId = beginItemAction(id, "economics", "Saving the governed record.");
     setSaving(true);
+    setNotice(null);
     try {
-      await api(`/api/items/${id}/work-economics`, { method: "PATCH", body: JSON.stringify({ section, value, reason }) });
-      await load();
+      const expectedRevision = data?.items.find((item) => item.id === id)?.updated_at;
+      const result = await api(`/api/items/${id}/work-economics`, { method: "PATCH", body: JSON.stringify({ section, value, reason, expectedRevision }) }) as ItemMutationResult;
+      const responseReceivedAt = feedbackClock();
+      if (!isLatestItemAction(latestMutation.current.get(id), actionId)) return;
+      applySnapshot(result.snapshot);
+      finishItemAction(id, actionId, "economics", "success", section === "valueHypothesis"
+        ? "Value hypothesis accepted from the authoritative response. Gate 1 can now be reviewed."
+        : "The governed record was saved from the authoritative response.");
+      emitFeedbackAfterPaint(responseReceivedAt, "steer_work_item_save_feedback_latency_ms", "steer_work_item_save_outcome_total", "success");
+      void load({ quiet: true });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The Work Economics record could not be updated.");
+      if (finishItemAction(id, actionId, "economics", "error", caught instanceof Error ? caught.message : "The Work Economics record could not be updated. Your input is preserved.")) {
+        emitFeedbackAfterPaint(caught instanceof ApiRequestError ? caught.responseReceivedAt : feedbackClock(), "steer_work_item_save_feedback_latency_ms", "steer_work_item_save_outcome_total", failureOutcome(caught));
+      }
     } finally {
-      setSaving(false);
+      if (isLatestItemAction(latestMutation.current.get(id), actionId)) setSaving(false);
     }
   }
 
@@ -793,13 +1010,17 @@ export default function Home() {
     if (!selected) return;
     const form = new FormData(event.currentTarget);
     setSaving(true);
+    setError(null);
+    setNotice(null);
     try {
-      await api(`/api/items/${selected.id}/decisions`, {
+      const result = await api(`/api/items/${selected.id}/decisions`, {
         method: "POST",
         body: JSON.stringify(Object.fromEntries(form.entries())),
-      });
+      }) as ItemMutationResult;
+      applySnapshot(result.snapshot);
       closeDecisionWorkspace();
-      await load();
+      setNotice(`${selected.gate} ruling recorded from the authoritative response. The work item is refreshed.`);
+      void load({ quiet: true });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The ruling could not be recorded.");
     } finally {
@@ -807,13 +1028,23 @@ export default function Home() {
     }
   }
 
-  async function requestAgentReview(itemId: number) {
+  async function requestAgentReview(itemId: number, packetJson: string) {
     setReviewingIds((current) => current.includes(itemId) ? current : [...current, itemId]);
+    setError(null);
     try {
-      await api(`/api/items/${itemId}/reviews`, { method: "POST", body: "{}" });
+      const packet = JSON.parse(packetJson) as { target?: unknown; target_verification?: unknown; prior_binding_digests?: unknown };
+      const target = packet.target ?? packet;
+      const priorBindingDigests = Array.isArray(packet.prior_binding_digests) ? packet.prior_binding_digests : [];
+      await api(`/api/items/${itemId}/reviews`, {
+        method: "POST",
+        body: JSON.stringify({ target, target_verification: packet.target_verification, prior_binding_digests: priorBindingDigests }),
+      });
+      setReviewTargetItemId(null);
+      setReviewTargetJson("");
+      setNotice("The signed Critic assignment was created for the exact immutable target.");
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The Critic Agent could not complete the review.");
+      setError(caught instanceof Error ? caught.message : "The signed Critic assignment could not be created.");
     } finally {
       setReviewingIds((current) => current.filter((id) => id !== itemId));
     }
@@ -824,8 +1055,8 @@ export default function Home() {
     try {
       await api(`/api/items/${item.id}/workflow`, { method: "POST", body: JSON.stringify({ action }) });
       if (action === "RESUBMIT") {
-        setReviewingIds((current) => current.includes(item.id) ? current : [...current, item.id]);
-        await api(`/api/items/${item.id}/reviews`, { method: "POST", body: "{}" });
+        setReviewTargetItemId(item.id);
+        setReviewTargetJson("");
       }
       await load();
     } catch (caught) {
@@ -911,17 +1142,11 @@ export default function Home() {
     }
   }
 
-  function reviewNeedsRefresh(item: WorkItem) {
-    const review = data?.reviews.find((candidate) => candidate.item_id === item.id);
-    return !review || review.reviewed_item_updated_at !== item.updated_at;
-  }
-
   function openDecisionWorkspace(item: WorkItem) {
     setSelectedId(item.id);
     setDecisionChoice("");
     setDecisionReasoning("");
     setDecisionOpen(true);
-    if (reviewNeedsRefresh(item) && !reviewingIds.includes(item.id)) void requestAgentReview(item.id);
   }
 
   function closeDecisionWorkspace() {
@@ -930,19 +1155,40 @@ export default function Home() {
     setDecisionReasoning("");
   }
 
+  function reviewGateOneValuePrerequisite() {
+    if (!selected) return;
+    const itemId = selected.id;
+    closeDecisionWorkspace();
+    requestAnimationFrame(() => {
+      document.getElementById(`value-hypothesis-${itemId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
   function navigateTo(nextView: View) {
     setView(nextView);
     setMobileNav(false);
-    if (nextView === "decisions") {
-      for (const item of decisionItems) {
-        if (reviewNeedsRefresh(item) && !reviewingIds.includes(item.id)) void requestAgentReview(item.id);
-      }
-    }
   }
 
   function openItem(item: WorkItem) {
+    if (document.activeElement instanceof HTMLElement) drawerReturnFocus.current = document.activeElement;
     setSelectedId(item.id);
     setDecisionOpen(false);
+  }
+
+  function closeItem() {
+    setSelectedId(null);
+    requestAnimationFrame(() => drawerReturnFocus.current?.focus());
+  }
+
+  function handleDrawerKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeItem();
+      return;
+    }
+    if (event.key === "Tab" && event.currentTarget === drawerRef.current && cycleDrawerFocus(event.currentTarget, event.shiftKey)) {
+      event.preventDefault();
+    }
   }
 
   async function openBuzzWorkspace() {
@@ -969,17 +1215,55 @@ export default function Home() {
   }
 
   async function authorizeBuzzHandoff(item: WorkItem) {
+    const actionId = beginItemAction(item.id, "dispatch", "Authorizing one durable handoff.");
     setDispatchingId(item.id);
     try {
-      const result = await api(`/api/items/${item.id}/dispatch`, { method: "POST", body: "{}" }) as { message?: string };
+      const result = await api(`/api/items/${item.id}/dispatch`, { method: "POST", body: "{}" }) as ItemMutationResult;
+      const responseReceivedAt = feedbackClock();
       if (!result.message) throw new Error("The authorized handoff message was not returned.");
-      await navigator.clipboard.writeText(result.message);
+      if (!isLatestItemAction(latestMutation.current.get(item.id), actionId)) return;
+      applySnapshot(result.snapshot);
+      try {
+        await navigator.clipboard.writeText(result.message);
+      } catch {
+        finishItemAction(item.id, actionId, "dispatch", "error", "The handoff was authorized once, but the message could not be copied. Do not authorize it again; use the recorded activity and outbox entry.");
+        emitFeedbackAfterPaint(responseReceivedAt, "steer_agent_handoff_feedback_latency_ms", "steer_agent_handoff_outcome_total", result.idempotent_replay ? "duplicate_suppressed" : "queued");
+        void load({ quiet: true });
+        return;
+      }
       setCopiedHandoffId(item.id);
-      await load();
+      finishItemAction(item.id, actionId, "dispatch", "success", "One handoff was authorized and copied. The drawer now shows the authoritative state.");
+      emitFeedbackAfterPaint(responseReceivedAt, "steer_agent_handoff_feedback_latency_ms", "steer_agent_handoff_outcome_total", result.idempotent_replay ? "duplicate_suppressed" : "queued");
+      void load({ quiet: true });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The agent handoff could not be authorized.");
+      if (finishItemAction(item.id, actionId, "dispatch", "error", caught instanceof Error ? caught.message : "The agent handoff could not be authorized. No retry was started.")) {
+        emitFeedbackAfterPaint(caught instanceof ApiRequestError ? caught.responseReceivedAt : feedbackClock(), "steer_agent_handoff_feedback_latency_ms", "steer_agent_handoff_outcome_total", caught instanceof ApiRequestError && caught.status === 409 ? "blocked" : "error");
+      }
     } finally {
-      setDispatchingId(null);
+      if (isLatestItemAction(latestMutation.current.get(item.id), actionId)) setDispatchingId(null);
+    }
+  }
+
+  async function activateApprovedPrivacyPolicy() {
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await api("/api/privacy-policy/activate", { method: "POST", body: JSON.stringify({
+        expected_policy_version: data?.privacy_policy?.policy_version ?? 1,
+        idempotency_key: "str028-provider-ruling-2026-08-18-staging",
+        inventory_url: "https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md",
+        inventory_sha256: "c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d",
+        ruling_url: "https://github.com/idrissenayat/federal-bd-platform/blob/d9dbe0b70e812f680ae23fad2ce4ffafc6e65229/steer/evidence/0028-gate-3-case-evidence.md",
+        ruling_sha256: "12522b22dca4ade812288a2bf47cb6c71405e89275a0db234d20ed8decafe83d",
+        terminal_retention_days: 90, provider_recovery_days: 30, status: "ACTIVE",
+        reason_code: "STR-028_PROVIDER_RECOVERY_RULING_APPROVED",
+      }) }) as { policy_version: number; idempotent_replay: boolean };
+      setNotice(`Privacy policy version ${result.policy_version} is active and bound to the approved STR-028 ruling${result.idempotent_replay ? " (existing receipt reused)" : ""}.`);
+      await load({ quiet: true });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The approved privacy policy could not be activated.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -1044,11 +1328,14 @@ export default function Home() {
           </div>
           <div className="top-actions">
             <a href={`${githubRoot}/issues/14`} target="_blank" rel="noreferrer" title="Open current GitHub issue">Evidence ↗</a>
+            {data.privacy_policy?.status !== "ACTIVE" && data.user.role.includes("Product Lead") && data.user.role.includes("Tech Lead") && <button disabled={saving} onClick={() => void activateApprovedPrivacyPolicy()} aria-label="Activate the approved STR-028 privacy policy">{saving ? "Activating…" : "Activate approved privacy policy"}</button>}
             <button className="create-button" onClick={() => setCreateOpen(true)}><span>＋</span> Create work item</button>
           </div>
         </header>
 
-        {error && <div className="error-banner"><span>{error}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
+        {error && <div className="action-feedback action-feedback-error" role="alert" aria-live="assertive"><div><strong>Action not completed</strong><span>{error}</span></div><button onClick={() => setError(null)}>Dismiss</button></div>}
+        {reloadError && <div className="action-feedback action-feedback-error workspace-reload-error" role="alert" aria-live="assertive" aria-label="Workspace refresh failed"><div><strong>Workspace refresh failed</strong><span>{reloadError} The drawer still shows the last authoritative action result; retry the refresh without repeating the action.</span></div><button onClick={() => void load({ quiet: true })}>Try refresh again</button></div>}
+        {notice && <div className="action-feedback action-feedback-success" role="status" aria-live="polite"><div><strong>Saved</strong><span>{notice}</span></div><button onClick={() => setNotice(null)}>Dismiss</button></div>}
 
         <div className="content-area">
           {view === "my-work" && (
@@ -1090,13 +1377,13 @@ export default function Home() {
 
       {selected && (
         <div className="drawer-scrim">
-          <aside className="item-drawer" aria-label={`${selected.key} details`}>
+          <dialog ref={drawerRef} open className="item-drawer" aria-modal="true" aria-labelledby={`drawer-title-${selected.id}`} tabIndex={-1} onKeyDown={handleDrawerKeyDown}>
             <header className="drawer-header">
               <div><span>{selected.key}</span><StatusPill value={selected.workflow} /></div>
-              <button aria-label="Close item" onClick={() => setSelectedId(null)}>×</button>
+              <button ref={drawerCloseRef} aria-label="Close item" onClick={closeItem}>×</button>
             </header>
             <div className="drawer-body">
-              <h2>{selected.title}</h2>
+              <h2 id={`drawer-title-${selected.id}`}>{selected.title}</h2>
               <p className="drawer-description">{selected.description}</p>
 
               {["Needed now", "Resubmitted"].includes(selected.decision_status) && (
@@ -1115,7 +1402,7 @@ export default function Home() {
                 </div>
               )}
 
-              <AgentReviewBrief item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => void requestAgentReview(selected.id)} />
+              <AgentReviewBrief item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => { setReviewTargetItemId(selected.id); setReviewTargetJson(""); setError(null); }} />
 
               <section className="detail-section">
                 <h3>Work controls</h3>
@@ -1130,6 +1417,7 @@ export default function Home() {
                   <label className="span-two">Evidence URL<input key={`evidence-${selected.id}`} defaultValue={selected.evidence_url ?? ""} disabled={saving} placeholder="https://github.com/organization/repository/blob/revision/path.md" onBlur={(event) => { const value = event.target.value.trim(); if (value !== (selected.evidence_url ?? "")) void updateItem(selected.id, { evidenceUrl: value || null }); }} /></label>
                   <label className="span-two">Engineering record<input key={`github-${selected.id}`} defaultValue={selected.github_url ?? ""} disabled={saving} placeholder="https://github.com/idrissenayat/federal-bd-platform/issues/31" onBlur={(event) => { const value = event.target.value.trim(); if (value !== (selected.github_url ?? "")) void updateItem(selected.id, { githubUrl: value || null }); }} /></label>
                 </div>
+                <InlineActionFeedback feedback={itemFeedback[selected.id]?.scope === "controls" ? itemFeedback[selected.id] : null} />
               </section>
 
               <WorkEconomicsPanel
@@ -1141,13 +1429,18 @@ export default function Home() {
                 saving={saving}
                 onSave={(section, value, reason) => updateWorkEconomics(selected.id, section, value, reason)}
               />
+              <InlineActionFeedback feedback={itemFeedback[selected.id]?.scope === "economics" ? itemFeedback[selected.id] : null} />
 
               <AgentDispatchControl item={selected} dispatching={dispatchingId === selected.id} copied={copiedHandoffId === selected.id} onDispatch={() => void authorizeBuzzHandoff(selected)} />
+              <InlineActionFeedback feedback={itemFeedback[selected.id]?.scope === "dispatch" ? itemFeedback[selected.id] : null} />
 
-              <section className="detail-section next-section">
-                <div><h3>Next action</h3><span>Keep this executable and unambiguous.</span></div>
-                <textarea defaultValue={selected.next_action} onBlur={(event) => { if (event.target.value !== selected.next_action) void updateItem(selected.id, { nextAction: event.target.value }); }} />
-              </section>
+              <NextActionEditor
+                key={`${selected.id}-${selected.updated_at}`}
+                item={selected}
+                saving={saving}
+                feedback={itemFeedback[selected.id]?.scope === "next-action" ? itemFeedback[selected.id] : null}
+                onSave={(value) => updateItem(selected.id, { nextAction: value }, "next-action", "Next action saved from the authoritative response.")}
+              />
 
               <section className="detail-section">
                 <h3>Evidence & engineering record</h3>
@@ -1164,7 +1457,27 @@ export default function Home() {
                 {itemActivity.length ? itemActivity.map((event) => <div className="activity-row" key={event.id}><Avatar name={event.actor_name} /><div><p><strong>{event.actor_name ?? "Contributor"}</strong> {event.detail}</p><span>{formatDate(event.created_at)}</span></div></div>) : <p className="muted">No activity recorded.</p>}
               </section>
             </div>
-          </aside>
+          </dialog>
+        </div>
+      )}
+
+      {reviewTargetItemId && data.items.find((item) => item.id === reviewTargetItemId) && (
+        <div className="modal-scrim">
+          <form className="modal-card review-target-modal" role="dialog" aria-modal="true" aria-labelledby="review-target-title" onSubmit={(event) => { event.preventDefault(); void requestAgentReview(reviewTargetItemId, reviewTargetJson); }}>
+            <header><div><span>Signed independent review</span><h2 id="review-target-title">Attach the exact immutable target</h2></div><button type="button" aria-label="Close signed review target" onClick={() => { setReviewTargetItemId(null); setReviewTargetJson(""); }}>×</button></header>
+            <p className="modal-intro">Paste the agent-prepared review target packet. The server validates the commit, every immutable GitHub artifact, the canonical manifest digest, the current gate, and the enrolled Critic identity before it creates one signed assignment.</p>
+            <label>Verified review target packet JSON<textarea required value={reviewTargetJson} onChange={(event) => setReviewTargetJson(event.target.value)} spellCheck={false} placeholder={'{"target":{…},"target_verification":{"receipt":{…},"signature":"…"},"prior_binding_digests":[…]}'}/></label>
+            <footer><button type="button" className="secondary-button" onClick={() => { setReviewTargetItemId(null); setReviewTargetJson(""); }}>Cancel</button><button type="submit" className="decision-button" disabled={reviewingIds.includes(reviewTargetItemId) || !reviewTargetJson.trim()}>{reviewingIds.includes(reviewTargetItemId) ? "Creating signed assignment…" : "Create signed Critic assignment"}</button></footer>
+          </form>
+        </div>
+      )}
+
+      {selectedId !== null && !selected && (
+        <div className="drawer-scrim">
+          <dialog ref={drawerRef} open className="item-drawer item-drawer-unavailable" aria-modal="true" aria-labelledby="unavailable-drawer-title" tabIndex={-1} onKeyDown={handleDrawerKeyDown}>
+            <header className="drawer-header"><div><span>Unavailable</span></div><button ref={drawerCloseRef} aria-label="Close unavailable work item" onClick={closeItem}>×</button></header>
+            <div className="drawer-body"><div className="empty-panel" role="alert" aria-live="assertive" aria-label="Authoritative work item unavailable"><span>!</span><h2 id="unavailable-drawer-title">Work item unavailable</h2><p>The authoritative item is not present in the latest workspace response. No durable value was fabricated. Refresh the workspace or close this drawer.</p><button onClick={() => void load()}>Refresh workspace</button></div></div>
+          </dialog>
         </div>
       )}
 
@@ -1212,16 +1525,17 @@ export default function Home() {
             <input type="hidden" name="reviewId" value={freshSelectedReview?.id ?? ""} />
             <header><div><span>◆ Authenticated human ruling</span><h2>{selected.gate}</h2></div><button type="button" onClick={closeDecisionWorkspace}>×</button></header>
             <div className="decision-item-summary"><span>{selected.key}</span><strong>{selected.title}</strong><p>{selected.description}</p></div>
-            <AgentReviewBrief compact item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => void requestAgentReview(selected.id)} />
-            {gateRecommendation && <section className={`gate-ai-recommendation recommendation-${gateRecommendation.action === "APPROVED" ? "approve" : "changes"}`}><header><span>◇ AI recommendation</span><strong>{gateRecommendation.label}</strong></header><p>{gateRecommendation.reason}</p><small>Advisory only. You must select a ruling, review or edit its reasoning, and record it yourself.</small></section>}
+            <AgentReviewBrief compact item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => { setReviewTargetItemId(selected.id); setReviewTargetJson(""); setError(null); }} />
+            {gateRecommendation && <section className={`gate-ai-recommendation recommendation-${gateRecommendation.action === "APPROVED" && gateOneValueReady ? "approve" : "changes"}`}><header><span>◇ AI recommendation</span><strong>{gateRecommendation.action === "APPROVED" && !gateOneValueReady ? "Complete one prerequisite" : gateRecommendation.label}</strong></header><p>{gateRecommendation.action === "APPROVED" && !gateOneValueReady ? "The evidence supports approval, but Gate 1 remains locked until you accept the AI-prepared Value Hypothesis. Nothing needs to be written from scratch." : gateRecommendation.reason}</p><small>Advisory only. You must select a ruling, review or edit its reasoning, and record it yourself.</small></section>}
             {freshSelectedReview?.evidence_sha256 ? <div className="decision-evidence-bound"><span>✓ Exact evidence captured</span><strong>{freshSelectedReview.evidence_revision ? freshSelectedReview.evidence_revision.slice(0, 12) : freshSelectedReview.evidence_sha256.slice(0, 12)}</strong><small>This ruling will retain the Critic review and content fingerprint.</small></div> : <div className="review-stale">A fresh review with resolvable evidence is required before this ruling can be recorded.</div>}
+            {!gateOneValueReady && <section className="decision-prerequisite" role="alert"><div><span>Required before Gate 1 approval</span><strong>Accept the AI-prepared Value Hypothesis</strong><p>The proposal is already filled. Review it, accept it unchanged or edit it, then return here. The app will confirm the save and refresh this item.</p></div><button type="button" onClick={reviewGateOneValuePrerequisite}>Review prepared proposal</button></section>}
             <div className="authority-warning"><strong>You are acting as {selected.decision_authority}.</strong><p>This ruling is attributed to {data.user.email ?? data.user.name}. Agents cannot submit this form without an authenticated human identity.</p></div>
-            <fieldset><legend>Ruling</legend><label className={`radio-card ${gateRecommendation?.action === "APPROVED" ? "ai-recommended" : ""}`}><input aria-label="Approve this gate" type="radio" name="decision" value="APPROVED" required checked={decisionChoice === "APPROVED"} onChange={() => { setDecisionChoice("APPROVED"); setDecisionReasoning(approvalReasoningDraft); }} /><span>{gateRecommendation?.action === "APPROVED" && <em>◇ AI recommends</em>}<strong>Approve</strong><small>Evidence is sufficient for this gate. Advance the work.</small></span></label><label className={`radio-card ${gateRecommendation?.action === "CHANGES_REQUESTED" ? "ai-recommended" : ""}`}><input aria-label="Request changes for this gate" type="radio" name="decision" value="CHANGES_REQUESTED" required checked={decisionChoice === "CHANGES_REQUESTED"} onChange={() => { setDecisionChoice("CHANGES_REQUESTED"); setDecisionReasoning(changeRequestDraft); }} /><span>{gateRecommendation?.action === "CHANGES_REQUESTED" && <em>◇ AI recommends</em>}<strong>Request changes</strong><small>Keep the gate pending and block work until the named gaps are resolved.</small></span></label></fieldset>
+            <fieldset><legend>Ruling</legend><label className={`radio-card ${gateRecommendation?.action === "APPROVED" && gateOneValueReady ? "ai-recommended" : ""}`}><input aria-label="Approve this gate" type="radio" name="decision" value="APPROVED" required checked={decisionChoice === "APPROVED"} onChange={() => { setDecisionChoice("APPROVED"); setDecisionReasoning(approvalReasoningDraft); }} /><span>{gateRecommendation?.action === "APPROVED" && gateOneValueReady && <em>◇ AI recommends</em>}<strong>Approve</strong><small>{gateOneValueReady ? "Evidence is sufficient for this gate. Advance the work." : "Available after the prepared Value Hypothesis is accepted."}</small></span></label><label className={`radio-card ${gateRecommendation?.action === "CHANGES_REQUESTED" ? "ai-recommended" : ""}`}><input aria-label="Request changes for this gate" type="radio" name="decision" value="CHANGES_REQUESTED" required checked={decisionChoice === "CHANGES_REQUESTED"} onChange={() => { setDecisionChoice("CHANGES_REQUESTED"); setDecisionReasoning(changeRequestDraft); }} /><span>{gateRecommendation?.action === "CHANGES_REQUESTED" && <em>◇ AI recommends</em>}<strong>Request changes</strong><small>Keep the gate pending and block work until the named gaps are resolved.</small></span></label></fieldset>
             {decisionChoice === "APPROVED" && approvalReasoningDraft && <section className="ai-reasoning-draft"><header><div><span>◇ Critic-drafted approval reasoning</span><strong>Ready for your review</strong></div><button type="button" disabled={decisionReasoning === approvalReasoningDraft} onClick={() => setDecisionReasoning(approvalReasoningDraft)}>{decisionReasoning === approvalReasoningDraft ? "Draft applied" : "Restore AI draft"}</button></header><p>AI prepared this from the exact Critic review. Edit it as needed; recording the ruling remains your decision.</p><pre>{approvalReasoningDraft}</pre></section>}
             {decisionChoice === "CHANGES_REQUESTED" && changeRequestDraft && <section className="ai-reasoning-draft"><header><div><span>◇ Critic-drafted instructions</span><strong>Ready for your reasoning</strong></div><button type="button" disabled={decisionReasoning === changeRequestDraft} onClick={() => setDecisionReasoning(changeRequestDraft)}>{decisionReasoning === changeRequestDraft ? "Draft applied" : decisionReasoning.trim() ? "Restore AI draft" : "Use AI draft"}</button></header><p>Editable advice from the current review. You remain the author and decision authority.</p><pre>{changeRequestDraft}</pre></section>}
             {decisionChoice === "CHANGES_REQUESTED" && !changeRequestDraft && reviewingIds.includes(selected.id) && <div className="draft-waiting"><span>◇</span><p><strong>Critic is preparing proposed instructions.</strong> You can write now or apply the draft when the review finishes.</p></div>}
             <label><span className="reasoning-label-row"><span>Reasoning</span>{activeDecisionDraft && decisionReasoning === activeDecisionDraft && <em>AI draft applied · editable</em>}</span><textarea name="reasoning" required minLength={12} value={decisionReasoning} onChange={(event) => setDecisionReasoning(event.target.value)} placeholder="State why this evidence is or is not sufficient. This becomes part of the audit trail." /></label>
-            <footer><button type="button" className="secondary-button" onClick={closeDecisionWorkspace}>Cancel</button><button className="decision-button" disabled={saving || !freshSelectedReview?.evidence_sha256}>{saving ? "Recording…" : "Record human ruling"}</button></footer>
+            <footer><button type="button" className="secondary-button" onClick={closeDecisionWorkspace}>Cancel</button><button className="decision-button" disabled={saving || !freshSelectedReview?.evidence_sha256 || approvalPrerequisiteMissing}>{saving ? "Recording…" : approvalPrerequisiteMissing ? "Complete prerequisite first" : "Record human ruling"}</button></footer>
           </form>
         </div>
       )}

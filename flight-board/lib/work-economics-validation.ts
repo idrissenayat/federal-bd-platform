@@ -240,6 +240,17 @@ export function validateAndNormalizeWorkEconomics(section: WorkEconomicsSection,
   return { error, value: error ? null : input };
 }
 
+export function acceptedValueHypothesisReady(input: unknown) {
+  const result = validateAndNormalizeWorkEconomics("valueHypothesis", input);
+  if (result.error || !result.value) return false;
+  return Boolean(
+    result.value.acceptedBy
+    && result.value.acceptedAt
+    && result.value.evidenceStatus === "verified"
+    && result.value.acceptanceState !== "proposed",
+  );
+}
+
 export function humanAcceptanceState(advisory: unknown, requested: unknown) {
   if (!advisory) return "no proposal" as const;
   return requested === "human edited" ? "human edited" as const : "human accepted" as const;

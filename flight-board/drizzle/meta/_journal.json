@@ -64,6 +64,69 @@
       "when": 1786744680111,
       "tag": "0008_shiny_calypso",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1787058754804,
+      "tag": "0009_chemical_namora",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1787058857698,
+      "tag": "0010_busy_scarlet_spider",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1787059259744,
+      "tag": "0011_cool_omega_flight",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1787059781172,
+      "tag": "0012_colossal_wither",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1787060353063,
+      "tag": "0013_nasty_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1787060546067,
+      "tag": "0014_blushing_tusk",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1787060744332,
+      "tag": "0015_material_doorman",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1787060877991,
+      "tag": "0016_giant_queen_noir",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1787061505518,
+      "tag": "0017_fat_zodiak",
+      "breakpoints": true
     }
   ]
 }

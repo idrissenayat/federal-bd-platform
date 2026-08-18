@@ -9,11 +9,16 @@ import {
   workEconomicsFromRow,
   type DeliveryForecast,
 } from "../lib/work-economics";
-import { humanAcceptanceState, validateAndNormalizeWorkEconomics, type WorkEconomicsSection } from "../lib/work-economics-validation";
+import { acceptedValueHypothesisReady, humanAcceptanceState, validateAndNormalizeWorkEconomics, type WorkEconomicsSection } from "../lib/work-economics-validation";
+import { buildDispatchIdentity, exactGitEvidence, STEER_HANDOFF_ROUTE_KEY, validateDispatchRoute, type DispatchRoute } from "../lib/dispatch-control";
+import { canonicalJson, createSignedDispatchEvent, dispatchPublicKey, sha256Hex, type DispatchState } from "../lib/dispatch-lifecycle";
+import { isStr028CaseId } from "../lib/str028-manifest";
+import { buildReviewIdentity, createSignedReviewEvent, validateReviewAssignmentPayload, verifyReviewerBinding, type ReviewAssignmentPayload } from "../lib/review-lifecycle";
+import { buildInitialQueuedEvent, ensureDispatchServiceSigner, handleDispatchServiceApi, type DispatchServiceEnv } from "./dispatch";
 
 type D1Result<T = Record<string, unknown>> = {
   results?: T[];
-  meta?: { last_row_id?: number };
+  meta?: { last_row_id?: number; changes?: number };
 };
 
 type Statement = {
@@ -28,7 +33,15 @@ type Database = {
   batch(statements: Statement[]): Promise<unknown[]>;
 };
 
-type Env = { DB: Database; GITHUB_TOKEN?: string };
+type Env = {
+  DB: Database;
+  GITHUB_TOKEN?: string;
+  DISPATCH_ALLOW_TEST_PRIVACY_POLICY?: string;
+  REVIEW_SERVICE_PRIVATE_KEY?: string;
+  REVIEW_SERVICE_KEY_ID?: string;
+  REVIEW_SERVICE_KEY_VERSION?: string;
+  REVIEW_SERVICE_TOKEN?: string;
+} & DispatchServiceEnv;
 
 type User = { id: string; email: string | null; name: string };
 
@@ -41,6 +54,13 @@ const buzzRelayHttpUrl = "https://blockbuzzmain-production-5bcb.up.railway.app";
 const buzzRelayWsUrl = "wss://blockbuzzmain-production-5bcb.up.railway.app";
 const allowedGitHubRepository = "idrissenayat/federal-bd-platform";
 const gateTwoExamNextAction = "Design a falsifiable Gate 2 Exam from the approved Intent Brief, attach the exact Exam revision, run a fresh Critic review, and present Gate 2 to the Interim Tech Lead. Do not implement before Gate 2 passes.";
+const dispatchPrivacyInventoryRevision = "4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14";
+const dispatchPrivacyInventoryUrl = `https://github.com/idrissenayat/federal-bd-platform/blob/${dispatchPrivacyInventoryRevision}/steer/evidence/0028-dispatch-data-inventory.md`;
+const dispatchPrivacyInventorySha256 = "c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d";
+const dispatchPrivacyRulingRevision = "d9dbe0b70e812f680ae23fad2ce4ffafc6e65229";
+const dispatchPrivacyRulingUrl = `https://github.com/idrissenayat/federal-bd-platform/blob/${dispatchPrivacyRulingRevision}/steer/evidence/0028-gate-3-case-evidence.md`;
+const dispatchPrivacyRulingSha256 = "12522b22dca4ade812288a2bf47cb6c71405e89275a0db234d20ed8decafe83d";
+const dispatchPrivacyActivationReason = "STR-028_PROVIDER_RECOVERY_RULING_APPROVED";
 
 type PullRequestReference = { owner: string; repo: string; repository: string; number: number };
 
@@ -142,6 +162,57 @@ function safeEconomicsEvent(event: Record<string, unknown>) {
     }
   };
   return { ...event, previous_json: sanitize(event.previous_json), replacement_json: sanitize(event.replacement_json) };
+}
+
+async function authoritativeItemSnapshot(db: Database, user: User, itemId: number) {
+  const generatedAt = new Date().toISOString();
+  const [item, activity, economicsEvents] = await Promise.all([
+    db.prepare(
+      `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind,
+         (SELECT o.intent_id FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_intent_id,
+         (SELECT o.current_state FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_state,
+         (SELECT o.current_event_version FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_event_version,
+         (SELECT r.authorization_revision FROM dispatch_receipts r
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_authorization_revision,
+         (SELECT o.updated_at FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_updated_at,
+         (SELECT a.created_at FROM activity a
+          WHERE a.item_id = w.id AND a.action = 'updated' AND a.detail = 'state → complete'
+          ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS closed_at
+       FROM work_items w
+       JOIN members actor ON actor.id = ? AND actor.pod_id = w.pod_id
+       LEFT JOIN members m ON m.id = w.assignee_id
+       WHERE w.id = ?`,
+    ).bind(user.id, itemId).first<Record<string, unknown>>(),
+    db.prepare(
+      `SELECT a.*, w.key AS item_key, w.title AS item_title, m.display_name AS actor_name
+       FROM activity a JOIN work_items w ON w.id = a.item_id
+       LEFT JOIN members m ON m.id = a.actor_id
+       WHERE a.item_id = ? AND w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
+       ORDER BY a.created_at DESC, a.id DESC LIMIT 20`,
+    ).bind(itemId, user.id).all<Record<string, unknown>>(),
+    db.prepare(
+      `SELECT e.*, w.key AS item_key, w.title AS item_title, m.display_name AS actor_name
+       FROM work_economics_events e JOIN work_items w ON w.id = e.item_id
+       LEFT JOIN members m ON m.id = e.actor_id
+       WHERE e.item_id = ? AND w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
+       ORDER BY e.created_at DESC, e.id DESC LIMIT 20`,
+    ).bind(itemId, user.id).all<Record<string, unknown>>(),
+  ]);
+  if (!item) return null;
+  return {
+    generated_at: generatedAt,
+    item: {
+      ...item,
+      work_economics: safeEconomicsFromRow(item, generatedAt),
+      dispatch_authorization: evaluateAgentDispatch(item),
+    },
+    activity: activity.results ?? [],
+    work_economics_events: (economicsEvents.results ?? []).map((event) => safeEconomicsEvent(event)),
+  };
 }
 
 export function normalizeEngineeringRecordUrl(input: unknown) {
@@ -339,6 +410,42 @@ async function ensureSchema(db: Database) {
       created_at text NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_agent_reviews_item_created ON agent_reviews (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS review_assignments (
+      assignment_id text PRIMARY KEY NOT NULL, idempotency_key text NOT NULL UNIQUE,
+      item_id integer NOT NULL, pod_id text NOT NULL, review_stage text NOT NULL,
+      reviewer_member_id text NOT NULL, primary_claim_lineage_id text NOT NULL,
+      item_revision text NOT NULL, target_manifest_sha256 text NOT NULL,
+      assignment_json text NOT NULL, current_state text NOT NULL,
+      current_event_version integer NOT NULL, current_event_sha256 text NOT NULL,
+      authorizing_actor_id text NOT NULL, authorizing_event_id text NOT NULL,
+      created_at text NOT NULL, terminal_at text, delete_after text
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_review_assignments_item_created ON review_assignments (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS review_events (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, assignment_id text NOT NULL,
+      event_version integer NOT NULL, expected_event_version integer NOT NULL,
+      event_type text NOT NULL, payload_json text NOT NULL, previous_event_sha256 text,
+      event_sha256 text NOT NULL, service_key_id text NOT NULL,
+      service_key_version integer NOT NULL, service_signature text NOT NULL,
+      reviewer_key_id text, reviewer_key_version integer, reviewer_signature text,
+      actor_id text NOT NULL, created_at text NOT NULL,
+      UNIQUE(assignment_id, event_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_review_events_assignment_created ON review_events (assignment_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS review_retention_holds (
+      hold_event_id text PRIMARY KEY NOT NULL, assignment_id text NOT NULL,
+      action text NOT NULL, reason_code text NOT NULL, expires_at text NOT NULL,
+      actor_id text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_review_retention_holds_assignment_created ON review_retention_holds (assignment_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS review_retention_authorizations (
+      assignment_id text PRIMARY KEY NOT NULL, authorization_nonce text NOT NULL,
+      expires_at text NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS review_retention_runs (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, cutoff_at text NOT NULL,
+      eligible_count integer NOT NULL, deleted_count integer NOT NULL, created_at text NOT NULL
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS notifications (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
       dedupe_key text NOT NULL UNIQUE,
@@ -355,6 +462,125 @@ async function ensureSchema(db: Database) {
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_role_created ON notifications (recipient_role, created_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_member_status ON notifications (member_id, status)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS workspace_routing (
+      pod_id text NOT NULL, route_key text NOT NULL, configuration_version integer NOT NULL,
+      channel_id text NOT NULL, channel_name text NOT NULL, relay_url text NOT NULL,
+      changed_by text NOT NULL, change_reason text NOT NULL, created_at text NOT NULL,
+      UNIQUE(pod_id, route_key, configuration_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_workspace_routing_active ON workspace_routing (pod_id, route_key, configuration_version)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS workspace_routing_conflicts (
+      pod_id text NOT NULL, route_key text NOT NULL, conflict_id text NOT NULL,
+      source_kind text NOT NULL, source_reference_sha256 text NOT NULL, status text NOT NULL,
+      detected_by text NOT NULL, detected_at text NOT NULL, resolved_by text, resolved_at text,
+      UNIQUE(pod_id, route_key, conflict_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_workspace_routing_conflict_active ON workspace_routing_conflicts (pod_id, route_key, status)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS buzz_channel_registry (
+      pod_id text NOT NULL, registry_version integer NOT NULL, channel_id text NOT NULL,
+      channel_name text NOT NULL, relay_url text NOT NULL, status text NOT NULL,
+      changed_by text NOT NULL, change_reason text NOT NULL, created_at text NOT NULL,
+      UNIQUE(pod_id, channel_id, registry_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_buzz_channel_registry_active ON buzz_channel_registry (pod_id, channel_id, status)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS agent_channel_memberships (
+      pod_id text NOT NULL, channel_id text NOT NULL, member_id text NOT NULL,
+      membership_version integer NOT NULL, status text NOT NULL, created_at text NOT NULL,
+      UNIQUE(pod_id, channel_id, member_id, membership_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_agent_channel_membership_active ON agent_channel_memberships (pod_id, channel_id, member_id, status)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_receipts (
+      intent_id text PRIMARY KEY NOT NULL, lineage_id text NOT NULL, item_id integer NOT NULL,
+      pod_id text NOT NULL, authorization_revision text NOT NULL, channel_id text NOT NULL,
+      configuration_version integer NOT NULL, receipt_json text NOT NULL, created_at text NOT NULL,
+      terminal_at text, delete_after text
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_receipts_item_created ON dispatch_receipts (item_id, created_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_receipts_lineage ON dispatch_receipts (lineage_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_authorization_audits (
+      audit_event_id text PRIMARY KEY NOT NULL, intent_id text NOT NULL UNIQUE, item_id integer NOT NULL,
+      pod_id text NOT NULL, authorization_revision text NOT NULL, authorization_json text NOT NULL,
+      actor_id text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_authorization_item_created ON dispatch_authorization_audits (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_outbox (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, intent_id text NOT NULL UNIQUE,
+      receipt_id text NOT NULL, member_id text NOT NULL, channel_id text NOT NULL,
+      channel_name text NOT NULL, status text NOT NULL, current_state text NOT NULL DEFAULT 'QUEUED',
+      current_event_version integer NOT NULL DEFAULT 0, current_event_sha256 text NOT NULL,
+      attempt_number integer NOT NULL DEFAULT 0, lease_id text, lease_expires_at text,
+      reservation_fence text, send_started integer NOT NULL DEFAULT 0,
+      reconciliation_required integer NOT NULL DEFAULT 0, terminalization_requested integer NOT NULL DEFAULT 0,
+      relay_url text NOT NULL, routing_configuration_version integer NOT NULL,
+      delivered_event_id text, accepted_acknowledgement_sha256 text,
+      last_error_code text, created_at text NOT NULL, updated_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_outbox_status_created ON dispatch_outbox (status, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_events (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, intent_id text NOT NULL,
+      event_version integer NOT NULL, expected_event_version integer NOT NULL, event_type text NOT NULL, prior_state text,
+      resulting_state text, payload_json text NOT NULL, previous_event_sha256 text, event_sha256 text NOT NULL,
+      service_key_id text NOT NULL, service_key_version integer NOT NULL, service_signature text NOT NULL,
+      agent_key_id text, agent_key_version integer, agent_signature text, acknowledgement_sha256 text,
+      actor_id text NOT NULL, created_at text NOT NULL,
+      UNIQUE(intent_id, event_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_events_intent_created ON dispatch_events (intent_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_attempts (
+      intent_id text NOT NULL, attempt_number integer NOT NULL, lease_id text NOT NULL,
+      lease_expires_at text NOT NULL, reservation_fence text NOT NULL UNIQUE, status text NOT NULL,
+      created_at text NOT NULL, updated_at text NOT NULL, UNIQUE(intent_id, attempt_number)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_attempts_intent_status ON dispatch_attempts (intent_id, status)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_event_signers (
+      pod_id text NOT NULL, registry_version integer NOT NULL, service_role text NOT NULL,
+      allowed_event_types_json text NOT NULL, key_id text NOT NULL, key_version integer NOT NULL,
+      public_key text NOT NULL, valid_from text NOT NULL, valid_until text, status text NOT NULL,
+      changed_by text NOT NULL, change_reason text NOT NULL, created_at text NOT NULL,
+      UNIQUE(pod_id, key_id, key_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_event_signers_active ON dispatch_event_signers (pod_id, service_role, status)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS relay_event_signers (
+      pod_id text NOT NULL, registry_version integer NOT NULL, relay_url text NOT NULL, channel_id text NOT NULL,
+      key_id text NOT NULL, key_version integer NOT NULL, public_key text NOT NULL, valid_from text NOT NULL,
+      valid_until text, status text NOT NULL, changed_by text NOT NULL, change_reason text NOT NULL,
+      created_at text NOT NULL, UNIQUE(pod_id, key_id, key_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_relay_event_signers_active ON relay_event_signers (pod_id, relay_url, channel_id, status)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_retention_holds (
+      hold_event_id text PRIMARY KEY NOT NULL, intent_id text NOT NULL, action text NOT NULL,
+      reason_code text NOT NULL, expires_at text NOT NULL, actor_id text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_retention_holds_intent_created ON dispatch_retention_holds (intent_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_retention_authorizations (
+      intent_id text PRIMARY KEY NOT NULL, authorization_nonce text NOT NULL, expires_at text NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_retention_runs (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, cutoff_at text NOT NULL,
+      eligible_count integer NOT NULL, deleted_count integer NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_retention_runs_created ON dispatch_retention_runs (created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS steer_telemetry (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, metric_name text NOT NULL,
+      label_name text NOT NULL DEFAULT '', label_value text NOT NULL DEFAULT '',
+      value integer NOT NULL, case_id text, observed_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_steer_telemetry_metric_observed ON steer_telemetry (metric_name, observed_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_privacy_policies (
+      pod_id text NOT NULL, policy_version integer NOT NULL, inventory_url text NOT NULL,
+      inventory_sha256 text NOT NULL, terminal_retention_days integer NOT NULL,
+      provider_recovery_days integer NOT NULL, status text NOT NULL, changed_by text NOT NULL,
+      change_reason text NOT NULL, created_at text NOT NULL, ruling_url text,
+      ruling_sha256 text, authority_role text, authorization_event_id text,
+      idempotency_key text, activation_receipt_sha256 text,
+      UNIQUE(pod_id, policy_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_privacy_policy_active ON dispatch_privacy_policies (pod_id, status, policy_version)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_security_diagnostics (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, code text NOT NULL,
+      configuration_version integer, observed_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_security_diagnostics_observed ON dispatch_security_diagnostics (observed_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS code_reviews (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
       item_id integer NOT NULL,
@@ -379,6 +605,10 @@ async function ensureSchema(db: Database) {
   await ensureColumn(db, "work_items", "actual_economics_json", "actual_economics_json text");
   await ensureColumn(db, "work_items", "realized_outcome_json", "realized_outcome_json text");
   await ensureColumn(db, "members", "pod_id", "pod_id text NOT NULL DEFAULT 'steer-flight-team'");
+  await ensureColumn(db, "members", "agent_key_id", "agent_key_id text");
+  await ensureColumn(db, "members", "agent_key_version", "agent_key_version integer");
+  await ensureColumn(db, "members", "agent_public_key", "agent_public_key text");
+  await ensureColumn(db, "members", "agent_public_key_fingerprint", "agent_public_key_fingerprint text");
   await ensureColumn(db, "work_items", "pod_id", "pod_id text NOT NULL DEFAULT 'steer-flight-team'");
   await ensureColumn(db, "work_items", "work_type", "work_type text NOT NULL DEFAULT 'Unclassified'");
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_work_items_pod_work_type_state ON work_items (pod_id, work_type, state)").run();
@@ -396,6 +626,102 @@ async function ensureSchema(db: Database) {
   await ensureColumn(db, "agent_reviews", "evidence_url", "evidence_url text");
   await ensureColumn(db, "agent_reviews", "evidence_revision", "evidence_revision text");
   await ensureColumn(db, "agent_reviews", "evidence_sha256", "evidence_sha256 text");
+  await ensureColumn(db, "agent_reviews", "review_assignment_id", "review_assignment_id text");
+  await ensureColumn(db, "activity", "review_assignment_id", "review_assignment_id text");
+  await ensureColumn(db, "notifications", "review_assignment_id", "review_assignment_id text");
+  await ensureColumn(db, "dispatch_privacy_policies", "ruling_url", "ruling_url text");
+  await ensureColumn(db, "dispatch_privacy_policies", "ruling_sha256", "ruling_sha256 text");
+  await ensureColumn(db, "dispatch_privacy_policies", "authority_role", "authority_role text");
+  await ensureColumn(db, "dispatch_privacy_policies", "authorization_event_id", "authorization_event_id text");
+  await ensureColumn(db, "dispatch_privacy_policies", "idempotency_key", "idempotency_key text");
+  await ensureColumn(db, "dispatch_privacy_policies", "activation_receipt_sha256", "activation_receipt_sha256 text");
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_dispatch_privacy_policy_event ON dispatch_privacy_policies (authorization_event_id) WHERE authorization_event_id IS NOT NULL").run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_dispatch_privacy_policy_idempotency ON dispatch_privacy_policies (pod_id, idempotency_key) WHERE idempotency_key IS NOT NULL").run();
+  await db.prepare("DROP TRIGGER IF EXISTS review_assignments_no_update").run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_assignments_immutable_authority
+    BEFORE UPDATE ON review_assignments WHEN
+      NEW.assignment_id != OLD.assignment_id OR NEW.idempotency_key != OLD.idempotency_key OR
+      NEW.item_id != OLD.item_id OR NEW.pod_id != OLD.pod_id OR NEW.review_stage != OLD.review_stage OR
+      NEW.reviewer_member_id != OLD.reviewer_member_id OR NEW.primary_claim_lineage_id != OLD.primary_claim_lineage_id OR
+      NEW.item_revision != OLD.item_revision OR NEW.target_manifest_sha256 != OLD.target_manifest_sha256 OR
+      NEW.assignment_json != OLD.assignment_json OR NEW.authorizing_actor_id != OLD.authorizing_actor_id OR
+      NEW.authorizing_event_id != OLD.authorizing_event_id OR NEW.created_at != OLD.created_at OR
+      NEW.delete_after != OLD.delete_after
+    BEGIN SELECT RAISE(ABORT, 'review assignment authority is immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_assignments_no_delete
+    BEFORE DELETE ON review_assignments WHEN NOT EXISTS (
+      SELECT 1 FROM review_retention_authorizations a WHERE a.assignment_id = OLD.assignment_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'review assignments require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_events_no_update
+    BEFORE UPDATE ON review_events BEGIN SELECT RAISE(ABORT, 'review events are append-only'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_events_no_delete
+    BEFORE DELETE ON review_events WHEN NOT EXISTS (
+      SELECT 1 FROM review_retention_authorizations a WHERE a.assignment_id = OLD.assignment_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'review events require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS review_retention_holds_no_update
+    BEFORE UPDATE ON review_retention_holds BEGIN SELECT RAISE(ABORT, 'review retention hold events are immutable'); END`).run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_review_events_one_ack ON review_events (assignment_id) WHERE event_type = 'REVIEW_ACKNOWLEDGED'").run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_review_events_one_result ON review_events (assignment_id) WHERE event_type = 'REVIEW_RESULT_RECORDED'").run();
+  await ensureColumn(db, "dispatch_events", "expected_event_version", "expected_event_version integer NOT NULL DEFAULT -1");
+  await ensureColumn(db, "dispatch_events", "previous_event_sha256", "previous_event_sha256 text");
+  await ensureColumn(db, "dispatch_events", "event_sha256", "event_sha256 text NOT NULL DEFAULT ''");
+  await ensureColumn(db, "dispatch_events", "service_key_id", "service_key_id text NOT NULL DEFAULT ''");
+  await ensureColumn(db, "dispatch_events", "service_key_version", "service_key_version integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "dispatch_events", "service_signature", "service_signature text NOT NULL DEFAULT ''");
+  await ensureColumn(db, "dispatch_events", "agent_key_id", "agent_key_id text");
+  await ensureColumn(db, "dispatch_events", "agent_key_version", "agent_key_version integer");
+  await ensureColumn(db, "dispatch_events", "agent_signature", "agent_signature text");
+  await ensureColumn(db, "dispatch_events", "acknowledgement_sha256", "acknowledgement_sha256 text");
+  await ensureColumn(db, "dispatch_outbox", "current_state", "current_state text NOT NULL DEFAULT 'QUEUED'");
+  await ensureColumn(db, "dispatch_outbox", "current_event_version", "current_event_version integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "dispatch_outbox", "current_event_sha256", "current_event_sha256 text NOT NULL DEFAULT ''");
+  await ensureColumn(db, "dispatch_outbox", "lease_id", "lease_id text");
+  await ensureColumn(db, "dispatch_outbox", "lease_expires_at", "lease_expires_at text");
+  await ensureColumn(db, "dispatch_outbox", "reservation_fence", "reservation_fence text");
+  await ensureColumn(db, "dispatch_outbox", "send_started", "send_started integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "dispatch_outbox", "reconciliation_required", "reconciliation_required integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "dispatch_outbox", "terminalization_requested", "terminalization_requested integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "dispatch_outbox", "relay_url", "relay_url text NOT NULL DEFAULT ''");
+  await ensureColumn(db, "dispatch_outbox", "routing_configuration_version", "routing_configuration_version integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "dispatch_outbox", "delivered_event_id", "delivered_event_id text");
+  await ensureColumn(db, "dispatch_outbox", "accepted_acknowledgement_sha256", "accepted_acknowledgement_sha256 text");
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_receipts_no_update
+    BEFORE UPDATE ON dispatch_receipts BEGIN SELECT RAISE(ABORT, 'dispatch receipts are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_receipts_no_delete
+    BEFORE DELETE ON dispatch_receipts WHEN NOT EXISTS (
+      SELECT 1 FROM dispatch_retention_authorizations a WHERE a.intent_id = OLD.intent_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'dispatch receipts require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_events_no_update
+    BEFORE UPDATE ON dispatch_events BEGIN SELECT RAISE(ABORT, 'dispatch events are append-only'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_events_no_delete
+    BEFORE DELETE ON dispatch_events WHEN NOT EXISTS (
+      SELECT 1 FROM dispatch_retention_authorizations a WHERE a.intent_id = OLD.intent_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'dispatch events require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_authorization_audits_no_update
+    BEFORE UPDATE ON dispatch_authorization_audits BEGIN SELECT RAISE(ABORT, 'dispatch authorization audits are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_authorization_audits_no_delete
+    BEFORE DELETE ON dispatch_authorization_audits WHEN NOT EXISTS (
+      SELECT 1 FROM dispatch_retention_authorizations a WHERE a.intent_id = OLD.intent_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'dispatch authorization audits require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_event_signers_no_update
+    BEFORE UPDATE ON dispatch_event_signers BEGIN SELECT RAISE(ABORT, 'dispatch signer registry entries are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_event_signers_no_delete
+    BEFORE DELETE ON dispatch_event_signers BEGIN SELECT RAISE(ABORT, 'dispatch signer registry entries are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS relay_event_signers_no_update
+    BEFORE UPDATE ON relay_event_signers BEGIN SELECT RAISE(ABORT, 'relay signer registry entries are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS relay_event_signers_no_delete
+    BEFORE DELETE ON relay_event_signers BEGIN SELECT RAISE(ABORT, 'relay signer registry entries are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_retention_holds_no_update
+    BEFORE UPDATE ON dispatch_retention_holds BEGIN SELECT RAISE(ABORT, 'dispatch retention hold events are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_privacy_policies_no_update
+    BEFORE UPDATE ON dispatch_privacy_policies BEGIN SELECT RAISE(ABORT, 'dispatch privacy policy versions are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_privacy_policies_no_delete
+    BEFORE DELETE ON dispatch_privacy_policies BEGIN SELECT RAISE(ABORT, 'dispatch privacy policy versions are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS buzz_channel_registry_no_update
+    BEFORE UPDATE ON buzz_channel_registry BEGIN SELECT RAISE(ABORT, 'Buzz channel registry versions are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS buzz_channel_registry_no_delete
+    BEFORE DELETE ON buzz_channel_registry BEGIN SELECT RAISE(ABORT, 'Buzz channel registry versions are immutable'); END`).run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_dispatch_events_one_acknowledged ON dispatch_events (intent_id) WHERE event_type = 'ACKNOWLEDGED'").run();
   await db.prepare("PRAGMA optimize").run();
 }
 
@@ -417,6 +743,41 @@ async function ensureHumanSeats(db: Database) {
     db.prepare("INSERT OR IGNORE INTO members (id, display_name, kind, role, authority, status, accent) VALUES ('human-design', 'Open seat', 'human', 'Product Designer', 'Design intent, accessibility, and independent Gate 3 review', 'open', 'violet')"),
     db.prepare("INSERT OR IGNORE INTO members (id, display_name, kind, role, authority, status, accent) VALUES ('human-platform', 'Open seat', 'human', 'Platform / Ops Lead', 'Environment, delivery rails, rollback, telemetry, and agent operations', 'open', 'green')"),
     db.prepare("INSERT OR IGNORE INTO members (id, display_name, kind, role, authority, status, accent) VALUES ('human-security', 'Open seat', 'human', 'Security Owner', 'Required on #security Gate 3 rulings', 'open', 'amber')"),
+  ]);
+}
+
+async function ensureInitialSteerRoute(db: Database, user: User) {
+  const member = await memberContext(db, user);
+  const podId = member?.pod_id ?? "steer-flight-team";
+  const now = new Date().toISOString();
+  await db.batch([
+    db.prepare(`INSERT OR IGNORE INTO workspace_routing
+      (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+      VALUES (?, ?, 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', ?, ?, 'Authenticated human routing decision recorded in STR-028 issue #56.', ?)`)
+      .bind(podId, STEER_HANDOFF_ROUTE_KEY, buzzRelayHttpUrl, user.id, now),
+    db.prepare(`INSERT OR IGNORE INTO buzz_channel_registry
+      (pod_id, registry_version, channel_id, channel_name, relay_url, status, changed_by, change_reason, created_at)
+      VALUES (?, 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', ?, 'ACTIVE', ?,
+       'Canonical channel identity verified by the authenticated STR-028 routing decision.', ?)`)
+      .bind(podId, buzzRelayHttpUrl, user.id, now),
+    db.prepare(`INSERT OR IGNORE INTO agent_channel_memberships
+      (pod_id, channel_id, member_id, membership_version, status, created_at)
+      SELECT ?, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'agent-builder', 1, 'active', ?
+      WHERE EXISTS (SELECT 1 FROM members WHERE id = 'agent-builder' AND pod_id = ? AND status = 'enrolled')`)
+      .bind(podId, now, podId),
+    db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:builder', agent_key_version = 3, agent_public_key = '1bcd9d68ce9a04cd17bf7e96d71e237654d38eeb26dd8ea5a08ba1259a6baf12', agent_public_key_fingerprint = '6e5b2ac5e26064f99a7e7046aa0235fe8e57e5106438f8314fd6a88b4b14ac06' WHERE id = 'agent-builder'"),
+    db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:critic', agent_key_version = 3, agent_public_key = '873eacdb79becf6b5e18f4aec79decad3c80bcce3d3c6c690e6dd773256f12c1', agent_public_key_fingerprint = '959cad86721134a6923a3bc2f951fc75781b7e11ba662d945b036322fee5b4da' WHERE id = 'agent-critic'"),
+    db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:test', agent_key_version = 3, agent_public_key = '692f22559c40755774615c070956134867995f07f54c1f2507b905d3b9bb0a52', agent_public_key_fingerprint = '268d379101b4e095a4da7ac5ac87553a85aa3a97a3a0359d0c5812b46ae55260' WHERE id = 'agent-test'"),
+    db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:scout', agent_key_version = 3, agent_public_key = 'f66f2459a92b793fd40bbf7f38553df37c6674bf273d85dbf85787290cc2237a', agent_public_key_fingerprint = 'd07dfbeedef6fa5bb6dfd36b8f1d1895a6b9cad8a2f3dda62842adaebebb6de1' WHERE id = 'agent-scout'"),
+    db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:architect', agent_key_version = 3, agent_public_key = '9c764661a78b480a324c8da9a5b86cf0224ad992467c324358e88fab4b85b2ea', agent_public_key_fingerprint = 'cbd5ff3144019ebe879e9365d51021c8a208a672e9c70405dd4a9329afdec72f' WHERE id = 'agent-architect'"),
+    db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:docs', agent_key_version = 3, agent_public_key = '2680575df454cefd26835487860724a805502f6285dfe8191251bf7d2bfcbf4d', agent_public_key_fingerprint = '27e3d8f6822c44734835431eab817c28802972aa534caa37a66945803d8d0209' WHERE id = 'agent-docs'"),
+    db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:ops', agent_key_version = 3, agent_public_key = '8ebe6f6dfcedc9c867a1083772a4f40d83da100d663d300ecd99562ebbf05349', agent_public_key_fingerprint = '0569025819601fa9497d7e1272734cf0224abc5edc26f751eefa4be4db9a2450' WHERE id = 'agent-ops'"),
+    db.prepare(`INSERT OR IGNORE INTO dispatch_privacy_policies
+      (pod_id, policy_version, inventory_url, inventory_sha256, terminal_retention_days,
+       provider_recovery_days, status, changed_by, change_reason, created_at)
+      VALUES (?, 1, ?, ?, 90, 30, 'BLOCKED_BACKUP_RULING', ?,
+       'STR-028 inventory is immutable; D1 Time Travel backup deletion requires a Privacy/Security ruling.', ?)`)
+      .bind(podId, dispatchPrivacyInventoryUrl, dispatchPrivacyInventorySha256, user.id, now),
   ]);
 }
 
@@ -584,6 +945,7 @@ async function bootstrap(db: Database, user: User) {
   await ensureCurrentUser(db, user);
   await ensureHumanSeats(db);
   await ensureSeedData(db, user);
+  await ensureInitialSteerRoute(db, user);
   await backfillReworkState(db);
   await backfillApprovedGateOneHandoffs(db);
   await backfillExplicitEngineeringRecords(db);
@@ -591,6 +953,16 @@ async function bootstrap(db: Database, user: User) {
   const [items, members, activity, decisions, reviews, notifications, currentMember, economicsEvents] = await Promise.all([
     db.prepare(
       `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind,
+         (SELECT o.intent_id FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_intent_id,
+         (SELECT o.current_state FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_state,
+         (SELECT o.current_event_version FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_event_version,
+         (SELECT r.authorization_revision FROM dispatch_receipts r
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_authorization_revision,
+         (SELECT o.updated_at FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
+          WHERE r.item_id = w.id ORDER BY r.created_at DESC LIMIT 1) AS dispatch_updated_at,
          (SELECT a.created_at FROM activity a
           WHERE a.item_id = w.id AND a.action = 'updated' AND a.detail = 'state → complete'
           ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS closed_at
@@ -645,6 +1017,10 @@ async function bootstrap(db: Database, user: User) {
     work_economics: safeEconomicsFromRow(item as Record<string, unknown>, generatedAt),
     dispatch_authorization: evaluateAgentDispatch(item as Record<string, unknown>),
   })) as unknown as Array<Record<string, unknown> & { key: string; state: string; assignee_name?: string | null; work_economics: ReturnType<typeof safeEconomicsFromRow> }>;
+  const privacyPolicy = await db.prepare(`SELECT policy_version, status, inventory_url, inventory_sha256,
+      ruling_url, ruling_sha256, authorization_event_id, activation_receipt_sha256
+    FROM dispatch_privacy_policies WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`)
+    .bind(currentMember?.pod_id ?? "steer-flight-team").first<Record<string, unknown>>();
   return {
     generated_at: generatedAt,
     user: { ...user, role: currentMember?.role ?? "Contributor", authority: currentMember?.authority ?? "May own work", role_contexts: roleContexts(currentMember?.role ?? "Contributor") },
@@ -657,14 +1033,16 @@ async function bootstrap(db: Database, user: User) {
     work_economics_events: (economicsEvents.results ?? []).map((event) => safeEconomicsEvent(event as Record<string, unknown>)),
     pull_forecast: buildPullForecast(authorizedItems, 2, generatedAt),
     service_level_distributions: buildServiceLevelDistributions(authorizedItems),
+    privacy_policy: privacyPolicy ?? null,
   };
 }
 
-async function authorizeAgentDispatch(db: Database, user: User, itemId: number) {
+async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId: number) {
   const actor = await memberContext(db, user);
   if (actor?.kind !== "human") return json({ error: "Only an authenticated human POD member may authorize agent dispatch." }, 403);
   const item = await db.prepare(
-    `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind, m.role AS assignee_role
+    `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind, m.role AS assignee_role,
+            m.agent_key_id, m.agent_key_version, m.agent_public_key, m.agent_public_key_fingerprint
      FROM work_items w JOIN members actor ON actor.id = ? AND actor.pod_id = w.pod_id
      LEFT JOIN members m ON m.id = w.assignee_id WHERE w.id = ?`,
   ).bind(user.id, itemId).first<Record<string, unknown>>();
@@ -679,24 +1057,387 @@ async function authorizeAgentDispatch(db: Database, user: User, itemId: number) 
   }
 
   const now = new Date().toISOString();
-  await db.batch([
-    db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'dispatch_authorized', ?, ?)")
-      .bind(itemId, user.id, `authorized agent handoff to ${String(item.assignee_name)} in ${authorization.channel}`, now),
-    db.prepare(
-      `INSERT OR IGNORE INTO notifications
+  const podId = String(item.pod_id ?? "steer-flight-team");
+  const assigneeId = String(item.assignee_id ?? "");
+  const routeRow = await db.prepare(
+    `SELECT r.*, COALESCE(m.membership_version, 0) AS membership_version,
+            CASE WHEN m.status = 'active' THEN 1 ELSE 0 END AS agent_is_member,
+            CASE WHEN c.channel_id IS NOT NULL AND c.status = 'ACTIVE' THEN 1 ELSE 0 END AS channel_known,
+            CASE WHEN c.channel_name = r.channel_name THEN 1 ELSE 0 END AS channel_name_matches,
+            CASE WHEN c.relay_url = r.relay_url THEN 1 ELSE 0 END AS relay_binding_matches,
+            CASE WHEN c.pod_id = r.pod_id THEN 1 ELSE 0 END AS workspace_binding_matches,
+            COALESCE(publisher.registry_version, 0) AS relay_publisher_registry_version,
+            COALESCE(publisher.key_id, '') AS relay_publisher_key_id,
+            COALESCE(publisher.key_version, 0) AS relay_publisher_key_version,
+            COALESCE(publisher.public_key, '') AS relay_publisher_public_key,
+            CASE WHEN EXISTS (
+              SELECT 1 FROM workspace_routing_conflicts conflict
+              WHERE conflict.pod_id = r.pod_id AND conflict.route_key = r.route_key AND conflict.status = 'ACTIVE'
+            ) THEN 1 ELSE 0 END AS competing_source
+     FROM workspace_routing r
+     LEFT JOIN buzz_channel_registry c
+       ON c.pod_id = r.pod_id AND c.channel_id = r.channel_id
+      AND c.registry_version = (SELECT MAX(c2.registry_version) FROM buzz_channel_registry c2
+        WHERE c2.pod_id = r.pod_id AND c2.channel_id = r.channel_id)
+     LEFT JOIN agent_channel_memberships m
+       ON m.pod_id = r.pod_id AND m.channel_id = r.channel_id AND m.member_id = ?
+      AND m.membership_version = (SELECT MAX(m2.membership_version) FROM agent_channel_memberships m2
+        WHERE m2.pod_id = r.pod_id AND m2.channel_id = r.channel_id AND m2.member_id = ?)
+     LEFT JOIN relay_event_signers publisher
+       ON publisher.pod_id = r.pod_id AND publisher.relay_url = r.relay_url AND publisher.channel_id = r.channel_id
+      AND publisher.registry_version = (SELECT MAX(p2.registry_version) FROM relay_event_signers p2
+        WHERE p2.pod_id = r.pod_id AND p2.relay_url = r.relay_url AND p2.channel_id = r.channel_id)
+     WHERE r.pod_id = ? AND r.route_key = ?
+     ORDER BY r.configuration_version DESC LIMIT 1`,
+  ).bind(assigneeId, assigneeId, podId, STEER_HANDOFF_ROUTE_KEY).first<Record<string, unknown>>();
+  const route: DispatchRoute | null = routeRow ? {
+    podId: String(routeRow.pod_id),
+    configurationVersion: Number(routeRow.configuration_version),
+    channelId: String(routeRow.channel_id),
+    channelName: String(routeRow.channel_name),
+    relayUrl: String(routeRow.relay_url),
+    membershipVersion: Number(routeRow.membership_version),
+    agentMemberId: assigneeId,
+    agentIsMember: Boolean(routeRow.agent_is_member),
+    channelKnown: Boolean(routeRow.channel_known),
+    channelNameMatches: Boolean(routeRow.channel_name_matches),
+    relayBindingMatches: Boolean(routeRow.relay_binding_matches),
+    workspaceBindingMatches: Boolean(routeRow.workspace_binding_matches),
+    competingSource: Boolean(routeRow.competing_source),
+  } : null;
+  const routeCheck = validateDispatchRoute(route, podId, assigneeId);
+  if (!route || !routeCheck.ok) {
+    await db.prepare("INSERT INTO dispatch_security_diagnostics (code, configuration_version, observed_at) VALUES (?, ?, ?)")
+      .bind(routeCheck.code, route?.configurationVersion ?? null, new Date().toISOString()).run();
+    return json({ error: routeCheck.detail, code: routeCheck.code, authorization }, 409);
+  }
+
+  const agentKeyId = String(item.agent_key_id ?? "");
+  const agentKeyVersion = Number(item.agent_key_version ?? 0);
+  const agentPublicKey = String(item.agent_public_key ?? "");
+  const agentPublicKeyFingerprint = String(item.agent_public_key_fingerprint ?? "");
+  if (!agentKeyId || !Number.isInteger(agentKeyVersion) || agentKeyVersion < 1 || !/^[0-9a-f]{64}$/.test(agentPublicKey) || !/^[0-9a-f]{64}$/.test(agentPublicKeyFingerprint)) {
+    return json({ error: "The assigned agent has no active versioned acknowledgement key enrollment.", code: "AGENT_KEY_NOT_ENROLLED", authorization }, 409);
+  }
+
+  const privacyPolicyCheck = await validateLatestPrivacyPolicy(db, podId, env.DISPATCH_ALLOW_TEST_PRIVACY_POLICY === "true");
+  if (!privacyPolicyCheck.ok) return json({ error: privacyPolicyCheck.error, code: privacyPolicyCheck.code, authorization }, 409);
+  const privacyPolicy = privacyPolicyCheck.policy!;
+  const privacyPolicyStatus = String(privacyPolicy.status);
+
+  const evidence = await readEvidence(item.evidence_url);
+  const exactEvidence = exactGitEvidence(item.evidence_url);
+  if (!exactEvidence || !evidence.sha256 || evidence.revision !== exactEvidence.revision) {
+    return json({ error: "Dispatch evidence must resolve to an immutable GitHub blob revision and exact content digest.", code: "EVIDENCE_REVISION_UNRESOLVED", authorization }, 409);
+  }
+  let forecastAcceptedAt = "not-required";
+  let forecastAuditEventId = "not-required";
+  if (String(item.workflow) === "STEER") {
+    try { forecastAcceptedAt = String((JSON.parse(String(item.delivery_forecast_json)) as Record<string, unknown>).acceptedAt ?? ""); } catch { forecastAcceptedAt = ""; }
+    if (!forecastAcceptedAt) return json({ error: "The accepted forecast has no durable acceptance timestamp.", code: "FORECAST_AUDIT_MISSING", authorization }, 409);
+    const forecastEvent = await db.prepare(`SELECT id, replacement_json FROM work_economics_events
+      WHERE item_id = ? AND section = 'deliveryForecast' AND action IN ('accepted','corrected') ORDER BY id DESC LIMIT 1`)
+      .bind(itemId).first<{ id: number; replacement_json: string }>();
+    let eventAcceptedAt = "";
+    try { eventAcceptedAt = String((JSON.parse(String(forecastEvent?.replacement_json ?? "{}")) as Record<string, unknown>).acceptedAt ?? ""); } catch { eventAcceptedAt = ""; }
+    if (!forecastEvent || eventAcceptedAt !== forecastAcceptedAt) return json({ error: "The accepted forecast does not resolve to its append-only audit event.", code: "FORECAST_AUDIT_MISSING", authorization }, 409);
+    forecastAuditEventId = `work-economics:${forecastEvent.id}`;
+  }
+  const authorizationRevision = String(item.updated_at);
+  const relayPublisherRegistryVersion = Number(routeRow?.relay_publisher_registry_version ?? 0);
+  const relayPublisherKeyId = String(routeRow?.relay_publisher_key_id ?? "");
+  const relayPublisherKeyVersion = Number(routeRow?.relay_publisher_key_version ?? 0);
+  const relayPublisherPublicKey = String(routeRow?.relay_publisher_public_key ?? "");
+  const authorizationAuditEventId = `dispatch-authorize:${itemId}:${authorizationRevision}:${user.id}:${route.configurationVersion}:${route.membershipVersion}:${relayPublisherRegistryVersion}:${exactEvidence.revision}`;
+  const currentNextActionDigest = await sha256Hex(String(item.next_action).trim());
+  const predecessor = await db.prepare(`SELECT r.intent_id, r.lineage_id, r.receipt_json,
+      o.current_state, o.current_event_version, o.current_event_sha256, o.send_started,
+      o.reconciliation_required, o.lease_id, o.terminalization_requested
+    FROM dispatch_receipts r JOIN dispatch_outbox o ON o.intent_id = r.intent_id
+    WHERE r.item_id = ? ORDER BY o.id DESC LIMIT 1`).bind(itemId).first<Record<string, unknown>>();
+  let predecessorIntentId: string | null = null;
+  let predecessorTerminalState: "SUPERSEDED" | "CANCELLED" | null = null;
+  let predecessorAttemptUnresolved = false;
+  let predecessorClosesSameLineage = false;
+  let rootAuthorizationAuditEventId = authorizationAuditEventId;
+  if (predecessor) {
+    const priorReceipt = JSON.parse(String(predecessor.receipt_json)) as Record<string, unknown>;
+    const sameLineageAuthority = String(priorReceipt.workspace_pod_id) === podId
+      && Number(priorReceipt.work_item_stable_id) === itemId
+      && String(priorReceipt.work_item_key) === String(item.key)
+      && String(priorReceipt.workflow) === String(item.workflow)
+      && String(priorReceipt.assigned_role) === String(item.assignee_role)
+      && String(priorReceipt.enrolled_agent_member_id) === assigneeId
+      && String(priorReceipt.authorized_next_action_sha256) === currentNextActionDigest;
+    if (sameLineageAuthority) {
+      rootAuthorizationAuditEventId = String(priorReceipt.root_human_authorization_audit_event_id ?? priorReceipt.human_authorization_audit_event_id);
+    }
+    const predecessorIsTerminal = ["ACKNOWLEDGED", "FAILED_FINAL", "CANCELLED", "SUPERSEDED"].includes(String(predecessor.current_state));
+    predecessorClosesSameLineage = predecessorIsTerminal && sameLineageAuthority;
+    if (!predecessorIsTerminal) {
+      predecessorAttemptUnresolved = Boolean(predecessor.send_started) || Boolean(predecessor.reconciliation_required) || Boolean(predecessor.lease_id);
+      predecessorIntentId = String(predecessor.intent_id);
+      predecessorTerminalState = sameLineageAuthority ? "SUPERSEDED" : "CANCELLED";
+    }
+  }
+  const identity = await buildDispatchIdentity({
+    podId, itemId, itemKey: String(item.key), workflow: String(item.workflow),
+    agentMemberId: assigneeId, agentKeyId, agentKeyVersion, agentPublicKey, agentPublicKeyFingerprint,
+    authorizationRevision, authorizationAuditEventId, rootAuthorizationAuditEventId, evidenceUrl: exactEvidence.url,
+    evidenceRevision: exactEvidence.revision, evidenceSha256: evidence.sha256,
+    forecastAuditEventId, channelId: route.channelId, routingConfigurationVersion: route.configurationVersion,
+    relayUrl: route.relayUrl, membershipVersion: route.membershipVersion,
+    relayPublisherRegistryVersion, relayPublisherKeyId, relayPublisherKeyVersion, relayPublisherPublicKey,
+    nextAction: String(item.next_action),
+  });
+  const existing = await db.prepare("SELECT receipt_json FROM dispatch_receipts WHERE intent_id = ?").bind(identity.intentId).first<{ receipt_json: string }>();
+  if (existing) {
+    return json({ ok: true, idempotent_replay: true, receipt: JSON.parse(existing.receipt_json), authorization: { ...authorization, channel: route.channelName }, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
+  }
+  if (predecessorClosesSameLineage) {
+    return json({ error: "The prior terminal dispatch closes this authorization lineage; a changed objective requires a new human authorization.", code: "PREDECESSOR_LINEAGE_CLOSED", authorization }, 409);
+  }
+  if (predecessorAttemptUnresolved) {
+    return json({ error: "Explicit reauthorization must wait until the prior send attempt and reconciliation are resolved.", code: "PREDECESSOR_ATTEMPT_UNRESOLVED", authorization }, 409);
+  }
+
+  const allowedScope = { next_action: String(item.next_action), evidence_url: exactEvidence.url };
+  const prohibitedScope = { merge: true, deploy: true, release: true, human_gate_ruling: true, external_action_beyond_handoff: true };
+  const handoffMessage = `[${String(item.key)}] Authorized handoff to ${String(item.assignee_name)}. Receipt: ${identity.intentId}. Channel: ${route.channelName} (${route.channelId}). Next action: ${String(item.next_action)} Evidence: ${exactEvidence.url} Prohibited: merge, deployment, release, or any human gate ruling without a separate authenticated approval.`;
+  const authorizedHandoffSha256 = await sha256Hex(handoffMessage);
+  const receipt = {
+    schema: "steer-dispatch-receipt/v1", receipt_id: identity.intentId,
+    dispatch_intent_id: identity.intentId, dispatch_claim_lineage_id: identity.lineageId,
+    workspace_pod_id: podId, work_item_stable_id: itemId, work_item_key: String(item.key),
+    authorization_revision: authorizationRevision, receipt_created_at: now, workflow: String(item.workflow),
+    authoritative_item_state: String(item.state), assigned_role: String(item.assignee_role),
+    enrolled_agent_member_id: assigneeId, enrolled_agent_key_id: agentKeyId,
+    enrolled_agent_key_version: agentKeyVersion, enrolled_agent_public_key_fingerprint: agentPublicKeyFingerprint,
+    allowed_scope: allowedScope, prohibited_scope: prohibitedScope,
+    evidence_url: exactEvidence.url, evidence_revision: exactEvidence.revision, evidence_sha256: evidence.sha256,
+    accepted_forecast_timestamp: forecastAcceptedAt, accepted_forecast_audit_event_id: forecastAuditEventId,
+    human_authorization_timestamp: now, human_authorization_actor_id: user.id,
+    human_authorization_audit_event_id: authorizationAuditEventId,
+    root_human_authorization_audit_event_id: rootAuthorizationAuditEventId,
+    predecessor_intent_id: predecessorIntentId,
+    canonical_channel_id: route.channelId, canonical_channel_name: route.channelName,
+    routing_configuration_version: route.configurationVersion, membership_version: route.membershipVersion,
+    relay_publisher_registry_version: relayPublisherRegistryVersion,
+    relay_publisher_key_id: relayPublisherKeyId,
+    relay_publisher_key_version: relayPublisherKeyVersion,
+    relay_publisher_public_key: relayPublisherPublicKey,
+    privacy_policy_version: Number(privacyPolicy.policy_version), privacy_policy_status: privacyPolicyStatus,
+    privacy_inventory_url: String(privacyPolicy.inventory_url), privacy_inventory_sha256: String(privacyPolicy.inventory_sha256),
+    privacy_ruling_url: String(privacyPolicy.ruling_url ?? ""), privacy_ruling_sha256: String(privacyPolicy.ruling_sha256 ?? ""),
+    privacy_policy_authorization_event_id: String(privacyPolicy.authorization_event_id ?? ""),
+    privacy_policy_activation_receipt_sha256: String(privacyPolicy.activation_receipt_sha256 ?? ""),
+    authorized_next_action_sha256: identity.nextActionDigest,
+    authorized_handoff_sha256: authorizedHandoffSha256,
+    authorized_handoff_message: handoffMessage,
+    acknowledgement_policy: "exact-enrolled-agent-signature-required",
+  };
+  let dispatchSigner: Awaited<ReturnType<typeof ensureDispatchServiceSigner>>;
+  try {
+    dispatchSigner = await ensureDispatchServiceSigner(db, podId, user.id, env, now);
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Dispatch signing is unavailable.", code: "DISPATCH_SIGNER_UNAVAILABLE", authorization }, 503);
+  }
+  const queuedEvent = await buildInitialQueuedEvent({
+    intentId: identity.intentId,
+    lineageId: identity.lineageId,
+    occurredAt: now,
+    routingConfigurationVersion: route.configurationVersion,
+    evidenceRevision: exactEvidence.revision,
+    signer: dispatchSigner,
+  });
+  const predecessorStatements: Statement[] = [];
+  if (predecessorIntentId && predecessorIntentId !== identity.intentId && predecessor && predecessorTerminalState) {
+    const priorReceipt = JSON.parse(String(predecessor.receipt_json)) as Record<string, unknown>;
+    const predecessorEvent = await createSignedDispatchEvent({
+      intentId: predecessorIntentId,
+      lineageId: String(predecessor.lineage_id),
+      eventVersion: Number(predecessor.current_event_version) + 1,
+      previousEventSha256: String(predecessor.current_event_sha256),
+      eventType: predecessorTerminalState,
+      priorState: String(predecessor.current_state) as DispatchState,
+      resultingState: predecessorTerminalState,
+      occurredAt: now,
+      authority: "work-management-authorization",
+      receiptId: predecessorIntentId,
+      routingConfigurationVersion: Number(priorReceipt.routing_configuration_version),
+      evidenceRevision: String(priorReceipt.evidence_revision),
+      payload: {
+        successor_intent_id: identity.intentId,
+        successor_lineage_id: identity.lineageId,
+        human_reauthorization_audit_event_id: authorizationAuditEventId,
+        disposition_reason: predecessorTerminalState === "SUPERSEDED" ? "same-lineage-explicit-reauthorization" : "authorization-objective-or-assignment-changed",
+      },
+      serviceKeyId: dispatchSigner.keyId,
+      serviceKeyVersion: dispatchSigner.keyVersion,
+      servicePrivateKey: dispatchSigner.privateKey,
+    });
+    predecessorStatements.push(
+      db.prepare(`INSERT INTO dispatch_events
+        (intent_id, event_version, expected_event_version, event_type, prior_state, resulting_state, payload_json,
+         previous_event_sha256, event_sha256, service_key_id, service_key_version, service_signature,
+         agent_key_id, agent_key_version, agent_signature, acknowledgement_sha256, actor_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?)`)
+        .bind(predecessorIntentId, predecessorEvent.payload.event_version, predecessorEvent.payload.expected_event_version,
+          predecessorTerminalState, predecessorEvent.payload.prior_state, predecessorTerminalState,
+          canonicalJson(predecessorEvent.envelope), predecessorEvent.payload.previous_event_sha256,
+          predecessorEvent.eventSha256, dispatchSigner.keyId, dispatchSigner.keyVersion, predecessorEvent.envelope.service_signature, user.id, now),
+      db.prepare(`UPDATE dispatch_outbox SET status = ?, current_state = ?,
+        current_event_version = ?, current_event_sha256 = ?, lease_id = NULL, lease_expires_at = NULL,
+        reservation_fence = NULL, send_started = 0, reconciliation_required = 0, updated_at = ?
+        WHERE intent_id = ? AND current_event_version = ? AND current_event_sha256 = ?`)
+        .bind(predecessorTerminalState, predecessorTerminalState, predecessorEvent.payload.event_version, predecessorEvent.eventSha256, now, predecessorIntentId,
+          predecessorEvent.payload.expected_event_version, predecessorEvent.payload.previous_event_sha256),
+    );
+  }
+  const authorizationAudit = {
+    schema: "steer-dispatch-authorization-audit/v1",
+    audit_event_id: authorizationAuditEventId,
+    dispatch_intent_id: identity.intentId,
+    workspace_pod_id: podId,
+    work_item_stable_id: itemId,
+    work_item_key: String(item.key),
+    authorization_revision: authorizationRevision,
+    human_actor_id: user.id,
+    assigned_agent_member_id: assigneeId,
+    allowed_scope: allowedScope,
+    prohibited_scope: prohibitedScope,
+    evidence_revision: exactEvidence.revision,
+    canonical_channel_id: route.channelId,
+    routing_configuration_version: route.configurationVersion,
+    occurred_at: now,
+  };
+  try {
+    await db.batch([
+      ...predecessorStatements,
+      db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'dispatch_authorized', ?, ?)")
+        .bind(itemId, user.id, `authorized agent handoff receipt ${identity.intentId} to ${String(item.assignee_name)} in ${route.channelName} (${route.channelId})`, now),
+      db.prepare(`INSERT INTO dispatch_authorization_audits
+      (audit_event_id, intent_id, item_id, pod_id, authorization_revision, authorization_json, actor_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(authorizationAuditEventId, identity.intentId, itemId, podId, authorizationRevision, JSON.stringify(authorizationAudit), user.id, now),
+      db.prepare(`INSERT INTO dispatch_receipts
+      (intent_id, lineage_id, item_id, pod_id, authorization_revision, channel_id, configuration_version, receipt_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(identity.intentId, identity.lineageId, itemId, podId, authorizationRevision, route.channelId, route.configurationVersion, JSON.stringify(receipt), now),
+      db.prepare(`INSERT INTO dispatch_outbox
+      (intent_id, receipt_id, member_id, channel_id, channel_name, status, current_state, current_event_version,
+       current_event_sha256, attempt_number, send_started, reconciliation_required, terminalization_requested,
+       relay_url, routing_configuration_version, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'QUEUED', 'QUEUED', 0, ?, 0, 0, 0, 0, ?, ?, ?, ?)`)
+      .bind(identity.intentId, identity.intentId, assigneeId, route.channelId, route.channelName, queuedEvent.eventSha256, route.relayUrl, route.configurationVersion, now, now),
+      db.prepare(`INSERT INTO dispatch_events
+      (intent_id, event_version, expected_event_version, event_type, prior_state, resulting_state, payload_json,
+       previous_event_sha256, event_sha256, service_key_id, service_key_version, service_signature,
+       agent_key_id, agent_key_version, agent_signature, acknowledgement_sha256, actor_id, created_at)
+      VALUES (?, 0, -1, 'QUEUED', NULL, 'QUEUED', ?, NULL, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?)`)
+      .bind(identity.intentId, canonicalJson(queuedEvent.envelope), queuedEvent.eventSha256, dispatchSigner.keyId, dispatchSigner.keyVersion, queuedEvent.envelope.service_signature, user.id, now),
+      db.prepare(
+        `INSERT OR IGNORE INTO notifications
        (dedupe_key, item_id, member_id, recipient_role, kind, title, body, channel, status, created_at)
-       VALUES (?, ?, ?, ?, 'agent_handoff', ?, ?, 'Block Buzz', 'queued', ?)`,
-    ).bind(
-      `dispatch-${itemId}-${now}`,
-      itemId,
-      String(item.assignee_id),
-      String(item.assignee_role ?? "Assigned agent"),
-      `${String(item.key)} authorized for agent handoff`,
-      authorization.handoff_message,
-      now,
-    ),
-  ]);
-  return json({ ok: true, authorization, message: authorization.handoff_message });
+       VALUES (?, ?, ?, ?, 'agent_handoff', ?, ?, ?, 'queued', ?)`,
+      ).bind(
+        `dispatch-${identity.intentId}`,
+        itemId,
+        String(item.assignee_id),
+        String(item.assignee_role ?? "Assigned agent"),
+        `${String(item.key)} authorized for agent handoff`,
+        handoffMessage,
+        route.channelName,
+        now,
+      ),
+    ]);
+  } catch (error) {
+    const raced = await db.prepare("SELECT receipt_json FROM dispatch_receipts WHERE intent_id = ?").bind(identity.intentId).first<{ receipt_json: string }>();
+    if (!raced) throw error;
+    return json({ ok: true, idempotent_replay: true, receipt: JSON.parse(raced.receipt_json), authorization: { ...authorization, channel: route.channelName }, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
+  }
+  return json({ ok: true, idempotent_replay: false, authorization: { ...authorization, channel: route.channelName }, receipt, message: handoffMessage, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
+}
+
+async function manageDispatchRetentionHold(request: Request, db: Database, user: User, intentId: string) {
+  const member = await memberContext(db, user);
+  if (!member || member.kind !== "human" || !/(Tech Lead|Platform|Ops Lead|Security)/.test(member.role)) {
+    return json({ error: "A named Tech, Platform / Ops, or Security authority must manage retention holds." }, 403);
+  }
+  const dispatch = await db.prepare(`SELECT r.intent_id FROM dispatch_receipts r
+    JOIN members actor ON actor.id = ? AND actor.pod_id = r.pod_id WHERE r.intent_id = ?`)
+    .bind(user.id, intentId).first<{ intent_id: string }>();
+  if (!dispatch) return json({ error: "Dispatch intent not found in your POD." }, 404);
+  const body = await request.json() as Record<string, unknown>;
+  const action = String(body.action ?? "");
+  const reasonCode = String(body.reason_code ?? "");
+  if (!['HOLD', 'RELEASE'].includes(action) || !/^[A-Z0-9_:-]{3,64}$/.test(reasonCode)) {
+    return json({ error: "Use HOLD or RELEASE with a bounded non-PII reason code." }, 400);
+  }
+  const now = new Date();
+  const requestedExpiry = action === "HOLD" ? Date.parse(String(body.expires_at ?? "")) : now.getTime();
+  if (!Number.isFinite(requestedExpiry) || requestedExpiry <= now.getTime() || requestedExpiry > now.getTime() + 365 * 24 * 60 * 60 * 1000) {
+    if (action === "HOLD") return json({ error: "A hold must have an explicit future expiry no more than 365 days away." }, 400);
+  }
+  const holdEventId = crypto.randomUUID();
+  await db.prepare(`INSERT INTO dispatch_retention_holds
+    (hold_event_id, intent_id, action, reason_code, expires_at, actor_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .bind(holdEventId, intentId, action, reasonCode, new Date(requestedExpiry).toISOString(), user.id, now.toISOString()).run();
+  return json({ ok: true, hold_event_id: holdEventId, action, expires_at: new Date(requestedExpiry).toISOString() }, 201);
+}
+
+const telemetryContract: Record<string, { labelName: string; values: string[]; histogram?: boolean }> = {
+  steer_work_item_save_feedback_latency_ms: { labelName: "", values: [], histogram: true },
+  steer_agent_handoff_feedback_latency_ms: { labelName: "", values: [], histogram: true },
+  steer_work_item_save_outcome_total: { labelName: "outcome", values: ["success", "validation", "conflict", "transport"] },
+  steer_post_write_reconciliation_total: { labelName: "result", values: ["fresh", "stale_suppressed", "authoritative_reload", "error"] },
+  steer_agent_handoff_outcome_total: { labelName: "outcome", values: ["queued", "delivered", "blocked", "duplicate_suppressed", "error"] },
+  steer_stale_ui_recurrence_total: { labelName: "severity", values: ["critical", "noncritical"] },
+  steer_duplicate_dispatch_total: { labelName: "", values: [] },
+};
+
+async function recordBoundedTelemetry(request: Request, db: Database, env: Env) {
+  const body = await request.json() as Record<string, unknown>;
+  const batched = Object.keys(body).length === 1 && Array.isArray(body.observations);
+  const observations = batched ? body.observations as unknown[] : [body];
+  if (!observations.length || observations.length > 4 || observations.some((entry) => !entry || typeof entry !== "object" || Array.isArray(entry))) {
+    return json({ error: "Telemetry accepts one through four bounded observations." }, 400);
+  }
+  if (batched ? Object.keys(body).some((key) => key !== "observations") : Object.keys(body).some((key) => !["metric_name", "label_name", "label_value", "value", "case_id"].includes(key))) {
+    return json({ error: "Telemetry accepts only the bounded STR-028 contract fields." }, 400);
+  }
+  const validated: { metricName: string; labelName: string; labelValue: string; value: number; caseId: string | null }[] = [];
+  for (const entry of observations) {
+    const observation = entry as Record<string, unknown>;
+    if (Object.keys(observation).some((key) => !["metric_name", "label_name", "label_value", "value", "case_id"].includes(key))) {
+      return json({ error: "Telemetry accepts only the bounded STR-028 contract fields." }, 400);
+    }
+    const metricName = String(observation.metric_name ?? "");
+    const contract = telemetryContract[metricName];
+    const labelName = String(observation.label_name ?? "");
+    const labelValue = String(observation.label_value ?? "");
+    const value = Number(observation.value);
+    const caseId = observation.case_id === undefined || observation.case_id === null || observation.case_id === "" ? null : String(observation.case_id);
+    if (!contract || labelName !== contract.labelName || (contract.values.length ? !contract.values.includes(labelValue) : labelValue !== "")) {
+      return json({ error: "Telemetry metric or label is outside the bounded allowlist." }, 400);
+    }
+    if (!Number.isInteger(value) || value < 0 || (contract.histogram ? value > 60_000 : value !== 1)) {
+      return json({ error: contract.histogram ? "Latency must be an integer from 0 through 60000 ms." : "Counter observations must have value 1." }, 400);
+    }
+    if (caseId && !isStr028CaseId(caseId)) {
+      return json({ error: "Only a pre-enrolled bounded matrix case ID may label telemetry." }, 400);
+    }
+    if (caseId && env.DISPATCH_ALLOW_TEST_PRIVACY_POLICY !== "true") {
+      return json({ error: "Fixed-matrix case labels are accepted only in the explicit non-production test environment." }, 409);
+    }
+    validated.push({ metricName, labelName, labelValue, value, caseId });
+  }
+  const observedAt = new Date().toISOString();
+  await db.batch(validated.map((observation) => db.prepare(`INSERT INTO steer_telemetry
+    (metric_name, label_name, label_value, value, case_id, observed_at) VALUES (?, ?, ?, ?, ?, ?)`)
+    .bind(observation.metricName, observation.labelName, observation.labelValue, observation.value, observation.caseId, observedAt)));
+  return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
 }
 
 async function createItem(request: Request, db: Database, user: User) {
@@ -760,6 +1501,11 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
   const current = await scopedItemOrDenied(db, user, itemId, "item update");
   if (!current) return json({ error: "Work item not found in your POD." }, 404);
   const body = await request.json() as Record<string, unknown>;
+  const expectedRevision = String(body.expectedRevision ?? "");
+  if (!expectedRevision) return json({ error: "Refresh the work item before saving; the expected revision is required.", code: "REVISION_REQUIRED" }, 400);
+  if (expectedRevision !== String(current.updated_at)) {
+    return json({ error: "This work item changed after you opened it. Your input was preserved; review the authoritative state before retrying.", code: "STALE_REVISION", snapshot: await authoritativeItemSnapshot(db, user, itemId) }, 409);
+  }
   const allowed: Record<string, { column: string; values?: string[] }> = {
     phase: { column: "phase", values: phases },
     priority: { column: "priority", values: priorities },
@@ -806,8 +1552,11 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
     values.push(requestedState === "blocked" ? current.blocked_since ?? now : null);
   }
   sets.push("updated_at = ?");
-  values.push(now, itemId);
-  await db.prepare(`UPDATE work_items SET ${sets.join(", ")} WHERE id = ?`).bind(...values).run();
+  values.push(now, itemId, expectedRevision);
+  const mutation = await db.prepare(`UPDATE work_items SET ${sets.join(", ")} WHERE id = ? AND updated_at = ?`).bind(...values).run();
+  if (Number(mutation.meta?.changes ?? 0) !== 1) {
+    return json({ error: "This work item changed while the save was in progress. Your input was preserved; review the authoritative state before retrying.", code: "STALE_REVISION", snapshot: await authoritativeItemSnapshot(db, user, itemId) }, 409);
+  }
   await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'updated', ?, ?)")
     .bind(itemId, user.id, changes.join(" · "), now).run();
   const forecastChange = materialForecastChange(entries.map(([key]) => key));
@@ -857,7 +1606,7 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
       // Legacy actuals remain visible as unavailable until corrected through the governed editor.
     }
   }
-  return json({ ok: true });
+  return json({ ok: true, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
 }
 
 const economicsColumns: Record<WorkEconomicsSection, string> = {
@@ -973,7 +1722,12 @@ async function updateWorkEconomics(request: Request, db: Database, user: User, i
   const current = await scopedItemOrDenied(db, user, itemId, "Work Economics update");
   if (!current) return json({ error: "Permission denied. Ask the named record owner in this POD to review or edit this record." }, 403);
   const member = await db.prepare("SELECT id, kind, role, pod_id FROM members WHERE id = ?").bind(user.id).first<{ id: string; kind: string; role: string; pod_id: string | null }>();
-  const body = await request.json() as { section?: unknown; value?: unknown; reason?: unknown };
+  const body = await request.json() as { section?: unknown; value?: unknown; reason?: unknown; expectedRevision?: unknown };
+  const expectedRevision = String(body.expectedRevision ?? "");
+  if (!expectedRevision) return json({ error: "Refresh the work item before saving; the expected revision is required.", code: "REVISION_REQUIRED" }, 400);
+  if (expectedRevision !== String(current.updated_at)) {
+    return json({ error: "This governed record changed after you opened it. Your input was preserved; review the authoritative state before retrying.", code: "STALE_REVISION", snapshot: await authoritativeItemSnapshot(db, user, itemId) }, 409);
+  }
   const section = String(body.section ?? "") as WorkEconomicsSection;
   if (!(section in economicsColumns)) return json({ error: "Choose a valid Work Economics section." }, 400);
   if (!member || !workEconomicsNamedAuthority(section, member, current)) {
@@ -1077,20 +1831,7 @@ async function updateWorkEconomics(request: Request, db: Database, user: User, i
     ...ownerStatements,
     ...normalizedEconomicsStatements(db, itemId, section, value, now),
   ]);
-  return json({ ok: true });
-}
-
-function deriveTags(text: string) {
-  const rules: Array<[string, RegExp]> = [
-    ["#security", /\b(auth|authori[sz]ation|credential|secret|token|api key|security|session)\b/i],
-    ["#privacy", /\b(privacy|personal data|pii|email address|retention|delete user)\b/i],
-    ["#a11y", /\b(accessibility|a11y|keyboard|screen reader|wcag|contrast)\b/i],
-    ["#reliability", /\b(reliability|rollback|telemetry|monitor|timeout|latency|availability|deploy|release)\b/i],
-    ["#legal", /\b(legal|license|compliance|claim|copyright)\b/i],
-    ["#design-system", /\b(design system|interface|user experience|\bui\b|\bux\b)\b/i],
-    ["#money", /\b(payment|price|pricing|cost|budget|charge|money)\b/i],
-  ];
-  return rules.filter(([, pattern]) => pattern.test(text)).map(([tag]) => tag);
+  return json({ ok: true, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
 }
 
 async function readEvidence(urlValue: unknown): Promise<EvidenceRead> {
@@ -1136,123 +1877,514 @@ async function readEvidence(urlValue: unknown): Promise<EvidenceRead> {
   }
 }
 
-async function runCriticReview(db: Database, user: User, itemId: number) {
-  const item = await scopedItemOrDenied(db, user, itemId, "Critic review");
-  if (!item) return json({ error: "Work item not found in your POD." }, 404);
+type PrivacyPolicyCheck = {
+  ok: boolean;
+  code?: string;
+  error?: string;
+  policy?: Record<string, unknown>;
+};
 
-  const evidence = await readEvidence(item.evidence_url);
-  const joinedText = [item.title, item.description, item.next_action, evidence.text].filter(Boolean).join("\n");
-  const tags = deriveTags(joinedText);
-  const findings: Finding[] = [];
-  const dependencies: string[] = [];
-  const impacts: string[] = [];
-  const actions: string[] = [];
-  const addFinding = (finding: Finding) => {
-    if (!findings.some((existing) => existing.title === finding.title)) findings.push(finding);
+async function validateLatestPrivacyPolicy(db: Database, podId: string, allowTestBypass = false): Promise<PrivacyPolicyCheck> {
+  const policy = await db.prepare(`SELECT * FROM dispatch_privacy_policies
+    WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`).bind(podId).first<Record<string, unknown>>();
+  if (!policy || Number(policy.terminal_retention_days) !== 90
+    || Number(policy.provider_recovery_days) !== 30
+    || String(policy.inventory_url) !== dispatchPrivacyInventoryUrl
+    || String(policy.inventory_sha256) !== dispatchPrivacyInventorySha256) {
+    return { ok: false, code: "PRIVACY_POLICY_MISSING", error: "The required dispatch and review privacy inventory or retention policy is missing or version-mismatched.", policy: policy ?? undefined };
+  }
+  const inventoryEvidence = await readEvidence(policy.inventory_url);
+  if (inventoryEvidence.sha256 !== dispatchPrivacyInventorySha256 || inventoryEvidence.revision !== dispatchPrivacyInventoryRevision) {
+    return { ok: false, code: "PRIVACY_INVENTORY_UNRESOLVED", error: "The immutable dispatch and review privacy inventory did not resolve to its audited digest.", policy };
+  }
+  const status = String(policy.status);
+  if (status === "BLOCKED_BACKUP_RULING" && allowTestBypass) return { ok: true, policy };
+  if (status !== "ACTIVE") {
+    return { ok: false, code: "PRIVACY_BACKUP_RULING_REQUIRED", error: "Dispatch and signed review are blocked until the approved provider-recovery ruling is activated.", policy };
+  }
+  if (String(policy.ruling_url ?? "") !== dispatchPrivacyRulingUrl
+    || String(policy.ruling_sha256 ?? "") !== dispatchPrivacyRulingSha256
+    || !String(policy.authorization_event_id ?? "").match(/^[0-9a-f]{64}$/)
+    || !String(policy.activation_receipt_sha256 ?? "").match(/^[0-9a-f]{64}$/)
+    || !String(policy.idempotency_key ?? "").match(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/)
+    || !String(policy.authority_role ?? "")
+    || String(policy.change_reason) !== dispatchPrivacyActivationReason) {
+    return { ok: false, code: "PRIVACY_POLICY_ACTIVATION_INVALID", error: "The active policy is not bound to the named authority, immutable ruling, and activation receipt.", policy };
+  }
+  const rulingEvidence = await readEvidence(policy.ruling_url);
+  if (rulingEvidence.sha256 !== dispatchPrivacyRulingSha256 || rulingEvidence.revision !== dispatchPrivacyRulingRevision) {
+    return { ok: false, code: "PRIVACY_RULING_UNRESOLVED", error: "The immutable provider-recovery ruling did not resolve to its audited digest.", policy };
+  }
+  return { ok: true, policy };
+}
+
+function privacyPolicyAuthority(role: string) {
+  return /Privacy|Security/.test(role) || (/Product Lead/.test(role) && /Tech Lead/.test(role));
+}
+
+async function activatePrivacyPolicy(request: Request, db: Database, user: User) {
+  const actor = await memberContext(db, user);
+  if (!actor || actor.kind !== "human" || !actor.pod_id || !privacyPolicyAuthority(actor.role)) {
+    return json({ error: "A named same-POD Privacy, Security, or combined Product and Tech authority must activate this policy.", code: "PRIVACY_POLICY_AUTHORITY_INVALID" }, 403);
+  }
+  const contentType = request.headers.get("content-type") ?? "";
+  const body = contentType.includes("application/x-www-form-urlencoded")
+    ? Object.fromEntries(await request.formData())
+    : await request.json().catch(() => null) as Record<string, unknown> | null;
+  const allowedKeys = ["expected_policy_version", "idempotency_key", "inventory_url", "inventory_sha256", "ruling_url", "ruling_sha256", "terminal_retention_days", "provider_recovery_days", "status", "reason_code"];
+  if (!body || Object.keys(body).some((key) => !allowedKeys.includes(key))) {
+    return json({ error: "Policy activation accepts only the exact bounded ruling contract.", code: "PRIVACY_POLICY_REQUEST_INVALID" }, 400);
+  }
+  const expectedVersion = Number(body.expected_policy_version);
+  const idempotencyKey = String(body.idempotency_key ?? "");
+  const exactRequest = Number.isSafeInteger(expectedVersion) && expectedVersion >= 1
+    && /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(idempotencyKey)
+    && String(body.inventory_url ?? "") === dispatchPrivacyInventoryUrl
+    && String(body.inventory_sha256 ?? "") === dispatchPrivacyInventorySha256
+    && String(body.ruling_url ?? "") === dispatchPrivacyRulingUrl
+    && String(body.ruling_sha256 ?? "") === dispatchPrivacyRulingSha256
+    && Number(body.terminal_retention_days) === 90
+    && Number(body.provider_recovery_days) === 30
+    && String(body.status ?? "") === "ACTIVE"
+    && String(body.reason_code ?? "") === dispatchPrivacyActivationReason;
+  if (!exactRequest) {
+    return json({ error: "The activation request contradicts or omits the approved immutable 90-day live / 30-day recovery ruling.", code: "PRIVACY_POLICY_RULING_MISMATCH" }, 409);
+  }
+  const [inventoryEvidence, rulingEvidence] = await Promise.all([
+    readEvidence(dispatchPrivacyInventoryUrl), readEvidence(dispatchPrivacyRulingUrl),
+  ]);
+  if (inventoryEvidence.revision !== dispatchPrivacyInventoryRevision || inventoryEvidence.sha256 !== dispatchPrivacyInventorySha256
+    || rulingEvidence.revision !== dispatchPrivacyRulingRevision || rulingEvidence.sha256 !== dispatchPrivacyRulingSha256) {
+    return json({ error: "The immutable inventory or ruling could not be resolved to its exact audited digest.", code: "PRIVACY_POLICY_EVIDENCE_UNRESOLVED" }, 409);
+  }
+  const eventPayload = {
+    schema: "steer-privacy-policy-activation/v1", pod_id: actor.pod_id, actor_id: user.id,
+    authority_role: actor.role, expected_policy_version: expectedVersion,
+    inventory_url: dispatchPrivacyInventoryUrl, inventory_sha256: dispatchPrivacyInventorySha256,
+    ruling_url: dispatchPrivacyRulingUrl, ruling_sha256: dispatchPrivacyRulingSha256,
+    terminal_retention_days: 90, provider_recovery_days: 30, status: "ACTIVE",
+    reason_code: dispatchPrivacyActivationReason, idempotency_key: idempotencyKey,
   };
+  const authorizationEventId = await sha256Hex(canonicalJson(eventPayload));
+  const existing = await db.prepare(`SELECT * FROM dispatch_privacy_policies
+    WHERE pod_id = ? AND idempotency_key = ? LIMIT 1`).bind(actor.pod_id, idempotencyKey).first<Record<string, unknown>>();
+  if (existing) {
+    if (Number(existing.policy_version) === expectedVersion + 1
+      && String(existing.authorization_event_id) === authorizationEventId
+      && String(existing.activation_receipt_sha256).match(/^[0-9a-f]{64}$/)) {
+      return json({ ok: true, idempotent_replay: true, policy_version: Number(existing.policy_version), authorization_event_id: authorizationEventId, activation_receipt_sha256: existing.activation_receipt_sha256 });
+    }
+    return json({ error: "The idempotency key is already bound to a different activation.", code: "PRIVACY_POLICY_REPLAY_MISMATCH" }, 409);
+  }
+  const latest = await db.prepare(`SELECT policy_version FROM dispatch_privacy_policies
+    WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`).bind(actor.pod_id).first<{ policy_version: number }>();
+  if (Number(latest?.policy_version ?? 0) !== expectedVersion) {
+    return json({ error: "The expected policy version is stale.", code: "PRIVACY_POLICY_VERSION_STALE", current_policy_version: Number(latest?.policy_version ?? 0) }, 409);
+  }
+  const createdAt = new Date().toISOString();
+  const policyVersion = expectedVersion + 1;
+  const receipt = { ...eventPayload, schema: "steer-privacy-policy-activation-receipt/v1", policy_version: policyVersion, authorization_event_id: authorizationEventId, created_at: createdAt };
+  const activationReceiptSha256 = await sha256Hex(canonicalJson(receipt));
+  const inserted = await db.prepare(`INSERT INTO dispatch_privacy_policies
+    (pod_id, policy_version, inventory_url, inventory_sha256, terminal_retention_days,
+     provider_recovery_days, status, changed_by, change_reason, created_at, ruling_url,
+     ruling_sha256, authority_role, authorization_event_id, idempotency_key, activation_receipt_sha256)
+    SELECT ?, ?, ?, ?, 90, 30, 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?
+    WHERE (SELECT COALESCE(MAX(policy_version), 0) FROM dispatch_privacy_policies WHERE pod_id = ?) = ?`).bind(
+      actor.pod_id, policyVersion, dispatchPrivacyInventoryUrl, dispatchPrivacyInventorySha256,
+      user.id, dispatchPrivacyActivationReason, createdAt, dispatchPrivacyRulingUrl,
+      dispatchPrivacyRulingSha256, actor.role, authorizationEventId, idempotencyKey,
+      activationReceiptSha256, actor.pod_id, expectedVersion,
+    ).run();
+  if (Number(inserted.meta?.changes ?? 0) !== 1) {
+    const raced = await db.prepare(`SELECT * FROM dispatch_privacy_policies WHERE pod_id = ? AND idempotency_key = ?`)
+      .bind(actor.pod_id, idempotencyKey).first<Record<string, unknown>>();
+    if (raced && String(raced.authorization_event_id) === authorizationEventId) {
+      return json({ ok: true, idempotent_replay: true, policy_version: Number(raced.policy_version), authorization_event_id: authorizationEventId, activation_receipt_sha256: raced.activation_receipt_sha256 });
+    }
+    return json({ error: "A newer policy version won the activation race.", code: "PRIVACY_POLICY_VERSION_STALE" }, 409);
+  }
+  return json({ ok: true, idempotent_replay: false, policy_version: policyVersion, authorization_event_id: authorizationEventId, activation_receipt_sha256: activationReceiptSha256, receipt }, 201);
+}
 
-  if (item.state === "blocked" && !["Changes requested", "Rework", "Resubmitted"].includes(String(item.decision_status))) {
-    addFinding({ severity: "blocker", title: "Work is already blocked", detail: String(item.next_action), action: "Resolve or explicitly rule on the blocker before advancing the gate." });
-    dependencies.push(`Blocker resolution: ${String(item.next_action)}`);
+function reviewSigner(env: Env) {
+  const privateKey = String(env.REVIEW_SERVICE_PRIVATE_KEY ?? "");
+  const keyId = String(env.REVIEW_SERVICE_KEY_ID ?? "");
+  const keyVersion = Number(env.REVIEW_SERVICE_KEY_VERSION ?? "");
+  if (!/^[0-9a-f]{64}$/.test(privateKey) || !/^[A-Za-z0-9._:-]{3,128}$/.test(keyId) || !Number.isSafeInteger(keyVersion) || keyVersion < 1) {
+    throw new Error("REVIEW_SIGNER_UNAVAILABLE");
   }
-  if (!item.evidence_url) {
-    addFinding({
-      severity: item.decision_status === "Needed now" ? "blocker" : "should-fix",
-      title: "Decision evidence is missing",
-      detail: "The human cannot verify the recommendation against a durable artifact.",
-      action: "Attach the exact brief, exam, build, or observation artifact required by this gate.",
-    });
-  } else if (!evidence.text) {
-    addFinding({ severity: "should-fix", title: "Artifact needs direct human inspection", detail: evidence.scope, action: "Open the evidence link and verify the exact revision before ruling." });
-  }
-  if (!item.assignee_id) {
-    addFinding({ severity: "should-fix", title: "No accountable owner", detail: "The item has no human or agent assigned to resolve findings and execute the next action.", action: "Assign an owner before the item advances." });
-  }
-  if (item.workflow === "Unassigned") {
-    addFinding({ severity: "should-fix", title: "Workflow treatment is undecided", detail: "STEER, Control, and Setup work have different controls and measurement implications.", action: "Assign the treatment before delivery work begins." });
-  }
+  return { privateKey, keyId, keyVersion, publicKey: dispatchPublicKey(privateKey) };
+}
 
-  const gate = String(item.gate ?? "");
-  const evidenceText = evidence.text?.toLowerCase() ?? "";
-  if (gate === "Gate 1 pending" && evidence.text) {
-    const required = ["expected outcome", "what \"done and correct\" means", "out of scope", "risks", "design intent"];
-    const missing = required.filter((section) => !evidenceText.includes(section));
-    if (missing.length) addFinding({ severity: "should-fix", title: "Intent brief coverage is incomplete", detail: `The linked artifact does not clearly expose: ${missing.join(", ")}.`, action: "Clarify these sections before approving Gate 1." });
-    impacts.push("Approval authorizes exam design against this intent; ambiguity will propagate into tests and implementation.");
-  }
-  if (gate === "Gate 2 pending") {
-    const required = ["acceptance tests", "edge cases", "non-functional checks", "outcome instrumentation", "guardrails in force"];
-    const missing = evidence.text ? required.filter((section) => !evidenceText.includes(section)) : required;
-    if (missing.length) addFinding({ severity: evidence.text ? "should-fix" : "blocker", title: "Exam coverage needs confirmation", detail: `The review could not verify: ${missing.join(", ")}.`, action: "Confirm each required section expresses what correct means before approving Gate 2." });
-    else addFinding({ severity: "note", title: "Core Gate 2 sections are present", detail: "The exam exposes acceptance tests, attacks, non-functional checks, instrumentation, and named guardrails.", action: "Read for quality and omissions; presence alone does not prove sufficiency." });
-    impacts.push("Gate 2 approval freezes the exam and permits Builder implementation. Later exam changes require Tech Lead authorization.");
-  }
-  if (gate === "Gate 3 pending") {
-    const hasVerification = /\b(pass|passed|verified|green|successful)\b/i.test(evidence.text ?? "");
-    if (!hasVerification) addFinding({ severity: "blocker", title: "Verified-build evidence is not visible", detail: "Gate 3 needs a verified build, Critic findings, checks, rollout observation, and a rollback path.", action: "Attach the exact verified commit and required check evidence before release approval." });
-    impacts.push("Approval authorizes release to users and must include every tagged domain owner plus the independent-perspective rule.");
-  }
+function expectedReviewStage(gate: unknown) {
+  if (gate === "Gate 1 pending") return "PRE_GATE_1_BRIEF";
+  if (gate === "Gate 2 pending") return "GATE_2_EXAM";
+  if (gate === "Gate 3 pending" || gate === "Gate 2 passed") return "GATE_3_BUILD";
+  return null;
+}
 
-  const defaultClosed = tags.filter((tag) => ["#security", "#privacy", "#money"].includes(tag));
-  if (defaultClosed.length) {
-    addFinding({ severity: "should-fix", title: "Default-closed controls apply", detail: `${defaultClosed.join(", ")} signals require conservative review, named authority, and the mandated cooling-off before Gate 3.`, action: "Confirm the specialist guardrails and cooling-off evidence are planned." });
-    dependencies.push(`Default-closed controls for ${defaultClosed.join(", ")}`);
+function reviewError(error: unknown) {
+  const code = error instanceof Error && /^[A-Z0-9_]+$/.test(error.message) ? error.message : "REVIEW_REQUEST_INVALID";
+  return json({ error: "The signed review request did not satisfy the exact assignment contract.", code }, code === "REVIEW_SIGNER_UNAVAILABLE" ? 503 : 409);
+}
+
+async function appendReviewEvent(db: Database, event: Awaited<ReturnType<typeof createSignedReviewEvent>>, actorId: string, createdAt: string) {
+  const terminalAt = ["REVIEW_RESULT_RECORDED", "REVIEW_SUPERSEDED"].includes(event.payload.event_type) ? createdAt : null;
+  await db.batch([
+    db.prepare(`INSERT INTO review_events
+      (assignment_id, event_version, expected_event_version, event_type, payload_json,
+       previous_event_sha256, event_sha256, service_key_id, service_key_version,
+       service_signature, reviewer_key_id, reviewer_key_version, reviewer_signature,
+       actor_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+      event.payload.review_assignment_id, event.payload.event_version, event.payload.expected_event_version,
+      event.payload.event_type, canonicalJson(event.envelope), event.payload.previous_event_sha256,
+      event.eventSha256, event.envelope.service_key_id, event.envelope.service_key_version,
+      event.envelope.service_signature, "reviewer_key_id" in event.envelope ? event.envelope.reviewer_key_id : null,
+      "reviewer_key_version" in event.envelope ? event.envelope.reviewer_key_version : null,
+      "reviewer_signature" in event.envelope ? event.envelope.reviewer_signature : null,
+      actorId, createdAt,
+    ),
+    db.prepare(`UPDATE review_assignments SET current_state = ?, current_event_version = ?,
+      current_event_sha256 = ?, terminal_at = COALESCE(?, terminal_at) WHERE assignment_id = ?`)
+      .bind(event.payload.event_type.replace("REVIEW_", ""), event.payload.event_version,
+        event.eventSha256, terminalAt, event.payload.review_assignment_id),
+  ]);
+}
+
+async function requestSignedCriticReview(request: Request, db: Database, env: Env, user: User, itemId: number) {
+  const item = await scopedItemOrDenied(db, user, itemId, "signed Critic review assignment");
+  if (!item) return json({ error: "Work item not found in your POD." }, 404);
+  const actor = await memberContext(db, user);
+  if (!actor || actor.kind !== "human") return json({ error: "Only an authenticated human Work Management actor may authorize a review assignment.", code: "REVIEW_AUTHORIZER_INVALID" }, 403);
+  const body = await request.json() as { stage?: unknown; target?: unknown; target_verification?: unknown; prior_binding_digests?: unknown };
+  const stage = String(body.stage ?? expectedReviewStage(item.gate) ?? "");
+  if (!stage || stage !== expectedReviewStage(item.gate)) return json({ error: "The requested review stage does not match the authoritative gate state.", code: "REVIEW_STAGE_STALE" }, 409);
+  const primary = item.assignee_id
+    ? await db.prepare("SELECT id, role FROM members WHERE id = ? AND pod_id = ?").bind(item.assignee_id, item.pod_id).first<{ id: string; role: string }>()
+    : null;
+  const reviewer = await db.prepare(`SELECT id, role, agent_key_id, agent_key_version, agent_public_key
+    FROM members WHERE id = 'agent-critic' AND pod_id = ? AND kind = 'agent' AND status = 'enrolled'`)
+    .bind(item.pod_id).first<{ id: string; role: string; agent_key_id: string; agent_key_version: number; agent_public_key: string }>();
+  if (!primary || !reviewer || !reviewer.agent_key_id || !reviewer.agent_key_version || !/^[0-9a-f]{64}$/.test(reviewer.agent_public_key)) {
+    return json({ error: "The primary owner or exact enrolled Critic signing identity is unavailable.", code: "REVIEW_IDENTITY_UNAVAILABLE" }, 409);
   }
-  if (tags.length) dependencies.push(`Derived domain coverage: ${tags.join(", ")}`);
-  if (gate.includes("pending") && ["Needed now", "Resubmitted"].includes(String(item.decision_status))) dependencies.push(`Authenticated ${String(item.decision_authority)} ruling for ${gate}`);
-  if (item.evidence_url) dependencies.push("Exact evidence revision must remain resolvable and match the ruling.");
-  if (/block buzz|railway/i.test(joinedText)) dependencies.push("External agent-operations availability in Block Buzz / Railway.");
-  if (item.workflow === "Setup / excluded") impacts.push("This item is excluded from the STEER-versus-Control outcome comparison; keep its effort out of experiment results.");
-  if (item.state === "blocked") impacts.push("Downstream work should not advance while the item remains blocked.");
+  const privacyPolicyCheck = await validateLatestPrivacyPolicy(db, String(item.pod_id), env.DISPATCH_ALLOW_TEST_PRIVACY_POLICY === "true");
+  if (!privacyPolicyCheck.ok) return json({ error: privacyPolicyCheck.error, code: privacyPolicyCheck.code ?? "REVIEW_PRIVACY_POLICY_BLOCKED" }, 409);
+  try {
+    const target = body.target as ReviewAssignmentPayload["target"];
+    const targetManifestSha256 = String(target?.target_artifact_manifest_sha256 ?? "");
+    const now = new Date().toISOString();
+    const primaryClaimLineageId = await sha256Hex(canonicalJson({
+      schema: "steer-primary-claim-lineage/v1", workspace_pod_id: item.pod_id,
+      work_item_stable_id: itemId, work_item_key: item.key, workflow: item.workflow,
+      primary_owner_member_id: primary.id, primary_owner_role: primary.role,
+    }));
+    const authorizingEventId = await sha256Hex(canonicalJson({
+      schema: "steer-review-authorization/v1", workspace_pod_id: item.pod_id,
+      work_item_stable_id: itemId, item_revision: item.updated_at, review_stage: stage,
+      target_artifact_manifest_sha256: targetManifestSha256, actor_id: user.id,
+    }));
+    const payload: ReviewAssignmentPayload = {
+      schema: "steer-review-assignment/v1", work_item_stable_id: itemId,
+      work_item_key: String(item.key), workspace_pod_id: String(item.pod_id),
+      workflow: String(item.workflow), primary_claim_lineage_id: primaryClaimLineageId,
+      primary_owner_role: primary.role, primary_owner_member_id: primary.id,
+      review_stage: stage as ReviewAssignmentPayload["review_stage"], target,
+      target_verification: body.target_verification as ReviewAssignmentPayload["target_verification"],
+      prior_binding_digests: Array.isArray(body.prior_binding_digests) ? body.prior_binding_digests.map(String) : [],
+      reviewer_role: "Independent Critic", reviewer_member_id: reviewer.id,
+      output_contract: ["Severity-sorted advisory findings capped at three.", "Dependencies, downstream impacts, and fastest safe next actions.", "Exact evidence scope, revision, and content fingerprint."],
+      prohibitions: ["No primary claim or implementation authority.", "No human gate ruling.", "No merge, deployment, release, or closure authority."],
+      authorizing_actor_id: user.id, authorizing_event_id: authorizingEventId,
+      item_revision: String(item.updated_at),
+    };
+    await validateReviewAssignmentPayload(payload);
+    const verification = payload.target_verification;
+    const verifier = await db.prepare(`SELECT id, role, agent_key_id, agent_key_version, agent_public_key
+      FROM members WHERE id = ? AND pod_id = ? AND kind = 'agent' AND status = 'enrolled'`)
+      .bind(verification.receipt.verifier_member_id, item.pod_id)
+      .first<{ id: string; role: string; agent_key_id: string; agent_key_version: number; agent_public_key: string }>();
+    if (!verifier || verifier.role !== "Verification Agent" || verifier.id === reviewer.id ||
+      verifier.agent_key_id !== verification.receipt.verifier_key_id ||
+      Number(verifier.agent_key_version) !== verification.receipt.verifier_key_version ||
+      !/^[0-9a-f]{64}$/.test(verifier.agent_public_key) ||
+      !(await verifyReviewerBinding(verification.receipt, verification.signature, verifier.agent_public_key))) {
+      throw new Error("REVIEW_TARGET_VERIFICATION_SIGNATURE_INVALID");
+    }
+    if (Date.parse(verification.receipt.verified_at) > Date.now() + 5 * 60 * 1000) throw new Error("REVIEW_TARGET_VERIFICATION_INVALID");
+    const identity = await buildReviewIdentity(payload);
+    const existing = await db.prepare("SELECT assignment_json FROM review_assignments WHERE assignment_id = ?")
+      .bind(identity.reviewAssignmentId).first<{ assignment_json: string }>();
+    if (existing) return json({ ok: true, idempotent_replay: true, assignment: JSON.parse(existing.assignment_json) });
+    const signer = reviewSigner(env);
+    const targetVerificationReceiptSha256 = await sha256Hex(canonicalJson(verification));
+    const ready = await createSignedReviewEvent({ assignmentId: identity.reviewAssignmentId, eventVersion: 0, previousEventSha256: null, eventType: "REVIEW_TARGET_READY", occurredAt: now, targetManifestSha256, actorId: user.id, typedPayload: { item_revision: item.updated_at, target_verification_receipt_sha256: targetVerificationReceiptSha256, verifier_member_id: verifier.id, verifier_key_id: verifier.agent_key_id, verifier_key_version: verifier.agent_key_version }, serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey });
+    const assigned = await createSignedReviewEvent({ assignmentId: identity.reviewAssignmentId, eventVersion: 1, previousEventSha256: ready.eventSha256, eventType: "REVIEW_ASSIGNED", occurredAt: now, targetManifestSha256, actorId: "work-management-authorization", typedPayload: { review_idempotency_key: identity.reviewIdempotencyKey, authorizing_event_id: authorizingEventId, reviewer_member_id: reviewer.id }, serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey });
+    const requested = await createSignedReviewEvent({ assignmentId: identity.reviewAssignmentId, eventVersion: 2, previousEventSha256: assigned.eventSha256, eventType: "REVIEW_REQUESTED", occurredAt: now, targetManifestSha256, actorId: "work-management-authorization", typedPayload: { assignment_event_sha256: assigned.eventSha256, canonical_route: "review-assignment-store" }, serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey });
+    const priorAssignments = await db.prepare(`SELECT a.assignment_id, a.target_manifest_sha256,
+        e.event_version, e.event_sha256
+      FROM review_assignments a JOIN review_events e ON e.assignment_id = a.assignment_id
+       AND e.event_version = (SELECT MAX(last_event.event_version) FROM review_events last_event WHERE last_event.assignment_id = a.assignment_id)
+      WHERE a.item_id = ? AND a.review_stage = ? AND a.assignment_id != ?
+       AND NOT EXISTS (SELECT 1 FROM review_events terminal WHERE terminal.assignment_id = a.assignment_id
+         AND terminal.event_type IN ('REVIEW_RESULT_RECORDED','REVIEW_SUPERSEDED'))`)
+      .bind(itemId, stage, identity.reviewAssignmentId)
+      .all<{ assignment_id: string; target_manifest_sha256: string; event_version: number; event_sha256: string }>();
+    const supersededEvents = await Promise.all((priorAssignments.results ?? []).map((prior) => createSignedReviewEvent({
+      assignmentId: prior.assignment_id, eventVersion: Number(prior.event_version) + 1,
+      previousEventSha256: prior.event_sha256, eventType: "REVIEW_SUPERSEDED", occurredAt: now,
+      targetManifestSha256: prior.target_manifest_sha256, actorId: "work-management-authorization",
+      typedPayload: { successor_review_assignment_id: identity.reviewAssignmentId, reason: "new-independently-verified-target" },
+      serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey,
+    })));
+    const deleteAfter = new Date(Date.parse(now) + 90 * 24 * 60 * 60 * 1000).toISOString();
+    await db.batch([
+      db.prepare(`INSERT INTO review_assignments
+        (assignment_id, idempotency_key, item_id, pod_id, review_stage, reviewer_member_id,
+         primary_claim_lineage_id, item_revision, target_manifest_sha256, assignment_json,
+         current_state, current_event_version, current_event_sha256, authorizing_actor_id,
+         authorizing_event_id, created_at, delete_after)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REQUESTED', 2, ?, ?, ?, ?, ?)`)
+        .bind(identity.reviewAssignmentId, identity.reviewIdempotencyKey, itemId, item.pod_id, stage,
+          reviewer.id, primaryClaimLineageId, item.updated_at, targetManifestSha256,
+          canonicalJson({ ...payload, review_assignment_id: identity.reviewAssignmentId, review_idempotency_key: identity.reviewIdempotencyKey }),
+          requested.eventSha256, user.id, authorizingEventId, now, deleteAfter),
+      ...supersededEvents.flatMap((event) => [
+        db.prepare(`INSERT INTO review_events
+          (assignment_id, event_version, expected_event_version, event_type, payload_json,
+           previous_event_sha256, event_sha256, service_key_id, service_key_version,
+           service_signature, actor_id, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+          event.payload.review_assignment_id, event.payload.event_version, event.payload.expected_event_version,
+          event.payload.event_type, canonicalJson(event.envelope), event.payload.previous_event_sha256,
+          event.eventSha256, signer.keyId, signer.keyVersion, event.envelope.service_signature,
+          event.payload.actor_id, now,
+        ),
+        db.prepare(`UPDATE review_assignments SET current_state = 'SUPERSEDED', current_event_version = ?,
+          current_event_sha256 = ?, terminal_at = ? WHERE assignment_id = ?`)
+          .bind(event.payload.event_version, event.eventSha256, now, event.payload.review_assignment_id),
+      ]),
+      ...[ready, assigned, requested].map((event) => db.prepare(`INSERT INTO review_events
+        (assignment_id, event_version, expected_event_version, event_type, payload_json,
+         previous_event_sha256, event_sha256, service_key_id, service_key_version,
+         service_signature, actor_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+        identity.reviewAssignmentId, event.payload.event_version, event.payload.expected_event_version,
+        event.payload.event_type, canonicalJson(event.envelope), event.payload.previous_event_sha256,
+        event.eventSha256, signer.keyId, signer.keyVersion, event.envelope.service_signature,
+        event.payload.actor_id, now,
+      )),
+      db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at, review_assignment_id) VALUES (?, ?, 'review_requested', ?, ?, ?)")
+        .bind(itemId, user.id, `Signed ${stage} review requested from the enrolled Critic.`, now, identity.reviewAssignmentId),
+      db.prepare(`INSERT OR IGNORE INTO notifications
+        (dedupe_key, item_id, member_id, recipient_role, kind, title, body, channel, status, created_at, review_assignment_id)
+        VALUES (?, ?, ?, 'Independent Critic', 'review_assignment', ?, ?, 'review-assignment-store', 'queued', ?, ?)`)
+        .bind(`review-${identity.reviewAssignmentId}`, itemId, reviewer.id, `${String(item.key)} signed review requested`, `Exact target ${targetManifestSha256}.`, now, identity.reviewAssignmentId),
+    ]);
+    return json({ ok: true, idempotent_replay: false, assignment: { ...payload, review_assignment_id: identity.reviewAssignmentId, review_idempotency_key: identity.reviewIdempotencyKey }, request_event_sha256: requested.eventSha256 }, 201);
+  } catch (error) { return reviewError(error); }
+}
 
-  const severityRank = { blocker: 0, "should-fix": 1, note: 2 } as const;
-  findings.sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
-  const cappedFindings = findings.slice(0, 3);
-  for (const finding of cappedFindings) if (finding.severity !== "note") actions.push(finding.action);
-  if (item.evidence_url) actions.push("Open the linked evidence and verify the exact revision, not only this summary.");
-  if (gate.includes("pending") && ["Needed now", "Resubmitted"].includes(String(item.decision_status))) actions.push(`Record the ${gate} ruling with concise evidence-based reasoning.`);
-  const uniqueActions = [...new Set(actions)].slice(0, 4);
+async function acknowledgeSignedReview(request: Request, db: Database, env: Env, user: User, assignmentId: string) {
+  const assignment = await db.prepare(`SELECT a.*, w.updated_at, w.assignee_id, w.workflow,
+      m.agent_key_id, m.agent_key_version, m.agent_public_key
+    FROM review_assignments a JOIN work_items w ON w.id = a.item_id
+    JOIN members actor ON actor.id = ? AND actor.pod_id = a.pod_id
+    JOIN members m ON m.id = a.reviewer_member_id AND m.pod_id = a.pod_id
+    WHERE a.assignment_id = ?`).bind(user.id, assignmentId).first<Record<string, unknown>>();
+  if (!assignment) return json({ error: "Review assignment not found in your POD." }, 404);
+  if (assignment.current_state === "SUPERSEDED") return json({ error: "This review assignment was superseded by a newer independently verified target.", code: "REVIEW_ASSIGNMENT_SUPERSEDED" }, 409);
+  if (user.id !== assignment.reviewer_member_id) return json({ error: "Only the exact enrolled reviewer may acknowledge this assignment.", code: "REVIEWER_MISMATCH" }, 403);
+  const existing = await db.prepare("SELECT payload_json FROM review_events WHERE assignment_id = ? AND event_type = 'REVIEW_ACKNOWLEDGED'").bind(assignmentId).first<{ payload_json: string }>();
+  const requestEvent = await db.prepare("SELECT event_sha256 FROM review_events WHERE assignment_id = ? AND event_type = 'REVIEW_REQUESTED'").bind(assignmentId).first<{ event_sha256: string }>();
+  const body = await request.json() as Record<string, unknown>;
+  const acknowledgedAt = String(body.acknowledged_at ?? "");
+  const reviewerPayload = { schema: "steer-review-acknowledgement/v1", review_assignment_id: assignmentId, target_artifact_manifest_sha256: assignment.target_manifest_sha256, source_request_event_sha256: requestEvent?.event_sha256, predecessor_event_sha256: requestEvent?.event_sha256, acknowledged_at: acknowledgedAt };
+  if (!requestEvent || String(body.member_id) !== assignment.reviewer_member_id || !Number.isFinite(Date.parse(acknowledgedAt)) || String(body.key_id) !== assignment.agent_key_id || Number(body.key_version) !== Number(assignment.agent_key_version) || !(await verifyReviewerBinding(reviewerPayload, String(body.signature ?? ""), String(assignment.agent_public_key)))) {
+    return json({ error: "The Critic acknowledgement signature or exact assignment binding is invalid.", code: "REVIEW_ACK_SIGNATURE_INVALID" }, 409);
+  }
+  if (existing) {
+    const stored = JSON.parse(existing.payload_json) as { payload?: { payload?: unknown }; reviewer_signature?: string };
+    if (canonicalJson(stored.payload?.payload) !== canonicalJson(reviewerPayload) || stored.reviewer_signature !== body.signature) {
+      return json({ error: "A different acknowledgement already closes this assignment step.", code: "REVIEW_ACK_REPLAY_MISMATCH" }, 409);
+    }
+    return json({ ok: true, idempotent_replay: true, event: stored });
+  }
+  try {
+    const signer = reviewSigner(env);
+    const event = await createSignedReviewEvent({ assignmentId, eventVersion: 3, previousEventSha256: requestEvent.event_sha256, eventType: "REVIEW_ACKNOWLEDGED", occurredAt: acknowledgedAt, targetManifestSha256: String(assignment.target_manifest_sha256), actorId: user.id, typedPayload: reviewerPayload, serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey, reviewerKeyId: String(assignment.agent_key_id), reviewerKeyVersion: Number(assignment.agent_key_version), reviewerSignature: String(body.signature) });
+    await appendReviewEvent(db, event, user.id, acknowledgedAt);
+    return json({ ok: true, idempotent_replay: false, event: event.envelope }, 201);
+  } catch (error) { return reviewError(error); }
+}
 
-  const blockers = cappedFindings.filter((finding) => finding.severity === "blocker").length;
-  const shouldFix = cappedFindings.filter((finding) => finding.severity === "should-fix").length;
-  const recommendation = blockers ? "Resolve blockers before ruling" : shouldFix ? "Review with changes in mind" : "Ready for human review";
-  const summary = blockers
-    ? `The Critic found ${blockers} blocking condition${blockers === 1 ? "" : "s"}. Do not advance until the named action is resolved or explicitly ruled on.`
-    : shouldFix
-      ? `No automatic hard stop was found, but ${shouldFix} material concern${shouldFix === 1 ? "" : "s"} should shape the human review.`
-      : "No material control gap was visible in the reviewed scope. The human must still inspect the evidence and make the gate decision.";
-  const now = new Date().toISOString();
-  const reviewMode = evidence.text ? "structured_artifact_review" : "structured_workspace_review";
-  const confidence = evidence.text ? "Medium" : "Low";
+type SignedCriticResult = {
+  recommendation: string; confidence: string; summary: string; findings: Finding[];
+  dependencies: string[]; impacts: string[]; actions: string[]; derived_tags: string[];
+  evidence_scope: string; completed_at: string;
+};
 
-  const result = await db.prepare(
-    `INSERT INTO agent_reviews
-     (item_id, agent_id, review_mode, recommendation, confidence, summary, findings_json,
-      dependencies_json, impacts_json, actions_json, derived_tags_json, evidence_scope,
-      evidence_url, evidence_revision, evidence_sha256, reviewed_item_updated_at, requested_by, created_at)
-     VALUES (?, 'agent-critic', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(
-    itemId,
-    reviewMode,
-    recommendation,
-    confidence,
-    summary,
-    JSON.stringify(cappedFindings),
-    JSON.stringify([...new Set(dependencies)].slice(0, 5)),
-    JSON.stringify([...new Set(impacts)].slice(0, 4)),
-    JSON.stringify(uniqueActions),
-    JSON.stringify(tags),
-    evidence.scope,
-    evidence.sourceUrl,
-    evidence.revision,
-    evidence.sha256,
-    String(item.updated_at),
-    user.id,
-    now,
-  ).run();
-  await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, 'agent-critic', 'agent_review', ?, ?)")
-    .bind(itemId, `${recommendation} · ${cappedFindings.length} significant finding${cappedFindings.length === 1 ? "" : "s"}`, now).run();
-  return json({ ok: true, reviewId: result.meta?.last_row_id, recommendation }, 201);
+function validSignedCriticResult(value: unknown): value is SignedCriticResult {
+  if (!value || typeof value !== "object") return false;
+  const result = value as SignedCriticResult;
+  const allowedSeverity = new Set(["blocker", "should-fix", "note"]);
+  return [result.recommendation, result.confidence, result.summary, result.evidence_scope, result.completed_at].every((entry) => typeof entry === "string" && entry.length > 0 && entry.length <= 4000)
+    && Number.isFinite(Date.parse(result.completed_at))
+    && Array.isArray(result.findings) && result.findings.length <= 3
+    && result.findings.every((finding) => allowedSeverity.has(finding.severity) && [finding.title, finding.detail, finding.action].every((entry) => typeof entry === "string" && entry.length > 0 && entry.length <= 4000))
+    && [result.dependencies, result.impacts, result.actions, result.derived_tags].every((entries) => Array.isArray(entries) && entries.length <= 12 && entries.every((entry) => typeof entry === "string" && entry.length <= 1000));
+}
+
+async function recordSignedReviewResult(request: Request, db: Database, env: Env, user: User, assignmentId: string) {
+  const assignment = await db.prepare(`SELECT a.*, w.updated_at, w.assignee_id, w.workflow,
+      m.agent_key_id, m.agent_key_version, m.agent_public_key
+    FROM review_assignments a JOIN work_items w ON w.id = a.item_id
+    JOIN members actor ON actor.id = ? AND actor.pod_id = a.pod_id
+    JOIN members m ON m.id = a.reviewer_member_id AND m.pod_id = a.pod_id
+    WHERE a.assignment_id = ?`).bind(user.id, assignmentId).first<Record<string, unknown>>();
+  if (!assignment) return json({ error: "Review assignment not found in your POD." }, 404);
+  if (assignment.current_state === "SUPERSEDED") return json({ error: "This review assignment was superseded by a newer independently verified target.", code: "REVIEW_ASSIGNMENT_SUPERSEDED" }, 409);
+  if (user.id !== assignment.reviewer_member_id) return json({ error: "Only the exact enrolled reviewer may record this result.", code: "REVIEWER_MISMATCH" }, 403);
+  if (String(assignment.updated_at) !== String(assignment.item_revision) || String(assignment.assignee_id) !== String((JSON.parse(String(assignment.assignment_json)) as ReviewAssignmentPayload).primary_owner_member_id) || String(assignment.workflow) !== String((JSON.parse(String(assignment.assignment_json)) as ReviewAssignmentPayload).workflow)) {
+    return json({ error: "The item, owner, workflow, or primary claim binding changed after assignment.", code: "REVIEW_ASSIGNMENT_STALE" }, 409);
+  }
+  const acknowledgement = await db.prepare("SELECT event_sha256 FROM review_events WHERE assignment_id = ? AND event_type = 'REVIEW_ACKNOWLEDGED'").bind(assignmentId).first<{ event_sha256: string }>();
+  if (!acknowledgement) return json({ error: "A signed acknowledgement must precede the review result.", code: "REVIEW_ACK_REQUIRED" }, 409);
+  const existing = await db.prepare("SELECT payload_json FROM review_events WHERE assignment_id = ? AND event_type = 'REVIEW_RESULT_RECORDED'").bind(assignmentId).first<{ payload_json: string }>();
+  const body = await request.json() as Record<string, unknown>;
+  const result = body.result;
+  if (!validSignedCriticResult(result)) return json({ error: "The Critic result does not satisfy the bounded output contract.", code: "REVIEW_RESULT_INVALID" }, 400);
+  const resultSha256 = await sha256Hex(canonicalJson(result));
+  const reviewerPayload = { schema: "steer-review-result/v1", review_assignment_id: assignmentId, target_artifact_manifest_sha256: assignment.target_manifest_sha256, predecessor_event_sha256: acknowledgement.event_sha256, result_sha256: resultSha256, result };
+  if (String(body.member_id) !== assignment.reviewer_member_id || String(body.key_id) !== assignment.agent_key_id || Number(body.key_version) !== Number(assignment.agent_key_version) || !(await verifyReviewerBinding(reviewerPayload, String(body.signature ?? ""), String(assignment.agent_public_key)))) {
+    return json({ error: "The Critic result signature or exact assignment binding is invalid.", code: "REVIEW_RESULT_SIGNATURE_INVALID" }, 409);
+  }
+  if (existing) {
+    const stored = JSON.parse(existing.payload_json) as { payload?: { payload?: unknown }; reviewer_signature?: string };
+    if (canonicalJson(stored.payload?.payload) !== canonicalJson(reviewerPayload) || stored.reviewer_signature !== body.signature) {
+      return json({ error: "A different result already closes this assignment.", code: "REVIEW_RESULT_REPLAY_MISMATCH" }, 409);
+    }
+    return json({ ok: true, idempotent_replay: true, event: stored });
+  }
+  try {
+    const signer = reviewSigner(env);
+    const event = await createSignedReviewEvent({ assignmentId, eventVersion: 4, previousEventSha256: acknowledgement.event_sha256, eventType: "REVIEW_RESULT_RECORDED", occurredAt: result.completed_at, targetManifestSha256: String(assignment.target_manifest_sha256), actorId: user.id, typedPayload: reviewerPayload, serviceKeyId: signer.keyId, serviceKeyVersion: signer.keyVersion, servicePrivateKey: signer.privateKey, reviewerKeyId: String(assignment.agent_key_id), reviewerKeyVersion: Number(assignment.agent_key_version), reviewerSignature: String(body.signature) });
+    const assignmentPayload = JSON.parse(String(assignment.assignment_json)) as ReviewAssignmentPayload;
+    await db.batch([
+      db.prepare(`INSERT INTO review_events
+        (assignment_id, event_version, expected_event_version, event_type, payload_json,
+         previous_event_sha256, event_sha256, service_key_id, service_key_version,
+         service_signature, reviewer_key_id, reviewer_key_version, reviewer_signature,
+         actor_id, created_at) VALUES (?, 4, 3, 'REVIEW_RESULT_RECORDED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(assignmentId, canonicalJson(event.envelope), acknowledgement.event_sha256, event.eventSha256,
+          signer.keyId, signer.keyVersion, event.envelope.service_signature, assignment.agent_key_id,
+          assignment.agent_key_version, body.signature, user.id, result.completed_at),
+      db.prepare(`UPDATE review_assignments SET current_state = 'RESULT_RECORDED', current_event_version = 4,
+        current_event_sha256 = ?, terminal_at = ? WHERE assignment_id = ?`)
+        .bind(event.eventSha256, result.completed_at, assignmentId),
+      db.prepare(`INSERT INTO agent_reviews
+        (item_id, agent_id, review_mode, recommendation, confidence, summary, findings_json,
+         dependencies_json, impacts_json, actions_json, derived_tags_json, evidence_scope,
+         evidence_url, evidence_revision, evidence_sha256, reviewed_item_updated_at, requested_by, created_at,
+         review_assignment_id)
+        VALUES (?, ?, 'signed_assignment_review', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(assignment.item_id, user.id, result.recommendation, result.confidence, result.summary,
+          JSON.stringify(result.findings), JSON.stringify(result.dependencies), JSON.stringify(result.impacts),
+          JSON.stringify(result.actions), JSON.stringify(result.derived_tags), result.evidence_scope,
+          assignmentPayload.target.target_artifacts[0]?.url ?? null,
+          assignmentPayload.target.target_git_commit_oid, assignment.target_manifest_sha256,
+          assignment.item_revision, assignment.authorizing_actor_id, result.completed_at, assignmentId),
+      db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at, review_assignment_id) VALUES (?, ?, 'agent_review', ?, ?, ?)")
+        .bind(assignment.item_id, user.id, `${result.recommendation} · signed review recorded`, result.completed_at, assignmentId),
+    ]);
+    return json({ ok: true, idempotent_replay: false, review_assignment_id: assignmentId, result_sha256: resultSha256 }, 201);
+  } catch (error) {
+    const raced = await db.prepare("SELECT event_sha256 FROM review_events WHERE assignment_id = ? AND event_type = 'REVIEW_RESULT_RECORDED'").bind(assignmentId).first<{ event_sha256: string }>();
+    if (raced) return json({ ok: true, idempotent_replay: true, review_assignment_id: assignmentId });
+    return reviewError(error);
+  }
+}
+
+async function manageReviewRetentionHold(request: Request, db: Database, user: User, assignmentId: string) {
+  const member = await memberContext(db, user);
+  if (!member || member.kind !== "human" || !/(Tech Lead|Platform|Ops Lead|Security)/.test(member.role)) {
+    return json({ error: "A named Tech, Platform / Ops, or Security authority must manage review retention holds." }, 403);
+  }
+  const assignment = await db.prepare(`SELECT a.assignment_id FROM review_assignments a
+    JOIN members actor ON actor.id = ? AND actor.pod_id = a.pod_id WHERE a.assignment_id = ?`)
+    .bind(user.id, assignmentId).first<{ assignment_id: string }>();
+  if (!assignment) return json({ error: "Review assignment not found in your POD." }, 404);
+  const body = await request.json() as Record<string, unknown>;
+  const action = String(body.action ?? "");
+  const reasonCode = String(body.reason_code ?? "");
+  if (!["HOLD", "RELEASE"].includes(action) || !/^[A-Z0-9_:-]{3,64}$/.test(reasonCode)) return json({ error: "Use HOLD or RELEASE with a bounded no-PII reason code." }, 400);
+  const now = new Date();
+  const expiry = action === "HOLD" ? Date.parse(String(body.expires_at ?? "")) : now.getTime() + 1000;
+  if (!Number.isFinite(expiry) || expiry <= now.getTime() || expiry > now.getTime() + 365 * 24 * 60 * 60 * 1000) return json({ error: "A hold must have an explicit future expiry no more than 365 days away." }, 400);
+  const holdEventId = crypto.randomUUID();
+  await db.prepare(`INSERT INTO review_retention_holds
+    (hold_event_id, assignment_id, action, reason_code, expires_at, actor_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(holdEventId, assignmentId, action, reasonCode, new Date(expiry).toISOString(), user.id, now.toISOString()).run();
+  return json({ ok: true, hold_event_id: holdEventId, action, expires_at: new Date(expiry).toISOString() }, 201);
+}
+
+async function runReviewRetention(request: Request, db: Database, env: Env) {
+  const expected = String(env.REVIEW_SERVICE_TOKEN ?? "");
+  const provided = request.headers.get("authorization") ?? "";
+  if (expected.length < 32 || provided !== `Bearer ${expected}`) return json({ error: "Review retention service authentication failed." }, 401);
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const now = new Date();
+  const cutoff = body.cutoff_at ? new Date(String(body.cutoff_at)) : now;
+  if (!Number.isFinite(cutoff.getTime()) || cutoff.getTime() > now.getTime() + 60_000) return json({ error: "The retention cutoff is invalid." }, 400);
+  const candidates = await db.prepare(`SELECT a.assignment_id FROM review_assignments a
+    JOIN review_events result ON result.assignment_id = a.assignment_id AND result.event_type = 'REVIEW_RESULT_RECORDED'
+    WHERE unixepoch(result.created_at, '+90 days') <= unixepoch(?)
+      AND NOT EXISTS (
+        SELECT 1 FROM review_retention_holds h
+        WHERE h.assignment_id = a.assignment_id AND h.action = 'HOLD'
+          AND unixepoch(h.expires_at) > unixepoch(?)
+          AND NOT EXISTS (
+            SELECT 1 FROM review_retention_holds release
+            WHERE release.assignment_id = h.assignment_id AND release.action = 'RELEASE'
+              AND unixepoch(release.created_at) >= unixepoch(h.created_at)
+          )
+      ) ORDER BY result.created_at LIMIT 100`).bind(cutoff.toISOString(), cutoff.toISOString()).all<{ assignment_id: string }>();
+  let deleted = 0;
+  for (const candidate of candidates.results ?? []) {
+    const nonce = crypto.randomUUID();
+    const authorizationExpiry = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
+    await db.batch([
+      db.prepare("INSERT OR REPLACE INTO review_retention_authorizations (assignment_id, authorization_nonce, expires_at) VALUES (?, ?, ?)").bind(candidate.assignment_id, nonce, authorizationExpiry),
+      db.prepare("DELETE FROM agent_reviews WHERE review_assignment_id = ?").bind(candidate.assignment_id),
+      db.prepare("DELETE FROM activity WHERE review_assignment_id = ?").bind(candidate.assignment_id),
+      db.prepare("DELETE FROM notifications WHERE review_assignment_id = ?").bind(candidate.assignment_id),
+      db.prepare("DELETE FROM review_events WHERE assignment_id = ?").bind(candidate.assignment_id),
+      db.prepare("DELETE FROM review_retention_holds WHERE assignment_id = ?").bind(candidate.assignment_id),
+      db.prepare("DELETE FROM review_assignments WHERE assignment_id = ?").bind(candidate.assignment_id),
+      db.prepare("DELETE FROM review_retention_authorizations WHERE assignment_id = ? AND authorization_nonce = ?").bind(candidate.assignment_id, nonce),
+    ]);
+    deleted += 1;
+  }
+  await db.prepare("INSERT INTO review_retention_runs (cutoff_at, eligible_count, deleted_count, created_at) VALUES (?, ?, ?, ?)")
+    .bind(cutoff.toISOString(), (candidates.results ?? []).length, deleted, now.toISOString()).run();
+  return json({ ok: true, eligible_count: (candidates.results ?? []).length, deleted_count: deleted });
+}
+
+async function handleSignedReviewService(request: Request, db: Database, env: Env): Promise<Response | null> {
+  const url = new URL(request.url);
+  const acknowledgement = url.pathname.match(/^\/api\/review-assignments\/([0-9a-f]{64})\/acknowledgements$/);
+  const result = url.pathname.match(/^\/api\/review-assignments\/([0-9a-f]{64})\/results$/);
+  if (request.method !== "POST" || (!acknowledgement && !result)) return null;
+  const expected = String(env.REVIEW_SERVICE_TOKEN ?? "");
+  if (expected.length < 32 || request.headers.get("authorization") !== `Bearer ${expected}`) return json({ error: "Signed review service authentication failed." }, 401);
+  const body = await request.clone().json().catch(() => null) as Record<string, unknown> | null;
+  const memberId = String(body?.member_id ?? "");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(memberId)) return json({ error: "An enrolled reviewer member ID is required." }, 400);
+  const reviewerUser: User = { id: memberId, email: null, name: "Enrolled reviewer" };
+  if (acknowledgement) return acknowledgeSignedReview(request, db, env, reviewerUser, acknowledgement[1]);
+  return recordSignedReviewResult(request, db, env, reviewerUser, result![1]);
 }
 
 function reworkAssigneeForGate(gate: string) {
@@ -1343,9 +2475,7 @@ export function decisionTransition(current: Record<string, unknown>, decision: s
 
 export function gateOneValueReady(valueJson: unknown) {
   try {
-    const value = JSON.parse(String(valueJson ?? "")) as Record<string, unknown>;
-    return !validateAndNormalizeWorkEconomics("valueHypothesis", value).error
-      && Boolean(value.acceptedBy && value.acceptedAt && value.evidenceStatus === "verified" && value.acceptanceState !== "proposed");
+    return acceptedValueHypothesisReady(JSON.parse(String(valueJson ?? "")));
   } catch {
     return false;
   }
@@ -1411,7 +2541,7 @@ async function decide(request: Request, db: Database, user: User, itemId: number
       recipient?.role ?? "Evidence owner", `${String(current.key)} returned for changes`, reasoning, now,
     ).run();
   }
-  return json({ ok: true });
+  return json({ ok: true, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
 }
 
 async function transitionItem(request: Request, db: Database, user: User, itemId: number) {
@@ -1875,23 +3005,34 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/")) return null;
   if (!env.DB) return json({ error: "Persistent database binding is unavailable." }, 503);
-  const user = userFrom(request);
-  if (!user) return json({ error: "Authentication required." }, 401);
 
   try {
     await ensureSchema(env.DB);
+    const dispatchServiceResponse = await handleDispatchServiceApi(request, env.DB, env);
+    if (dispatchServiceResponse) return dispatchServiceResponse;
+    if (request.method === "POST" && url.pathname === "/api/review-retention/run") return runReviewRetention(request, env.DB, env);
+    const signedReviewServiceResponse = await handleSignedReviewService(request, env.DB, env);
+    if (signedReviewServiceResponse) return signedReviewServiceResponse;
+    const user = userFrom(request);
+    if (!user) return json({ error: "Authentication required." }, 401);
     await ensureCurrentUser(env.DB, user);
     if (request.method === "GET" && url.pathname === "/api/buzz-status") return getBuzzStatus();
     if (request.method === "GET" && url.pathname === "/api/bootstrap") return json(await bootstrap(env.DB, user));
+    if (request.method === "POST" && url.pathname === "/api/telemetry") return recordBoundedTelemetry(request, env.DB, env);
+    if (request.method === "POST" && url.pathname === "/api/privacy-policy/activate") return activatePrivacyPolicy(request, env.DB, user);
     if (request.method === "POST" && url.pathname === "/api/items") return createItem(request, env.DB, user);
     const itemMatch = url.pathname.match(/^\/api\/items\/(\d+)$/);
     if (request.method === "PATCH" && itemMatch) return updateItem(request, env.DB, user, Number(itemMatch[1]));
     const economicsMatch = url.pathname.match(/^\/api\/items\/(\d+)\/work-economics$/);
     if (request.method === "PATCH" && economicsMatch) return updateWorkEconomics(request, env.DB, user, Number(economicsMatch[1]));
     const reviewMatch = url.pathname.match(/^\/api\/items\/(\d+)\/reviews$/);
-    if (request.method === "POST" && reviewMatch) return runCriticReview(env.DB, user, Number(reviewMatch[1]));
+    if (request.method === "POST" && reviewMatch) return requestSignedCriticReview(request, env.DB, env, user, Number(reviewMatch[1]));
+    const reviewRetentionHoldMatch = url.pathname.match(/^\/api\/review-assignments\/([0-9a-f]{64})\/retention-holds$/);
+    if (request.method === "POST" && reviewRetentionHoldMatch) return manageReviewRetentionHold(request, env.DB, user, reviewRetentionHoldMatch[1]);
     const dispatchMatch = url.pathname.match(/^\/api\/items\/(\d+)\/dispatch$/);
-    if (request.method === "POST" && dispatchMatch) return authorizeAgentDispatch(env.DB, user, Number(dispatchMatch[1]));
+    if (request.method === "POST" && dispatchMatch) return authorizeAgentDispatch(env.DB, env, user, Number(dispatchMatch[1]));
+    const retentionHoldMatch = url.pathname.match(/^\/api\/dispatches\/([0-9a-f]{64})\/retention-holds$/);
+    if (request.method === "POST" && retentionHoldMatch) return manageDispatchRetentionHold(request, env.DB, user, retentionHoldMatch[1]);
     const codeReviewMatch = url.pathname.match(/^\/api\/items\/(\d+)\/code-review$/);
     if (request.method === "GET" && codeReviewMatch) return loadCodeReview(env.DB, env, user, Number(codeReviewMatch[1]));
     if (request.method === "POST" && codeReviewMatch) return actOnCodeReview(request, env.DB, env, user, Number(codeReviewMatch[1]));

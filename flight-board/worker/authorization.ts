@@ -126,7 +126,7 @@ export function evaluateAgentDispatch(item: DispatchCandidate, nowIso = new Date
 
   const missing = checks.filter((check) => !check.met).map((check) => check.label);
   const authorized = missing.length === 0;
-  const channel = "#project-federal-bd-pilot";
+  const channel = "Resolved from audited workspace configuration at authorization";
   const handoffMessage = authorized
     ? `[${key}] ${title} — Authorized Flight Board handoff to ${assigneeName}. State: In Progress. Next action: ${nextAction} Owner forecast: ${workflow === "STEER" ? "accepted in STEER Work Economics" : "not required for this workflow"}. Evidence: ${evidenceUrl} Engineering record: ${githubUrl} Buzz coordinates this handoff; scope, forecast, status, decisions, and evidence remain authoritative in the Flight Board and GitHub.`
     : null;
