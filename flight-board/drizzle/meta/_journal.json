@@ -120,6 +120,13 @@
       "when": 1787060877991,
       "tag": "0016_giant_queen_noir",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1787061505518,
+      "tag": "0017_fat_zodiak",
+      "breakpoints": true
     }
   ]
 }

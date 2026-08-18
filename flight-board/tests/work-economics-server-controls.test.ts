@@ -92,12 +92,34 @@ async function setup() {
     VALUES ('STR-900','Server controls','Exercise every server control','Engineer','Now','STEER','active','Gate 2 passed','Rework','Tech Lead','agent-a','Run the exact independent retest evidence.','https://github.com/idrissenayat/federal-bd-platform/blob/main/README.md','https://github.com/idrissenayat/federal-bd-platform/issues/31','pod-a','member-a',?,'member-a','2026-08-14T14:00:00.000Z','2026-08-14T14:00:00.000Z')`).run(JSON.stringify(forecast));
   db.sqlite.prepare(`INSERT INTO dispatch_privacy_policies
     (pod_id, policy_version, inventory_url, inventory_sha256, terminal_retention_days, provider_recovery_days, status, changed_by, change_reason, created_at)
-    VALUES ('pod-a', 1, 'https://github.com/idrissenayat/federal-bd-platform/blob/367707def83a36bbf03e3a17eae838b89a63cbee/steer/evidence/0028-dispatch-data-inventory.md',
-      'd1862566b1d88a9c79f6429bf1b259503edcc5418455ebf9b1b801bde0c2353b', 90, 30, 'BLOCKED_BACKUP_RULING', 'member-a', 'Test fixture', '2026-08-18T00:00:00.000Z')`).run();
+    VALUES ('pod-a', 1, 'https://github.com/idrissenayat/federal-bd-platform/blob/382dba4b08abc94196f26f77c14f232e6e32d3b7/steer/evidence/0028-dispatch-data-inventory.md',
+      '882afa8a3385b4ae596cc03656eb2173504b513e5a368959f4608ad5d48aaa24', 90, 30, 'BLOCKED_BACKUP_RULING', 'member-a', 'Test fixture', '2026-08-18T00:00:00.000Z')`).run();
   db.sqlite.prepare(`INSERT INTO buzz_channel_registry
     (pod_id, registry_version, channel_id, channel_name, relay_url, status, changed_by, change_reason, created_at)
     VALUES ('pod-a', 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'ACTIVE', 'member-a', 'Test fixture', '2026-08-18T00:00:00.000Z')`).run();
   return { db, itemId: Number(result.lastInsertRowid) };
+}
+
+function prepareDispatchAuthorizationSeed(db: D1Database, itemId: number, revision = "a".repeat(40)) {
+  const acceptedAt = new Date().toISOString();
+  const currentForecast = { ...forecast, acceptedAt, updatedAt: acceptedAt, earliestCompletion: "2026-08-20T14:00:00.000Z", likelyCompletion: "2026-08-20T18:00:00.000Z", latestCompletion: "2026-08-21T18:00:00.000Z", nextMilestoneAt: "2026-08-19T16:00:00.000Z", phaseExitAt: "2026-08-20T18:00:00.000Z" };
+  db.sqlite.prepare(`UPDATE members SET agent_key_id = 'agent-a-key', agent_key_version = 1,
+    agent_public_key = ?, agent_public_key_fingerprint = ? WHERE id = 'agent-a'`).run("e".repeat(64), "a".repeat(64));
+  db.sqlite.prepare(`INSERT INTO workspace_routing
+    (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+    VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'member-a', 'Test fixture', ?)`)
+    .run(acceptedAt);
+  db.sqlite.prepare(`INSERT INTO agent_channel_memberships
+    (pod_id, channel_id, member_id, membership_version, status, created_at)
+    VALUES ('pod-a', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'agent-a', 1, 'active', ?)`)
+    .run(acceptedAt);
+  db.sqlite.prepare("UPDATE work_items SET evidence_url = ?, delivery_forecast_json = ? WHERE id = ?")
+    .run(`https://github.com/idrissenayat/federal-bd-platform/blob/${revision}/steer/exams/0028.md`, JSON.stringify(currentForecast), itemId);
+  db.sqlite.prepare(`INSERT INTO work_economics_events
+    (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+    VALUES (?, 'deliveryForecast', 'accepted', 'member-a', 'Delivery owner', NULL, ?, 'Test accepted forecast audit', ?)`)
+    .run(itemId, JSON.stringify(currentForecast), acceptedAt);
+  return acceptedAt;
 }
 
 test("general item mutation and dispatch enforce same-POD scope and retain payload-safe denial audit", async () => {
@@ -128,6 +150,143 @@ test("STR-028 telemetry accepts only bounded labels and rejects PII-shaped extra
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM steer_telemetry").get()!.total, 1);
   const row = db.sqlite.prepare("SELECT metric_name, label_name, label_value, value, case_id FROM steer_telemetry").get()!;
   assert.deepEqual({ ...row }, { metric_name: "steer_work_item_save_outcome_total", label_name: "outcome", label_value: "success", value: 1, case_id: "SAVE-01" });
+});
+
+test("FAIL-03 rejects every frozen pre-receipt route conflict with only one typed no-PII diagnostic", async () => {
+  const cases: Array<{ id: string; code: string; mutate(db: D1Database): void }> = [
+    {
+      id: "F03-A", code: "ROUTE_CONFIG_MISSING",
+      mutate: (db) => { db.sqlite.prepare("DELETE FROM workspace_routing WHERE pod_id = 'pod-a'").run(); },
+    },
+    {
+      id: "F03-B", code: "ROUTE_CHANNEL_UNKNOWN",
+      mutate: (db) => { db.sqlite.prepare(`INSERT INTO buzz_channel_registry
+        (pod_id, registry_version, channel_id, channel_name, relay_url, status, changed_by, change_reason, created_at)
+        VALUES ('pod-a', 2, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'DELETED', 'member-a', 'Frozen F03-B', ?)`).run(new Date().toISOString()); },
+    },
+    {
+      id: "F03-C", code: "ROUTE_CHANNEL_IDENTITY_MISMATCH",
+      mutate: (db) => { db.sqlite.prepare(`INSERT INTO buzz_channel_registry
+        (pod_id, registry_version, channel_id, channel_name, relay_url, status, changed_by, change_reason, created_at)
+        VALUES ('pod-a', 2, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#wrong-channel', 'https://relay.example', 'ACTIVE', 'member-a', 'Frozen F03-C', ?)`).run(new Date().toISOString()); },
+    },
+    {
+      id: "F03-D", code: "ROUTE_RELAY_WORKSPACE_MISMATCH",
+      mutate: (db) => { db.sqlite.prepare(`INSERT INTO buzz_channel_registry
+        (pod_id, registry_version, channel_id, channel_name, relay_url, status, changed_by, change_reason, created_at)
+        VALUES ('pod-a', 2, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://wrong-relay.example', 'ACTIVE', 'member-a', 'Frozen F03-D', ?)`).run(new Date().toISOString()); },
+    },
+    {
+      id: "F03-E", code: "ROUTE_AGENT_NOT_ENROLLED",
+      mutate: (db) => { db.sqlite.prepare(`INSERT INTO agent_channel_memberships
+        (pod_id, channel_id, member_id, membership_version, status, created_at)
+        VALUES ('pod-a', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'agent-a', 2, 'removed', ?)`).run(new Date().toISOString()); },
+    },
+    {
+      id: "F03-F", code: "ROUTE_COMPETING_SOURCE",
+      mutate: (db) => { db.sqlite.prepare(`INSERT INTO workspace_routing_conflicts
+        (pod_id, route_key, conflict_id, source_kind, source_reference_sha256, status, detected_by, detected_at)
+        VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 'f03-f', 'environment-override', ?, 'ACTIVE', 'member-a', ?)`).run("b".repeat(64), new Date().toISOString()); },
+    },
+  ];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => String(input).includes("0028-dispatch-data-inventory.md")
+    ? new Response(privacyInventory, { status: 200 })
+    : String(input).includes("raw.githubusercontent.com") ? new Response("# exact approved exam\n", { status: 200 })
+    : originalFetch(input);
+  try {
+    for (const frozen of cases) {
+      const { db, itemId } = await setup();
+      prepareDispatchAuthorizationSeed(db, itemId);
+      frozen.mutate(db);
+      const response = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+      assert.equal(response?.status, 409, `${frozen.id}: ${await response?.clone().text()}`);
+      assert.equal((await response?.json() as { code: string }).code, frozen.code, frozen.id);
+      assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_security_diagnostics").get()!.total, 1, frozen.id);
+      assert.equal(db.sqlite.prepare("SELECT code FROM dispatch_security_diagnostics").get()!.code, frozen.code, frozen.id);
+      assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_receipts").get()!.total, 0, frozen.id);
+      assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_outbox").get()!.total, 0, frozen.id);
+      assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events").get()!.total, 0, frozen.id);
+      assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_attempts").get()!.total, 0, frozen.id);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("FAIL-04 fences every frozen post-receipt binding invalidation before send", async () => {
+  const cases: Array<{ id: string; code: string; mutate(db: D1Database): void }> = [
+    {
+      id: "F04-A", code: "CHANNEL_BINDING_STALE",
+      mutate: (db) => { db.sqlite.prepare(`INSERT INTO workspace_routing
+        (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+        VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 2, 'wrong-channel-id', '#wrong-channel', 'https://relay.example', 'member-a', 'Frozen F04-A', ?)`).run(new Date().toISOString()); },
+    },
+    {
+      id: "F04-B", code: "RELAY_BINDING_STALE",
+      mutate: (db) => {
+        db.sqlite.prepare(`INSERT INTO workspace_routing
+          (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+          VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 2, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://other-relay.example', 'member-a', 'Frozen F04-B', ?)`).run(new Date().toISOString());
+        db.sqlite.prepare(`INSERT INTO buzz_channel_registry
+          (pod_id, registry_version, channel_id, channel_name, relay_url, status, changed_by, change_reason, created_at)
+          VALUES ('pod-a', 2, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://other-relay.example', 'ACTIVE', 'member-a', 'Frozen F04-B', ?)`).run(new Date().toISOString());
+      },
+    },
+    {
+      id: "F04-C", code: "ROUTE_CONFIG_MISSING",
+      mutate: (db) => { db.sqlite.prepare("DELETE FROM workspace_routing WHERE pod_id = 'pod-a'").run(); },
+    },
+    {
+      id: "F04-D", code: "MEMBERSHIP_STALE",
+      mutate: (db) => { db.sqlite.prepare(`INSERT INTO agent_channel_memberships
+        (pod_id, channel_id, member_id, membership_version, status, created_at)
+        VALUES ('pod-a', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'agent-a', 2, 'removed', ?)`).run(new Date().toISOString()); },
+    },
+    {
+      id: "F04-E", code: "RELAY_PUBLISHER_UNTRUSTED",
+      mutate: (db) => { db.sqlite.prepare(`INSERT INTO relay_event_signers
+        (pod_id, registry_version, relay_url, channel_id, key_id, key_version, public_key, valid_from, valid_until, status, changed_by, change_reason, created_at)
+        VALUES ('pod-a', 2, 'https://relay.example', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'relay-test', 2, ?, ?, NULL, 'RETIRED', 'member-a', 'Frozen F04-E', ?)`)
+        .run("c".repeat(64), new Date().toISOString(), new Date().toISOString()); },
+    },
+  ];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => String(input).includes("0028-dispatch-data-inventory.md")
+    ? new Response(privacyInventory, { status: 200 })
+    : String(input).includes("raw.githubusercontent.com") ? new Response("# exact approved exam\n", { status: 200 })
+    : originalFetch(input);
+  try {
+    for (const frozen of cases) {
+      const { db, itemId } = await setup();
+      const acceptedAt = prepareDispatchAuthorizationSeed(db, itemId);
+      db.sqlite.prepare(`INSERT INTO relay_event_signers
+        (pod_id, registry_version, relay_url, channel_id, key_id, key_version, public_key, valid_from, valid_until, status, changed_by, change_reason, created_at)
+        VALUES ('pod-a', 1, 'https://relay.example', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'relay-test', 1, ?, ?, NULL, 'ACTIVE', 'member-a', 'Test fixture', ?)`)
+        .run("d".repeat(64), acceptedAt, acceptedAt);
+      const authorized = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+      assert.equal(authorized?.status, 200, `${frozen.id}: ${await authorized?.text()}`);
+      const intentId = String(db.sqlite.prepare("SELECT intent_id FROM dispatch_receipts").get()!.intent_id);
+      const reserved = await handleApi(serviceRequest("/api/dispatches/next", {}), { DB: db, ...dispatchEnv });
+      assert.equal(reserved?.status, 201, `${frozen.id}: ${await reserved?.clone().text()}`);
+      frozen.mutate(db);
+      const blocked = await handleApi(serviceRequest(`/api/dispatches/${intentId}/commands`, { command: "START_SEND" }), { DB: db, ...dispatchEnv });
+      assert.equal(blocked?.status, 409, `${frozen.id}: ${await blocked?.clone().text()}`);
+      assert.equal((await blocked?.json() as { code: string }).code, frozen.code, frozen.id);
+      const outbox = db.sqlite.prepare(`SELECT current_state, terminalization_requested, lease_id, reservation_fence, send_started
+        FROM dispatch_outbox WHERE intent_id = ?`).get(intentId)!;
+      assert.deepEqual({ ...outbox }, { current_state: "QUEUED", terminalization_requested: 1, lease_id: null, reservation_fence: null, send_started: 0 }, frozen.id);
+      assert.equal(db.sqlite.prepare("SELECT status FROM dispatch_attempts WHERE intent_id = ?").get(intentId)!.status, "FENCED_CONFIG_STALE", frozen.id);
+      assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE intent_id = ? AND event_type = 'TERMINALIZATION_REQUESTED'").get(intentId)!.total, 1, frozen.id);
+      assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE intent_id = ? AND event_type = 'DELIVERY_BLOCKED_CONFIG_STALE'").get(intentId)!.total, 1, frozen.id);
+      assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE intent_id = ? AND event_type = 'SEND_ATTEMPT_STARTED'").get(intentId)!.total, 0, frozen.id);
+      assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE intent_id = ? AND resulting_state <> 'QUEUED'").get(intentId)!.total, 0, frozen.id);
+      const noSend = await handleApi(serviceRequest("/api/dispatches/next", {}), { DB: db, ...dispatchEnv });
+      assert.equal(noSend?.status, 204, frozen.id);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("successful dispatch creates one immutable receipt, outbox identity, and QUEUED event across replay", async () => {
@@ -258,6 +417,112 @@ test("REC-04 route invalidation fences the old intent and explicit reauthorizati
     assert.equal((await successorReservation?.json() as { dispatch_intent_id: string }).dispatch_intent_id, successorIntent);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_attempts WHERE intent_id = ?").get(originalIntent)!.total, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_attempts WHERE intent_id = ?").get(successorIntent)!.total, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("REC-04 permits one same-lineage successor for every remaining frozen binding branch", async () => {
+  const cases: Array<{
+    id: string;
+    code: string;
+    mutate(db: D1Database): void;
+    repair(db: D1Database): void;
+  }> = [
+    {
+      id: "R04-B", code: "CHANNEL_BINDING_STALE",
+      mutate: (db) => { db.sqlite.prepare(`INSERT INTO workspace_routing
+        (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+        VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 2, 'wrong-channel-id', '#wrong-channel', 'https://relay.example', 'member-a', 'Frozen R04-B', ?)`).run(new Date().toISOString()); },
+      repair: (db) => { db.sqlite.prepare(`INSERT INTO workspace_routing
+        (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+        VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 3, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'member-a', 'Repair R04-B', ?)`).run(new Date().toISOString()); },
+    },
+    {
+      id: "R04-C", code: "RELAY_BINDING_STALE",
+      mutate: (db) => {
+        db.sqlite.prepare(`INSERT INTO workspace_routing
+          (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+          VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 2, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://other-relay.example', 'member-a', 'Frozen R04-C', ?)`).run(new Date().toISOString());
+        db.sqlite.prepare(`INSERT INTO buzz_channel_registry
+          (pod_id, registry_version, channel_id, channel_name, relay_url, status, changed_by, change_reason, created_at)
+          VALUES ('pod-a', 2, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://other-relay.example', 'ACTIVE', 'member-a', 'Frozen R04-C', ?)`).run(new Date().toISOString());
+      },
+      repair: (db) => {
+        db.sqlite.prepare(`INSERT INTO workspace_routing
+          (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+          VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 3, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'member-a', 'Repair R04-C', ?)`).run(new Date().toISOString());
+        db.sqlite.prepare(`INSERT INTO buzz_channel_registry
+          (pod_id, registry_version, channel_id, channel_name, relay_url, status, changed_by, change_reason, created_at)
+          VALUES ('pod-a', 3, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'ACTIVE', 'member-a', 'Repair R04-C', ?)`).run(new Date().toISOString());
+      },
+    },
+    {
+      id: "R04-D", code: "ROUTE_CONFIG_MISSING",
+      mutate: (db) => { db.sqlite.prepare("DELETE FROM workspace_routing WHERE pod_id = 'pod-a'").run(); },
+      repair: (db) => { db.sqlite.prepare(`INSERT INTO workspace_routing
+        (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+        VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 2, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'member-a', 'Repair R04-D', ?)`).run(new Date().toISOString()); },
+    },
+    {
+      id: "R04-E", code: "MEMBERSHIP_STALE",
+      mutate: (db) => { db.sqlite.prepare(`INSERT INTO agent_channel_memberships
+        (pod_id, channel_id, member_id, membership_version, status, created_at)
+        VALUES ('pod-a', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'agent-a', 2, 'removed', ?)`).run(new Date().toISOString()); },
+      repair: (db) => { db.sqlite.prepare(`INSERT INTO agent_channel_memberships
+        (pod_id, channel_id, member_id, membership_version, status, created_at)
+        VALUES ('pod-a', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'agent-a', 3, 'active', ?)`).run(new Date().toISOString()); },
+    },
+    {
+      id: "R04-F", code: "RELAY_PUBLISHER_UNTRUSTED",
+      mutate: (db) => { db.sqlite.prepare(`INSERT INTO relay_event_signers
+        (pod_id, registry_version, relay_url, channel_id, key_id, key_version, public_key, valid_from, valid_until, status, changed_by, change_reason, created_at)
+        VALUES ('pod-a', 2, 'https://relay.example', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'relay-test', 2, ?, ?, NULL, 'REVOKED', 'member-a', 'Frozen R04-F', ?)`)
+        .run("c".repeat(64), new Date().toISOString(), new Date().toISOString()); },
+      repair: (db) => { db.sqlite.prepare(`INSERT INTO relay_event_signers
+        (pod_id, registry_version, relay_url, channel_id, key_id, key_version, public_key, valid_from, valid_until, status, changed_by, change_reason, created_at)
+        VALUES ('pod-a', 3, 'https://relay.example', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'relay-test', 3, ?, ?, NULL, 'ACTIVE', 'member-a', 'Repair R04-F', ?)`)
+        .run("d".repeat(64), new Date().toISOString(), new Date().toISOString()); },
+    },
+  ];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => String(input).includes("0028-dispatch-data-inventory.md")
+    ? new Response(privacyInventory, { status: 200 })
+    : String(input).includes("raw.githubusercontent.com") ? new Response("# exact approved exam\n", { status: 200 })
+    : originalFetch(input);
+  try {
+    for (const frozen of cases) {
+      const { db, itemId } = await setup();
+      const acceptedAt = prepareDispatchAuthorizationSeed(db, itemId);
+      db.sqlite.prepare(`INSERT INTO relay_event_signers
+        (pod_id, registry_version, relay_url, channel_id, key_id, key_version, public_key, valid_from, valid_until, status, changed_by, change_reason, created_at)
+        VALUES ('pod-a', 1, 'https://relay.example', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'relay-test', 1, ?, ?, NULL, 'ACTIVE', 'member-a', 'Test fixture', ?)`)
+        .run("d".repeat(64), acceptedAt, acceptedAt);
+      const authorized = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+      assert.equal(authorized?.status, 200, `${frozen.id}: ${await authorized?.text()}`);
+      const original = db.sqlite.prepare("SELECT intent_id, lineage_id FROM dispatch_receipts").get()!;
+      const originalIntent = String(original.intent_id);
+      const reserved = await handleApi(serviceRequest("/api/dispatches/next", {}), { DB: db, ...dispatchEnv });
+      assert.equal(reserved?.status, 201, `${frozen.id}: ${await reserved?.clone().text()}`);
+      frozen.mutate(db);
+      const blocked = await handleApi(serviceRequest(`/api/dispatches/${originalIntent}/commands`, { command: "START_SEND" }), { DB: db, ...dispatchEnv });
+      assert.equal(blocked?.status, 409, `${frozen.id}: ${await blocked?.clone().text()}`);
+      assert.equal((await blocked?.json() as { code: string }).code, frozen.code, frozen.id);
+      const noImplicitRetry = await handleApi(serviceRequest("/api/dispatches/next", {}), { DB: db, ...dispatchEnv });
+      assert.equal(noImplicitRetry?.status, 204, frozen.id);
+      frozen.repair(db);
+      const reauthorized = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+      assert.equal(reauthorized?.status, 200, `${frozen.id}: ${await reauthorized?.text()}`);
+      const receipts = db.sqlite.prepare("SELECT intent_id, lineage_id, receipt_json FROM dispatch_receipts ORDER BY rowid").all() as Array<Record<string, unknown>>;
+      assert.equal(receipts.length, 2, frozen.id);
+      assert.equal(receipts[1].lineage_id, original.lineage_id, frozen.id);
+      assert.equal((JSON.parse(String(receipts[1].receipt_json)) as Record<string, unknown>).predecessor_intent_id, originalIntent, frozen.id);
+      assert.equal(db.sqlite.prepare("SELECT current_state FROM dispatch_outbox WHERE intent_id = ?").get(originalIntent)!.current_state, "SUPERSEDED", frozen.id);
+      const successor = await handleApi(serviceRequest("/api/dispatches/next", {}), { DB: db, ...dispatchEnv });
+      assert.equal(successor?.status, 201, `${frozen.id}: ${await successor?.clone().text()}`);
+      assert.equal((await successor?.json() as { dispatch_intent_id: string }).dispatch_intent_id, receipts[1].intent_id, frozen.id);
+      assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_outbox WHERE current_state = 'QUEUED'").get()!.total, 1, frozen.id);
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }

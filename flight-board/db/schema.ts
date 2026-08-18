@@ -241,6 +241,26 @@ export const workspaceRouting = sqliteTable(
   ],
 );
 
+export const workspaceRoutingConflicts = sqliteTable(
+  "workspace_routing_conflicts",
+  {
+    podId: text("pod_id").notNull(),
+    routeKey: text("route_key").notNull(),
+    conflictId: text("conflict_id").notNull(),
+    sourceKind: text("source_kind").notNull(),
+    sourceReferenceSha256: text("source_reference_sha256").notNull(),
+    status: text("status").notNull(),
+    detectedBy: text("detected_by").notNull(),
+    detectedAt: text("detected_at").notNull(),
+    resolvedBy: text("resolved_by"),
+    resolvedAt: text("resolved_at"),
+  },
+  (table) => [
+    uniqueIndex("uq_workspace_routing_conflict").on(table.podId, table.routeKey, table.conflictId),
+    index("idx_workspace_routing_conflict_active").on(table.podId, table.routeKey, table.status),
+  ],
+);
+
 export const buzzChannelRegistry = sqliteTable(
   "buzz_channel_registry",
   {

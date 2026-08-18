@@ -44,8 +44,8 @@ const buzzRelayHttpUrl = "https://blockbuzzmain-production-5bcb.up.railway.app";
 const buzzRelayWsUrl = "wss://blockbuzzmain-production-5bcb.up.railway.app";
 const allowedGitHubRepository = "idrissenayat/federal-bd-platform";
 const gateTwoExamNextAction = "Design a falsifiable Gate 2 Exam from the approved Intent Brief, attach the exact Exam revision, run a fresh Critic review, and present Gate 2 to the Interim Tech Lead. Do not implement before Gate 2 passes.";
-const dispatchPrivacyInventoryUrl = "https://github.com/idrissenayat/federal-bd-platform/blob/367707def83a36bbf03e3a17eae838b89a63cbee/steer/evidence/0028-dispatch-data-inventory.md";
-const dispatchPrivacyInventorySha256 = "d1862566b1d88a9c79f6429bf1b259503edcc5418455ebf9b1b801bde0c2353b";
+const dispatchPrivacyInventoryUrl = "https://github.com/idrissenayat/federal-bd-platform/blob/382dba4b08abc94196f26f77c14f232e6e32d3b7/steer/evidence/0028-dispatch-data-inventory.md";
+const dispatchPrivacyInventorySha256 = "882afa8a3385b4ae596cc03656eb2173504b513e5a368959f4608ad5d48aaa24";
 
 type PullRequestReference = { owner: string; repo: string; repository: string; number: number };
 
@@ -418,6 +418,13 @@ async function ensureSchema(db: Database) {
       UNIQUE(pod_id, route_key, configuration_version)
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_workspace_routing_active ON workspace_routing (pod_id, route_key, configuration_version)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS workspace_routing_conflicts (
+      pod_id text NOT NULL, route_key text NOT NULL, conflict_id text NOT NULL,
+      source_kind text NOT NULL, source_reference_sha256 text NOT NULL, status text NOT NULL,
+      detected_by text NOT NULL, detected_at text NOT NULL, resolved_by text, resolved_at text,
+      UNIQUE(pod_id, route_key, conflict_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_workspace_routing_conflict_active ON workspace_routing_conflicts (pod_id, route_key, status)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS buzz_channel_registry (
       pod_id text NOT NULL, registry_version integer NOT NULL, channel_id text NOT NULL,
       channel_name text NOT NULL, relay_url text NOT NULL, status text NOT NULL,
@@ -967,7 +974,14 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
             CASE WHEN c.channel_name = r.channel_name THEN 1 ELSE 0 END AS channel_name_matches,
             CASE WHEN c.relay_url = r.relay_url THEN 1 ELSE 0 END AS relay_binding_matches,
             CASE WHEN c.pod_id = r.pod_id THEN 1 ELSE 0 END AS workspace_binding_matches,
-            0 AS competing_source
+            COALESCE(publisher.registry_version, 0) AS relay_publisher_registry_version,
+            COALESCE(publisher.key_id, '') AS relay_publisher_key_id,
+            COALESCE(publisher.key_version, 0) AS relay_publisher_key_version,
+            COALESCE(publisher.public_key, '') AS relay_publisher_public_key,
+            CASE WHEN EXISTS (
+              SELECT 1 FROM workspace_routing_conflicts conflict
+              WHERE conflict.pod_id = r.pod_id AND conflict.route_key = r.route_key AND conflict.status = 'ACTIVE'
+            ) THEN 1 ELSE 0 END AS competing_source
      FROM workspace_routing r
      LEFT JOIN buzz_channel_registry c
        ON c.pod_id = r.pod_id AND c.channel_id = r.channel_id
@@ -977,6 +991,10 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
        ON m.pod_id = r.pod_id AND m.channel_id = r.channel_id AND m.member_id = ?
       AND m.membership_version = (SELECT MAX(m2.membership_version) FROM agent_channel_memberships m2
         WHERE m2.pod_id = r.pod_id AND m2.channel_id = r.channel_id AND m2.member_id = ?)
+     LEFT JOIN relay_event_signers publisher
+       ON publisher.pod_id = r.pod_id AND publisher.relay_url = r.relay_url AND publisher.channel_id = r.channel_id
+      AND publisher.registry_version = (SELECT MAX(p2.registry_version) FROM relay_event_signers p2
+        WHERE p2.pod_id = r.pod_id AND p2.relay_url = r.relay_url AND p2.channel_id = r.channel_id)
      WHERE r.pod_id = ? AND r.route_key = ?
      ORDER BY r.configuration_version DESC LIMIT 1`,
   ).bind(assigneeId, assigneeId, podId, STEER_HANDOFF_ROUTE_KEY).first<Record<string, unknown>>();
@@ -1019,7 +1037,7 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
     return json({ error: "The required dispatch privacy inventory and retention policy are missing or version-mismatched.", code: "PRIVACY_POLICY_MISSING", authorization }, 409);
   }
   const privacyEvidence = await readEvidence(privacyPolicy.inventory_url);
-  if (privacyEvidence.sha256 !== privacyPolicy.inventory_sha256 || privacyEvidence.revision !== "367707def83a36bbf03e3a17eae838b89a63cbee") {
+  if (privacyEvidence.sha256 !== privacyPolicy.inventory_sha256 || privacyEvidence.revision !== "382dba4b08abc94196f26f77c14f232e6e32d3b7") {
     return json({ error: "The immutable dispatch privacy inventory did not resolve to its audited digest.", code: "PRIVACY_INVENTORY_UNRESOLVED", authorization }, 409);
   }
   const privacyPolicyStatus = String(privacyPolicy.status);
@@ -1046,7 +1064,11 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
     forecastAuditEventId = `work-economics:${forecastEvent.id}`;
   }
   const authorizationRevision = String(item.updated_at);
-  const authorizationAuditEventId = `dispatch-authorize:${itemId}:${authorizationRevision}:${user.id}:${route.configurationVersion}:${exactEvidence.revision}`;
+  const relayPublisherRegistryVersion = Number(routeRow?.relay_publisher_registry_version ?? 0);
+  const relayPublisherKeyId = String(routeRow?.relay_publisher_key_id ?? "");
+  const relayPublisherKeyVersion = Number(routeRow?.relay_publisher_key_version ?? 0);
+  const relayPublisherPublicKey = String(routeRow?.relay_publisher_public_key ?? "");
+  const authorizationAuditEventId = `dispatch-authorize:${itemId}:${authorizationRevision}:${user.id}:${route.configurationVersion}:${route.membershipVersion}:${relayPublisherRegistryVersion}:${exactEvidence.revision}`;
   const currentNextActionDigest = await sha256Hex(String(item.next_action).trim());
   const predecessor = await db.prepare(`SELECT r.intent_id, r.lineage_id, r.receipt_json,
       o.current_state, o.current_event_version, o.current_event_sha256, o.send_started,
@@ -1084,7 +1106,9 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
     authorizationRevision, authorizationAuditEventId, rootAuthorizationAuditEventId, evidenceUrl: exactEvidence.url,
     evidenceRevision: exactEvidence.revision, evidenceSha256: evidence.sha256,
     forecastAuditEventId, channelId: route.channelId, routingConfigurationVersion: route.configurationVersion,
-    relayUrl: route.relayUrl, membershipVersion: route.membershipVersion, nextAction: String(item.next_action),
+    relayUrl: route.relayUrl, membershipVersion: route.membershipVersion,
+    relayPublisherRegistryVersion, relayPublisherKeyId, relayPublisherKeyVersion, relayPublisherPublicKey,
+    nextAction: String(item.next_action),
   });
   const existing = await db.prepare("SELECT receipt_json FROM dispatch_receipts WHERE intent_id = ?").bind(identity.intentId).first<{ receipt_json: string }>();
   if (existing) {
@@ -1118,6 +1142,10 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
     predecessor_intent_id: predecessorIntentId,
     canonical_channel_id: route.channelId, canonical_channel_name: route.channelName,
     routing_configuration_version: route.configurationVersion, membership_version: route.membershipVersion,
+    relay_publisher_registry_version: relayPublisherRegistryVersion,
+    relay_publisher_key_id: relayPublisherKeyId,
+    relay_publisher_key_version: relayPublisherKeyVersion,
+    relay_publisher_public_key: relayPublisherPublicKey,
     privacy_policy_version: Number(privacyPolicy.policy_version), privacy_policy_status: privacyPolicyStatus,
     privacy_inventory_url: String(privacyPolicy.inventory_url), privacy_inventory_sha256: String(privacyPolicy.inventory_sha256),
     authorized_next_action_sha256: identity.nextActionDigest,

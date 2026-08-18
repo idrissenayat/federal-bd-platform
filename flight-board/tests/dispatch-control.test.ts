@@ -11,6 +11,8 @@ const input = {
   evidenceRevision: "b".repeat(40), evidenceSha256: "c".repeat(64), forecastAuditEventId: "forecast-28",
   channelId: "10ac2fb4-f7fc-4dbc-bb73-8c545f31a470", routingConfigurationVersion: 1,
   relayUrl: "https://relay.example", membershipVersion: 1,
+  relayPublisherRegistryVersion: 2, relayPublisherKeyId: "relay-publisher", relayPublisherKeyVersion: 2,
+  relayPublisherPublicKey: "f".repeat(64),
   nextAction: "Implement the exact approved Exam and stop before release.",
 };
 

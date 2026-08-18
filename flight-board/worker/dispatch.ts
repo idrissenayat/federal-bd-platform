@@ -256,7 +256,7 @@ async function readBody(request: Request) {
   try { return await request.json() as Record<string, unknown>; } catch { return null; }
 }
 
-async function validateCurrentRoute(db: Database, receipt: ReceiptRecord, outbox: OutboxRecord) {
+async function validateCurrentRoute(db: Database, receipt: ReceiptRecord, outbox: OutboxRecord, receiptBody: Record<string, unknown>) {
   const route = await db.prepare(`SELECT r.channel_id, r.channel_name, r.relay_url, r.configuration_version,
     CASE WHEN m.status = 'active' THEN 1 ELSE 0 END AS member_active,
     CASE WHEN c.status = 'ACTIVE' THEN 1 ELSE 0 END AS channel_active,
@@ -281,12 +281,19 @@ async function validateCurrentRoute(db: Database, receipt: ReceiptRecord, outbox
   if (String(route.relay_url) !== outbox.relay_url) return "RELAY_BINDING_STALE";
   if (Number(route.configuration_version) !== receipt.configuration_version) return "ROUTING_VERSION_STALE";
   if (Number(route.member_active) !== 1) return "MEMBERSHIP_STALE";
-  const publisher = await db.prepare(`SELECT public_key FROM relay_event_signers
+  const publisher = await db.prepare(`SELECT registry_version, key_id, key_version, public_key FROM relay_event_signers
     WHERE pod_id = ? AND relay_url = ? AND channel_id = ? AND status = 'ACTIVE'
       AND valid_from <= ? AND (valid_until IS NULL OR valid_until > ?)
+      AND registry_version = (SELECT MAX(latest.registry_version) FROM relay_event_signers latest
+        WHERE latest.pod_id = ? AND latest.relay_url = ? AND latest.channel_id = ?)
     ORDER BY registry_version DESC LIMIT 1`)
-    .bind(receipt.pod_id, outbox.relay_url, receipt.channel_id, new Date().toISOString(), new Date().toISOString()).first<{ public_key: string }>();
+    .bind(receipt.pod_id, outbox.relay_url, receipt.channel_id, new Date().toISOString(), new Date().toISOString(),
+      receipt.pod_id, outbox.relay_url, receipt.channel_id).first<Record<string, unknown>>();
   if (!publisher) return "RELAY_PUBLISHER_UNTRUSTED";
+  if (Number(publisher.registry_version) !== Number(receiptBody.relay_publisher_registry_version)
+    || String(publisher.key_id) !== String(receiptBody.relay_publisher_key_id)
+    || Number(publisher.key_version) !== Number(receiptBody.relay_publisher_key_version)
+    || String(publisher.public_key) !== String(receiptBody.relay_publisher_public_key)) return "RELAY_PUBLISHER_UNTRUSTED";
   return null;
 }
 
@@ -428,7 +435,7 @@ async function handleServiceCommand(request: Request, db: Database, env: Dispatc
   if (!allowed.includes(command)) return json({ error: "Unsupported service command." }, 400);
 
   if (command === "START_SEND") {
-    const configError = await validateCurrentRoute(db, dispatch.receipt, dispatch.outbox);
+    const configError = await validateCurrentRoute(db, dispatch.receipt, dispatch.outbox, dispatch.receiptBody);
     if (configError) {
       await recordConfigBlock(db, env, dispatch, configError);
       return json({ error: "Dispatch was terminalized before send because an immutable route binding changed.", code: configError }, 409);
@@ -445,8 +452,13 @@ async function handleServiceCommand(request: Request, db: Database, env: Dispatc
     if (!relayEvent || !(await verifyNip01Event(relayEvent))) return json({ error: "A valid NIP-01 relay event is required.", code: "RELAY_SIGNATURE_INVALID" }, 409);
     const signer = await db.prepare(`SELECT * FROM relay_event_signers WHERE pod_id = ? AND relay_url = ? AND channel_id = ?
       AND public_key = ? AND status = 'ACTIVE' AND valid_from <= ? AND (valid_until IS NULL OR valid_until > ?)
+      AND registry_version = ? AND key_id = ? AND key_version = ?
+      AND registry_version = (SELECT MAX(latest.registry_version) FROM relay_event_signers latest
+        WHERE latest.pod_id = ? AND latest.relay_url = ? AND latest.channel_id = ?)
       ORDER BY registry_version DESC LIMIT 1`)
-      .bind(dispatch.receipt.pod_id, dispatch.outbox.relay_url, dispatch.receipt.channel_id, relayEvent.pubkey, new Date().toISOString(), new Date().toISOString()).first<Record<string, unknown>>();
+      .bind(dispatch.receipt.pod_id, dispatch.outbox.relay_url, dispatch.receipt.channel_id, relayEvent.pubkey, new Date().toISOString(), new Date().toISOString(),
+        Number(dispatch.receiptBody.relay_publisher_registry_version), String(dispatch.receiptBody.relay_publisher_key_id), Number(dispatch.receiptBody.relay_publisher_key_version),
+        dispatch.receipt.pod_id, dispatch.outbox.relay_url, dispatch.receipt.channel_id).first<Record<string, unknown>>();
     if (!signer) return json({ error: "Relay publisher is not active in the audited registry.", code: "RELAY_PUBLISHER_UNTRUSTED" }, 409);
     let content: Record<string, unknown>;
     try { content = JSON.parse(relayEvent.content) as Record<string, unknown>; } catch { return json({ error: "Relay event content is not valid JSON.", code: "RELAY_BINDING_INVALID" }, 409); }

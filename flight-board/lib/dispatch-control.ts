@@ -37,6 +37,10 @@ export type DispatchIdentityInput = {
   routingConfigurationVersion: number;
   relayUrl: string;
   membershipVersion: number;
+  relayPublisherRegistryVersion: number;
+  relayPublisherKeyId: string;
+  relayPublisherKeyVersion: number;
+  relayPublisherPublicKey: string;
   nextAction: string;
 };
 
@@ -84,6 +88,10 @@ export async function buildDispatchIdentity(input: DispatchIdentityInput) {
     routing_configuration_version: input.routingConfigurationVersion,
     relay_url: input.relayUrl,
     membership_version: input.membershipVersion,
+    relay_publisher_registry_version: input.relayPublisherRegistryVersion,
+    relay_publisher_key_id: input.relayPublisherKeyId,
+    relay_publisher_key_version: input.relayPublisherKeyVersion,
+    relay_publisher_public_key: input.relayPublisherPublicKey,
     authorized_next_action_sha256: nextActionDigest,
   };
   const lineagePayload = {
