@@ -47,8 +47,9 @@ export function applyDispatchCommand(current: DispatchProjection, command: Dispa
     return result("SEND_ATTEMPT_STARTED");
   }
   if (command === "CONFIRM_DELIVERY") {
-    if (current.state === "DELIVERED") return result("DELIVERY_ALREADY_CONFIRMED", "DELIVERED");
-    if (current.state !== "QUEUED" || !current.leaseActive || !current.sendStarted) reject("Delivery requires the exact started attempt.");
+    const startedSend = current.state === "QUEUED" && current.leaseActive && current.sendStarted;
+    const reconciledSend = current.state === "RECONCILIATION_REQUIRED" && !current.leaseActive && current.reconciliationRequired;
+    if (!startedSend && !reconciledSend) reject("Delivery requires the exact started attempt or verified reconciliation of that attempt.");
     Object.assign(next, { leaseActive: false, reservationFence: null, reconciliationRequired: false });
     return result("DELIVERED", "DELIVERED");
   }

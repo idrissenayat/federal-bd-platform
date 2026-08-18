@@ -392,6 +392,70 @@ test("REC-02 concurrent dispatch submissions commit one identity and return one 
   }
 });
 
+test("REC-03 uncertain send reconciles a discovered relay delivery before acknowledgement without retry", async () => {
+  const { db, itemId } = await setup();
+  const acceptedAt = prepareDispatchAuthorizationSeed(db, itemId, "e".repeat(40));
+  const agentSecret = new Uint8Array(32); agentSecret[31] = 19;
+  const relaySecret = new Uint8Array(32); relaySecret[31] = 23;
+  const agentPublicKey = hex(schnorr.getPublicKey(agentSecret));
+  const relayPublicKey = hex(schnorr.getPublicKey(relaySecret));
+  db.sqlite.prepare("UPDATE members SET agent_public_key = ?, agent_public_key_fingerprint = ? WHERE id = 'agent-a'")
+    .run(agentPublicKey, "a".repeat(64));
+  db.sqlite.prepare(`INSERT INTO relay_event_signers
+    (pod_id, registry_version, relay_url, channel_id, key_id, key_version, public_key, valid_from, valid_until, status, changed_by, change_reason, created_at)
+    VALUES ('pod-a', 1, 'https://relay.example', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'relay-test', 1, ?, ?, NULL, 'ACTIVE', 'member-a', 'REC-03 fixture', ?)`)
+    .run(relayPublicKey, acceptedAt, acceptedAt);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => String(input).includes("0028-dispatch-data-inventory.md")
+    ? new Response(privacyInventory, { status: 200 })
+    : String(input).includes("raw.githubusercontent.com") ? new Response("# exact approved exam\n", { status: 200 })
+    : originalFetch(input);
+  try {
+    const authorized = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+    assert.equal(authorized?.status, 200, await authorized?.text());
+    const receipt = JSON.parse(String(db.sqlite.prepare("SELECT receipt_json FROM dispatch_receipts").get()!.receipt_json)) as Record<string, unknown>;
+    const intentId = String(receipt.dispatch_intent_id);
+    const reserved = await handleApi(serviceRequest("/api/dispatches/next", {}), { DB: db, ...dispatchEnv });
+    assert.equal(reserved?.status, 201, await reserved?.clone().text());
+    const started = await handleApi(serviceRequest(`/api/dispatches/${intentId}/commands`, { command: "START_SEND" }), { DB: db, ...dispatchEnv });
+    assert.equal(started?.status, 201, await started?.text());
+    const uncertain = await handleApi(serviceRequest(`/api/dispatches/${intentId}/commands`, { command: "MARK_DELIVERY_UNKNOWN", reason_code: "RELAY_RESPONSE_LOST" }), { DB: db, ...dispatchEnv });
+    assert.equal(uncertain?.status, 201, await uncertain?.clone().text());
+    assert.equal((await uncertain?.json() as { projection: { state: string } }).projection.state, "RECONCILIATION_REQUIRED");
+
+    const attempt = Number(db.sqlite.prepare("SELECT attempt_number FROM dispatch_outbox WHERE intent_id = ?").get(intentId)!.attempt_number);
+    const relayContent = JSON.stringify({ schema: "steer-dispatch-delivery/v1", dispatch_intent_id: intentId, attempt_number: attempt, channel_id: receipt.canonical_channel_id, payload_sha256: receipt.authorized_handoff_sha256 });
+    const relayUnsigned = { pubkey: relayPublicKey, created_at: Math.floor(Date.now() / 1000), kind: 9, tags: [["h", String(receipt.canonical_channel_id)], ["p", agentPublicKey]], content: relayContent };
+    const relayId = await sha256Hex(JSON.stringify([0, relayUnsigned.pubkey, relayUnsigned.created_at, relayUnsigned.kind, relayUnsigned.tags, relayUnsigned.content]));
+    const relayEvent = { ...relayUnsigned, id: relayId, sig: hex(schnorr.sign(Uint8Array.from(relayId.match(/.{2}/g)!.map((byte) => Number.parseInt(byte, 16))), relaySecret)) };
+    const recovered = await handleApi(serviceRequest(`/api/dispatches/${intentId}/commands`, { command: "CONFIRM_DELIVERY", relay_event: relayEvent }), { DB: db, ...dispatchEnv });
+    assert.equal(recovered?.status, 201, await recovered?.clone().text());
+    assert.equal((await recovered?.json() as { projection: { state: string } }).projection.state, "DELIVERED");
+    const eventCount = Number(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE intent_id = ?").get(intentId)!.total);
+    const staleReconciliation = await handleApi(serviceRequest(`/api/dispatches/${intentId}/commands`, { command: "CONFIRM_DELIVERY", relay_event: relayEvent }), { DB: db, ...dispatchEnv });
+    assert.equal(staleReconciliation?.status, 200, await staleReconciliation?.clone().text());
+    assert.equal((await staleReconciliation?.json() as { idempotent_replay: boolean }).idempotent_replay, true);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE intent_id = ?").get(intentId)!.total, eventCount);
+    const noRetry = await handleApi(serviceRequest("/api/dispatches/next", {}), { DB: db, ...dispatchEnv });
+    assert.equal(noRetry?.status, 204);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_attempts WHERE intent_id = ?").get(intentId)!.total, 1);
+
+    const acknowledgedAt = new Date().toISOString();
+    const acknowledgementPayload = {
+      schema: "steer-dispatch-ack/v1", dispatch_intent_id: intentId,
+      authorization_revision: receipt.authorization_revision, evidence_sha256: receipt.evidence_sha256,
+      canonical_channel_id: receipt.canonical_channel_id, delivered_event_id: relayId,
+      agent_claim_run_id: "claim-run-rec-03", acknowledged_at: acknowledgedAt,
+    };
+    const acknowledgement = { member_id: "agent-a", key_id: "agent-a-key", key_version: 1, ...acknowledgementPayload, signature: await signBinding(acknowledgementPayload, agentSecret) };
+    const accepted = await handleApi(request("agent-a", `/api/dispatches/${intentId}/acknowledgements`, "POST", acknowledgement), { DB: db, ...dispatchEnv });
+    assert.equal(accepted?.status, 201, await accepted?.text());
+    assert.equal(db.sqlite.prepare("SELECT current_state FROM dispatch_outbox WHERE intent_id = ?").get(intentId)!.current_state, "ACKNOWLEDGED");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("REC-04 route invalidation fences the old intent and explicit reauthorization creates one same-lineage successor", async () => {
   const { db, itemId } = await setup();
   const revision = "d".repeat(40);

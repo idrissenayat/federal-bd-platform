@@ -478,9 +478,15 @@ async function handleServiceCommand(request: Request, db: Database, env: Dispatc
       || content.channel_id !== dispatch.receipt.channel_id || content.payload_sha256 !== dispatch.receiptBody.authorized_handoff_sha256) {
       return json({ error: "Relay proof does not match the immutable dispatch bindings.", code: "RELAY_BINDING_INVALID" }, 409);
     }
+    if (dispatch.outbox.current_state === "DELIVERED" || dispatch.outbox.current_state === "ACKNOWLEDGED") {
+      return json({ ok: true, idempotent_replay: true, projection: projection(dispatch.outbox) });
+    }
+    const reconciledDelivery = dispatch.outbox.current_state === "RECONCILIATION_REQUIRED";
     const result = await signedTransition({
-      db, env, receipt: dispatch.receipt, outbox: dispatch.outbox, command, actorId: "dispatch-outbox-service",
-      authority: "outbox-delivery-service", payload: { attempt_number: attempt, relay_event_id: relayEvent.id, relay_event_sha256: await sha256Hex(canonicalJson(relayEvent)) },
+      db, env, receipt: dispatch.receipt, outbox: dispatch.outbox, command,
+      actorId: reconciledDelivery ? "dispatch-reconciliation-service" : "dispatch-outbox-service",
+      authority: reconciledDelivery ? "reconciliation-service" : "outbox-delivery-service",
+      payload: { attempt_number: attempt, relay_event_id: relayEvent.id, relay_event_sha256: await sha256Hex(canonicalJson(relayEvent)), reconciled_delivery: reconciledDelivery },
       outboxFields: { deliveredEventId: relayEvent.id },
       extraStatements: [db.prepare("UPDATE dispatch_attempts SET status = 'DELIVERED', updated_at = ? WHERE intent_id = ? AND attempt_number = ? AND status IN ('RESERVED','STARTED')")
         .bind(new Date().toISOString(), intentId, attempt)],

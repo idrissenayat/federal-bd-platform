@@ -25,6 +25,17 @@ test("unknown delivery reconciles before a new unique attempt", () => {
   assert.equal(next.attemptNumber, 2);
 });
 
+test("a verified delivery discovered during reconciliation advances monotonically to delivered", () => {
+  let projection = initialDispatchProjection();
+  projection = applyDispatchCommand(projection, "RESERVE_SEND", { reservationFence: "fence-1" }).next;
+  projection = applyDispatchCommand(projection, "START_SEND").next;
+  projection = applyDispatchCommand(projection, "MARK_DELIVERY_UNKNOWN").next;
+  const recovered = applyDispatchCommand(projection, "CONFIRM_DELIVERY").next;
+  assert.equal(recovered.state, "DELIVERED");
+  assert.equal(recovered.reconciliationRequired, false);
+  assert.equal(recovered.attemptNumber, 1);
+});
+
 test("terminalization and send start have one fail-closed order", () => {
   const reserved = applyDispatchCommand(initialDispatchProjection(), "RESERVE_SEND", { reservationFence: "fence-1" }).next;
   const terminalized = applyDispatchCommand(reserved, "REQUEST_TERMINALIZATION").next;
