@@ -2854,7 +2854,7 @@ async function proveDecisionIntent(request: Request, db: Database, env: Env, int
 async function finalizeDecisionIntent(request: Request, db: Database, env: Env, intentId: string) {
   const token = String(env.DECISION_SERVICE_TOKEN ?? "");
   if (token.length < 32 || request.headers.get("authorization") !== `Bearer ${token}`) return json({ error: "Decision finalization service authentication failed." }, 401);
-  const row = await db.prepare(`SELECT i.*, w.key AS item_key, w.gate AS item_gate, w.phase, w.state,
+  const row = await db.prepare(`SELECT i.*, w.key AS item_key, w.gate AS gate, w.phase, w.state,
       w.decision_status, w.decision_authority, w.assignee_id, w.next_action, w.rework_instructions,
       w.blocked_since, w.delivery_forecast_json, w.delivery_owner_id, w.evidence_url AS item_evidence_url,
       w.updated_at AS item_updated_at
@@ -2900,7 +2900,7 @@ async function finalizeDecisionIntent(request: Request, db: Database, env: Env, 
     return json({ error: "Signer policy changed after submission; this pending intent must be superseded and resubmitted." }, 409);
   }
   const exactEvidenceUrl = `${intent.target.repository_uri}/blob/${intent.target.commit}/${intent.target.path}`;
-  if (row.item_key !== intent.item_key || row.item_gate !== intent.decision_kind || row.item_evidence_url !== exactEvidenceUrl) {
+  if (row.item_key !== intent.item_key || row.gate !== intent.decision_kind || row.item_evidence_url !== exactEvidenceUrl) {
     return json({ error: "The work item or exact evidence target changed during cooling; this intent remains ineffective." }, 409);
   }
   const resolvedEvidence = await readEvidence(exactEvidenceUrl);
