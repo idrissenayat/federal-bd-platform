@@ -28,6 +28,7 @@ export type DispatchIdentityInput = {
   agentPublicKeyFingerprint: string;
   authorizationRevision: string;
   authorizationAuditEventId: string;
+  rootAuthorizationAuditEventId: string;
   evidenceUrl: string;
   evidenceRevision: string;
   evidenceSha256: string;
@@ -91,7 +92,7 @@ export async function buildDispatchIdentity(input: DispatchIdentityInput) {
     work_item_stable_id: input.itemId,
     work_item_key: input.itemKey,
     workflow: "STEER",
-    root_human_authorization_audit_event_id: input.authorizationAuditEventId,
+    root_human_authorization_audit_event_id: input.rootAuthorizationAuditEventId,
   };
   const [intentId, lineageId] = await Promise.all([
     sha256(canonicalJson(intentPayload)),

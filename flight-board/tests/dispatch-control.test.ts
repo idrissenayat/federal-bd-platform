@@ -7,6 +7,7 @@ const input = {
   agentMemberId: "agent-builder", agentKeyId: "builder-key", agentKeyVersion: 1,
   agentPublicKey: "e".repeat(64), agentPublicKeyFingerprint: "a".repeat(64), authorizationRevision: "2026-08-17T16:00:00.000Z",
   authorizationAuditEventId: "decision-28", evidenceUrl: `https://github.com/idrissenayat/federal-bd-platform/blob/${"b".repeat(40)}/steer/exams/0028.md`,
+  rootAuthorizationAuditEventId: "decision-28",
   evidenceRevision: "b".repeat(40), evidenceSha256: "c".repeat(64), forecastAuditEventId: "forecast-28",
   channelId: "10ac2fb4-f7fc-4dbc-bb73-8c545f31a470", routingConfigurationVersion: 1,
   relayUrl: "https://relay.example", membershipVersion: 1,

@@ -11,7 +11,7 @@ import {
 } from "../lib/work-economics";
 import { acceptedValueHypothesisReady, humanAcceptanceState, validateAndNormalizeWorkEconomics, type WorkEconomicsSection } from "../lib/work-economics-validation";
 import { buildDispatchIdentity, exactGitEvidence, STEER_HANDOFF_ROUTE_KEY, validateDispatchRoute, type DispatchRoute } from "../lib/dispatch-control";
-import { canonicalJson, sha256Hex } from "../lib/dispatch-lifecycle";
+import { canonicalJson, createSignedDispatchEvent, sha256Hex, type DispatchState } from "../lib/dispatch-lifecycle";
 import { buildInitialQueuedEvent, ensureDispatchServiceSigner, handleDispatchServiceApi, type DispatchServiceEnv } from "./dispatch";
 
 type D1Result<T = Record<string, unknown>> = {
@@ -1046,11 +1046,42 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
     forecastAuditEventId = `work-economics:${forecastEvent.id}`;
   }
   const authorizationRevision = String(item.updated_at);
-  const authorizationAuditEventId = `dispatch-authorize:${itemId}:${authorizationRevision}:${user.id}`;
+  const authorizationAuditEventId = `dispatch-authorize:${itemId}:${authorizationRevision}:${user.id}:${route.configurationVersion}:${exactEvidence.revision}`;
+  const currentNextActionDigest = await sha256Hex(String(item.next_action).trim());
+  const predecessor = await db.prepare(`SELECT r.intent_id, r.lineage_id, r.receipt_json,
+      o.current_state, o.current_event_version, o.current_event_sha256, o.send_started,
+      o.reconciliation_required, o.lease_id, o.terminalization_requested
+    FROM dispatch_receipts r JOIN dispatch_outbox o ON o.intent_id = r.intent_id
+    WHERE r.item_id = ? ORDER BY o.id DESC LIMIT 1`).bind(itemId).first<Record<string, unknown>>();
+  let predecessorIntentId: string | null = null;
+  let predecessorTerminalState: "SUPERSEDED" | "CANCELLED" | null = null;
+  let predecessorAttemptUnresolved = false;
+  let predecessorClosesSameLineage = false;
+  let rootAuthorizationAuditEventId = authorizationAuditEventId;
+  if (predecessor) {
+    const priorReceipt = JSON.parse(String(predecessor.receipt_json)) as Record<string, unknown>;
+    const sameLineageAuthority = String(priorReceipt.workspace_pod_id) === podId
+      && Number(priorReceipt.work_item_stable_id) === itemId
+      && String(priorReceipt.work_item_key) === String(item.key)
+      && String(priorReceipt.workflow) === String(item.workflow)
+      && String(priorReceipt.assigned_role) === String(item.assignee_role)
+      && String(priorReceipt.enrolled_agent_member_id) === assigneeId
+      && String(priorReceipt.authorized_next_action_sha256) === currentNextActionDigest;
+    if (sameLineageAuthority) {
+      rootAuthorizationAuditEventId = String(priorReceipt.root_human_authorization_audit_event_id ?? priorReceipt.human_authorization_audit_event_id);
+    }
+    const predecessorIsTerminal = ["ACKNOWLEDGED", "FAILED_FINAL", "CANCELLED", "SUPERSEDED"].includes(String(predecessor.current_state));
+    predecessorClosesSameLineage = predecessorIsTerminal && sameLineageAuthority;
+    if (!predecessorIsTerminal) {
+      predecessorAttemptUnresolved = Boolean(predecessor.send_started) || Boolean(predecessor.reconciliation_required) || Boolean(predecessor.lease_id);
+      predecessorIntentId = String(predecessor.intent_id);
+      predecessorTerminalState = sameLineageAuthority ? "SUPERSEDED" : "CANCELLED";
+    }
+  }
   const identity = await buildDispatchIdentity({
     podId, itemId, itemKey: String(item.key), workflow: String(item.workflow),
     agentMemberId: assigneeId, agentKeyId, agentKeyVersion, agentPublicKey, agentPublicKeyFingerprint,
-    authorizationRevision, authorizationAuditEventId, evidenceUrl: exactEvidence.url,
+    authorizationRevision, authorizationAuditEventId, rootAuthorizationAuditEventId, evidenceUrl: exactEvidence.url,
     evidenceRevision: exactEvidence.revision, evidenceSha256: evidence.sha256,
     forecastAuditEventId, channelId: route.channelId, routingConfigurationVersion: route.configurationVersion,
     relayUrl: route.relayUrl, membershipVersion: route.membershipVersion, nextAction: String(item.next_action),
@@ -1058,6 +1089,12 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
   const existing = await db.prepare("SELECT receipt_json FROM dispatch_receipts WHERE intent_id = ?").bind(identity.intentId).first<{ receipt_json: string }>();
   if (existing) {
     return json({ ok: true, idempotent_replay: true, receipt: JSON.parse(existing.receipt_json), authorization: { ...authorization, channel: route.channelName }, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
+  }
+  if (predecessorClosesSameLineage) {
+    return json({ error: "The prior terminal dispatch closes this authorization lineage; a changed objective requires a new human authorization.", code: "PREDECESSOR_LINEAGE_CLOSED", authorization }, 409);
+  }
+  if (predecessorAttemptUnresolved) {
+    return json({ error: "Explicit reauthorization must wait until the prior send attempt and reconciliation are resolved.", code: "PREDECESSOR_ATTEMPT_UNRESOLVED", authorization }, 409);
   }
 
   const allowedScope = { next_action: String(item.next_action), evidence_url: exactEvidence.url };
@@ -1077,6 +1114,8 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
     accepted_forecast_timestamp: forecastAcceptedAt, accepted_forecast_audit_event_id: forecastAuditEventId,
     human_authorization_timestamp: now, human_authorization_actor_id: user.id,
     human_authorization_audit_event_id: authorizationAuditEventId,
+    root_human_authorization_audit_event_id: rootAuthorizationAuditEventId,
+    predecessor_intent_id: predecessorIntentId,
     canonical_channel_id: route.channelId, canonical_channel_name: route.channelName,
     routing_configuration_version: route.configurationVersion, membership_version: route.membershipVersion,
     privacy_policy_version: Number(privacyPolicy.policy_version), privacy_policy_status: privacyPolicyStatus,
@@ -1100,6 +1139,50 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
     evidenceRevision: exactEvidence.revision,
     signer: dispatchSigner,
   });
+  const predecessorStatements: Statement[] = [];
+  if (predecessorIntentId && predecessorIntentId !== identity.intentId && predecessor && predecessorTerminalState) {
+    const priorReceipt = JSON.parse(String(predecessor.receipt_json)) as Record<string, unknown>;
+    const predecessorEvent = await createSignedDispatchEvent({
+      intentId: predecessorIntentId,
+      lineageId: String(predecessor.lineage_id),
+      eventVersion: Number(predecessor.current_event_version) + 1,
+      previousEventSha256: String(predecessor.current_event_sha256),
+      eventType: predecessorTerminalState,
+      priorState: String(predecessor.current_state) as DispatchState,
+      resultingState: predecessorTerminalState,
+      occurredAt: now,
+      authority: "work-management-authorization",
+      receiptId: predecessorIntentId,
+      routingConfigurationVersion: Number(priorReceipt.routing_configuration_version),
+      evidenceRevision: String(priorReceipt.evidence_revision),
+      payload: {
+        successor_intent_id: identity.intentId,
+        successor_lineage_id: identity.lineageId,
+        human_reauthorization_audit_event_id: authorizationAuditEventId,
+        disposition_reason: predecessorTerminalState === "SUPERSEDED" ? "same-lineage-explicit-reauthorization" : "authorization-objective-or-assignment-changed",
+      },
+      serviceKeyId: dispatchSigner.keyId,
+      serviceKeyVersion: dispatchSigner.keyVersion,
+      servicePrivateKey: dispatchSigner.privateKey,
+    });
+    predecessorStatements.push(
+      db.prepare(`INSERT INTO dispatch_events
+        (intent_id, event_version, expected_event_version, event_type, prior_state, resulting_state, payload_json,
+         previous_event_sha256, event_sha256, service_key_id, service_key_version, service_signature,
+         agent_key_id, agent_key_version, agent_signature, acknowledgement_sha256, actor_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?)`)
+        .bind(predecessorIntentId, predecessorEvent.payload.event_version, predecessorEvent.payload.expected_event_version,
+          predecessorTerminalState, predecessorEvent.payload.prior_state, predecessorTerminalState,
+          canonicalJson(predecessorEvent.envelope), predecessorEvent.payload.previous_event_sha256,
+          predecessorEvent.eventSha256, dispatchSigner.keyId, dispatchSigner.keyVersion, predecessorEvent.envelope.service_signature, user.id, now),
+      db.prepare(`UPDATE dispatch_outbox SET status = ?, current_state = ?,
+        current_event_version = ?, current_event_sha256 = ?, lease_id = NULL, lease_expires_at = NULL,
+        reservation_fence = NULL, send_started = 0, reconciliation_required = 0, updated_at = ?
+        WHERE intent_id = ? AND current_event_version = ? AND current_event_sha256 = ?`)
+        .bind(predecessorTerminalState, predecessorTerminalState, predecessorEvent.payload.event_version, predecessorEvent.eventSha256, now, predecessorIntentId,
+          predecessorEvent.payload.expected_event_version, predecessorEvent.payload.previous_event_sha256),
+    );
+  }
   const authorizationAudit = {
     schema: "steer-dispatch-authorization-audit/v1",
     audit_event_id: authorizationAuditEventId,
@@ -1118,6 +1201,7 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
     occurred_at: now,
   };
   await db.batch([
+    ...predecessorStatements,
     db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'dispatch_authorized', ?, ?)")
       .bind(itemId, user.id, `authorized agent handoff receipt ${identity.intentId} to ${String(item.assignee_name)} in ${route.channelName} (${route.channelId})`, now),
     db.prepare(`INSERT INTO dispatch_authorization_audits

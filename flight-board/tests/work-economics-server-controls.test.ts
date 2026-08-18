@@ -175,6 +175,139 @@ test("successful dispatch creates one immutable receipt, outbox identity, and QU
   }
 });
 
+test("REC-04 route invalidation fences the old intent and explicit reauthorization creates one same-lineage successor", async () => {
+  const { db, itemId } = await setup();
+  const revision = "d".repeat(40);
+  const acceptedAt = new Date().toISOString();
+  const currentForecast = { ...forecast, acceptedAt, updatedAt: acceptedAt, earliestCompletion: "2026-08-20T14:00:00.000Z", likelyCompletion: "2026-08-20T18:00:00.000Z", latestCompletion: "2026-08-21T18:00:00.000Z", nextMilestoneAt: "2026-08-19T16:00:00.000Z", phaseExitAt: "2026-08-20T18:00:00.000Z" };
+  const relaySecret = new Uint8Array(32); relaySecret[31] = 17;
+  const relayPublicKey = hex(schnorr.getPublicKey(relaySecret));
+  db.sqlite.prepare(`UPDATE members SET agent_key_id = 'agent-a-key', agent_key_version = 1,
+    agent_public_key = ?, agent_public_key_fingerprint = ? WHERE id = 'agent-a'`).run("e".repeat(64), "a".repeat(64));
+  db.sqlite.prepare(`INSERT INTO workspace_routing
+    (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+    VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'member-a', 'Initial route', ?)`)
+    .run(acceptedAt);
+  db.sqlite.prepare(`INSERT INTO agent_channel_memberships
+    (pod_id, channel_id, member_id, membership_version, status, created_at)
+    VALUES ('pod-a', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'agent-a', 1, 'active', ?)`)
+    .run(acceptedAt);
+  db.sqlite.prepare(`INSERT INTO relay_event_signers
+    (pod_id, registry_version, relay_url, channel_id, key_id, key_version, public_key, valid_from, valid_until, status, changed_by, change_reason, created_at)
+    VALUES ('pod-a', 1, 'https://relay.example', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'relay-test', 1, ?, ?, NULL, 'ACTIVE', 'member-a', 'Test fixture', ?)`)
+    .run(relayPublicKey, acceptedAt, acceptedAt);
+  db.sqlite.prepare("UPDATE work_items SET evidence_url = ?, delivery_forecast_json = ? WHERE id = ?")
+    .run(`https://github.com/idrissenayat/federal-bd-platform/blob/${revision}/steer/exams/0028.md`, JSON.stringify(currentForecast), itemId);
+  db.sqlite.prepare(`INSERT INTO work_economics_events
+    (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+    VALUES (?, 'deliveryForecast', 'accepted', 'member-a', 'Delivery owner', NULL, ?, 'Test accepted forecast audit', ?)`)
+    .run(itemId, JSON.stringify(currentForecast), acceptedAt);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => String(input).includes("0028-dispatch-data-inventory.md")
+    ? new Response(privacyInventory, { status: 200 })
+    : String(input).includes("raw.githubusercontent.com") ? new Response("# exact approved exam\n", { status: 200 })
+    : originalFetch(input);
+  try {
+    const first = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+    assert.equal(first?.status, 200, await first?.text());
+    const originalReceiptRow = db.sqlite.prepare("SELECT intent_id, lineage_id, receipt_json FROM dispatch_receipts").get()!;
+    const originalIntent = String(originalReceiptRow.intent_id);
+    const originalLineage = String(originalReceiptRow.lineage_id);
+
+    const reserved = await handleApi(serviceRequest("/api/dispatches/next", {}), { DB: db, ...dispatchEnv });
+    assert.equal(reserved?.status, 201, await reserved?.clone().text());
+    assert.equal((await reserved?.json() as { dispatch_intent_id: string }).dispatch_intent_id, originalIntent);
+    const replayWhileReserved = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+    assert.equal(replayWhileReserved?.status, 200, await replayWhileReserved?.clone().text());
+    assert.equal((await replayWhileReserved?.json() as { idempotent_replay: boolean }).idempotent_replay, true);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_receipts").get()!.total, 1);
+    db.sqlite.prepare(`INSERT INTO workspace_routing
+      (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+      VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 2, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'member-a', 'Audited route v2', ?)`)
+      .run(new Date().toISOString());
+
+    const staleStart = await handleApi(serviceRequest(`/api/dispatches/${originalIntent}/commands`, { command: "START_SEND" }), { DB: db, ...dispatchEnv });
+    assert.equal(staleStart?.status, 409, await staleStart?.clone().text());
+    assert.equal((await staleStart?.json() as { code: string }).code, "ROUTING_VERSION_STALE");
+    const fenced = db.sqlite.prepare(`SELECT current_state, terminalization_requested, lease_id, reservation_fence, send_started
+      FROM dispatch_outbox WHERE intent_id = ?`).get(originalIntent)!;
+    assert.deepEqual({ ...fenced }, { current_state: "QUEUED", terminalization_requested: 1, lease_id: null, reservation_fence: null, send_started: 0 });
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE intent_id = ? AND event_type = 'TERMINALIZATION_REQUESTED'").get(originalIntent)!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE intent_id = ? AND event_type = 'DELIVERY_BLOCKED_CONFIG_STALE'").get(originalIntent)!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE intent_id = ? AND event_type = 'SEND_ATTEMPT_STARTED'").get(originalIntent)!.total, 0);
+    assert.equal(db.sqlite.prepare("SELECT status FROM dispatch_attempts WHERE intent_id = ?").get(originalIntent)!.status, "FENCED_CONFIG_STALE");
+    const noImplicitRetry = await handleApi(serviceRequest("/api/dispatches/next", {}), { DB: db, ...dispatchEnv });
+    assert.equal(noImplicitRetry?.status, 204);
+
+    const reauthorized = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+    assert.equal(reauthorized?.status, 200, await reauthorized?.text());
+    const receipts = db.sqlite.prepare("SELECT intent_id, lineage_id, receipt_json FROM dispatch_receipts ORDER BY rowid").all() as Array<Record<string, unknown>>;
+    assert.equal(receipts.length, 2);
+    const successorIntent = String(receipts[1].intent_id);
+    assert.notEqual(successorIntent, originalIntent);
+    assert.equal(receipts[1].lineage_id, originalLineage);
+    const successorReceipt = JSON.parse(String(receipts[1].receipt_json)) as Record<string, unknown>;
+    assert.equal(successorReceipt.predecessor_intent_id, originalIntent);
+    assert.equal(db.sqlite.prepare("SELECT current_state FROM dispatch_outbox WHERE intent_id = ?").get(originalIntent)!.current_state, "SUPERSEDED");
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE intent_id = ? AND event_type = 'SUPERSEDED'").get(originalIntent)!.total, 1);
+    const replacementEvent = JSON.parse(String(db.sqlite.prepare("SELECT payload_json FROM dispatch_events WHERE intent_id = ? AND event_type = 'SUPERSEDED'").get(originalIntent)!.payload_json));
+    assert.equal(replacementEvent.payload.payload.successor_intent_id, successorIntent);
+
+    const successorReservation = await handleApi(serviceRequest("/api/dispatches/next", {}), { DB: db, ...dispatchEnv });
+    assert.equal(successorReservation?.status, 201, await successorReservation?.clone().text());
+    assert.equal((await successorReservation?.json() as { dispatch_intent_id: string }).dispatch_intent_id, successorIntent);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_attempts WHERE intent_id = ?").get(originalIntent)!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_attempts WHERE intent_id = ?").get(successorIntent)!.total, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("changed authorization objective closes the old unsent intent and starts a new lineage", async () => {
+  const { db, itemId } = await setup();
+  const revision = "f".repeat(40);
+  const acceptedAt = new Date().toISOString();
+  const currentForecast = { ...forecast, acceptedAt, updatedAt: acceptedAt, earliestCompletion: "2026-08-20T14:00:00.000Z", likelyCompletion: "2026-08-20T18:00:00.000Z", latestCompletion: "2026-08-21T18:00:00.000Z", nextMilestoneAt: "2026-08-19T16:00:00.000Z", phaseExitAt: "2026-08-20T18:00:00.000Z" };
+  db.sqlite.prepare(`UPDATE members SET agent_key_id = 'agent-a-key', agent_key_version = 1,
+    agent_public_key = ?, agent_public_key_fingerprint = ? WHERE id = 'agent-a'`).run("e".repeat(64), "a".repeat(64));
+  db.sqlite.prepare(`INSERT INTO workspace_routing
+    (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
+    VALUES ('pod-a', 'workspace.routing.steer_agent_handoff.channel_id', 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'member-a', 'Test fixture', ?)`)
+    .run(acceptedAt);
+  db.sqlite.prepare(`INSERT INTO agent_channel_memberships
+    (pod_id, channel_id, member_id, membership_version, status, created_at)
+    VALUES ('pod-a', '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'agent-a', 1, 'active', ?)`)
+    .run(acceptedAt);
+  db.sqlite.prepare("UPDATE work_items SET evidence_url = ?, delivery_forecast_json = ? WHERE id = ?")
+    .run(`https://github.com/idrissenayat/federal-bd-platform/blob/${revision}/steer/exams/0028.md`, JSON.stringify(currentForecast), itemId);
+  db.sqlite.prepare(`INSERT INTO work_economics_events
+    (item_id, section, action, actor_id, actor_role, previous_json, replacement_json, reason, created_at)
+    VALUES (?, 'deliveryForecast', 'accepted', 'member-a', 'Delivery owner', NULL, ?, 'Test accepted forecast audit', ?)`)
+    .run(itemId, JSON.stringify(currentForecast), acceptedAt);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => String(input).includes("0028-dispatch-data-inventory.md")
+    ? new Response(privacyInventory, { status: 200 })
+    : String(input).includes("raw.githubusercontent.com") ? new Response("# exact approved exam\n", { status: 200 })
+    : originalFetch(input);
+  try {
+    const first = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+    assert.equal(first?.status, 200, await first?.text());
+    const original = db.sqlite.prepare("SELECT intent_id, lineage_id FROM dispatch_receipts").get()!;
+    db.sqlite.prepare("UPDATE work_items SET next_action = ?, updated_at = ? WHERE id = ?")
+      .run("Run the newly authorized replacement objective.", new Date(Date.now() + 1000).toISOString(), itemId);
+    const replacement = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
+    assert.equal(replacement?.status, 200, await replacement?.text());
+    const latest = db.sqlite.prepare("SELECT intent_id, lineage_id FROM dispatch_receipts ORDER BY rowid DESC LIMIT 1").get()!;
+    assert.notEqual(latest.intent_id, original.intent_id);
+    assert.notEqual(latest.lineage_id, original.lineage_id);
+    assert.equal(db.sqlite.prepare("SELECT current_state FROM dispatch_outbox WHERE intent_id = ?").get(original.intent_id)!.current_state, "CANCELLED");
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE intent_id = ? AND event_type = 'CANCELLED'").get(original.intent_id)!.total, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_outbox WHERE current_state = 'QUEUED'").get()!.total, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("service fencing, verified relay delivery, signed agent acknowledgement, and agent read form one idempotent lineage", async () => {
   const { db, itemId } = await setup();
   const revision = "c".repeat(40);

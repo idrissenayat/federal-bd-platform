@@ -295,6 +295,11 @@ async function recordConfigBlock(db: Database, env: DispatchServiceEnv, dispatch
     db, env, receipt: dispatch.receipt, outbox: dispatch.outbox,
     command: "REQUEST_TERMINALIZATION", actorId: "dispatch-terminalization-coordinator",
     authority: "terminalization-coordinator", payload: { diagnostic_code: code }, outboxFields: { lastErrorCode: code },
+    extraStatements: dispatch.outbox.reservation_fence
+      ? [db.prepare(`UPDATE dispatch_attempts SET status = 'FENCED_CONFIG_STALE', updated_at = ?
+          WHERE intent_id = ? AND attempt_number = ? AND reservation_fence = ? AND status = 'RESERVED'`)
+        .bind(new Date().toISOString(), dispatch.receipt.intent_id, dispatch.outbox.attempt_number, dispatch.outbox.reservation_fence)]
+      : undefined,
   });
   const refreshed = await loadDispatch(db, dispatch.receipt.intent_id);
   if (!refreshed) throw new Error("Dispatch disappeared after terminalization.");
