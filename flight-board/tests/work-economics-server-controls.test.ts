@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { schnorr } from "@noble/curves/secp256k1.js";
@@ -10,7 +11,10 @@ const dispatchEnv = {
   DISPATCH_SERVICE_KEY_ID: "test-dispatch-signer",
   DISPATCH_SERVICE_KEY_VERSION: "1",
   DISPATCH_SERVICE_TOKEN: "test-dispatch-service-token-0000000000000000",
+  DISPATCH_ALLOW_TEST_PRIVACY_POLICY: "true",
 };
+
+const privacyInventory = await readFile(new URL("../../steer/evidence/0028-dispatch-data-inventory.md", import.meta.url), "utf8");
 
 class D1Statement {
   constructor(private readonly db: DatabaseSync, private readonly sql: string, private readonly values: unknown[] = []) {}
@@ -86,6 +90,13 @@ async function setup() {
   const result = db.sqlite.prepare(`INSERT INTO work_items
     (key,title,description,phase,priority,workflow,state,gate,decision_status,decision_authority,assignee_id,next_action,evidence_url,github_url,pod_id,delivery_owner_id,delivery_forecast_json,created_by,created_at,updated_at)
     VALUES ('STR-900','Server controls','Exercise every server control','Engineer','Now','STEER','active','Gate 2 passed','Rework','Tech Lead','agent-a','Run the exact independent retest evidence.','https://github.com/idrissenayat/federal-bd-platform/blob/main/README.md','https://github.com/idrissenayat/federal-bd-platform/issues/31','pod-a','member-a',?,'member-a','2026-08-14T14:00:00.000Z','2026-08-14T14:00:00.000Z')`).run(JSON.stringify(forecast));
+  db.sqlite.prepare(`INSERT INTO dispatch_privacy_policies
+    (pod_id, policy_version, inventory_url, inventory_sha256, terminal_retention_days, provider_recovery_days, status, changed_by, change_reason, created_at)
+    VALUES ('pod-a', 1, 'https://github.com/idrissenayat/federal-bd-platform/blob/367707def83a36bbf03e3a17eae838b89a63cbee/steer/evidence/0028-dispatch-data-inventory.md',
+      'd1862566b1d88a9c79f6429bf1b259503edcc5418455ebf9b1b801bde0c2353b', 90, 30, 'BLOCKED_BACKUP_RULING', 'member-a', 'Test fixture', '2026-08-18T00:00:00.000Z')`).run();
+  db.sqlite.prepare(`INSERT INTO buzz_channel_registry
+    (pod_id, registry_version, channel_id, channel_name, relay_url, status, changed_by, change_reason, created_at)
+    VALUES ('pod-a', 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', 'https://relay.example', 'ACTIVE', 'member-a', 'Test fixture', '2026-08-18T00:00:00.000Z')`).run();
   return { db, itemId: Number(result.lastInsertRowid) };
 }
 
@@ -141,10 +152,14 @@ test("successful dispatch creates one immutable receipt, outbox identity, and QU
     VALUES (?, 'deliveryForecast', 'accepted', 'member-a', 'Delivery owner', NULL, ?, 'Test accepted forecast audit', ?)`)
     .run(itemId, JSON.stringify(currentForecast), acceptedAt);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (input) => String(input).includes("raw.githubusercontent.com")
-    ? new Response("# exact approved exam\n", { status: 200 })
+  globalThis.fetch = async (input) => String(input).includes("0028-dispatch-data-inventory.md")
+    ? new Response(privacyInventory, { status: 200 })
+    : String(input).includes("raw.githubusercontent.com") ? new Response("# exact approved exam\n", { status: 200 })
     : originalFetch(input);
   try {
+    const productionBlocked = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv, DISPATCH_ALLOW_TEST_PRIVACY_POLICY: undefined });
+    assert.equal(productionBlocked?.status, 409);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_receipts").get()!.total, 0);
     const first = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
     assert.equal(first?.status, 200, await first?.text());
     const replay = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });
@@ -190,8 +205,9 @@ test("service fencing, verified relay delivery, signed agent acknowledgement, an
     VALUES (?, 'deliveryForecast', 'accepted', 'member-a', 'Delivery owner', NULL, ?, 'Test accepted forecast audit', ?)`)
     .run(itemId, JSON.stringify(currentForecast), acceptedAt);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (input) => String(input).includes("raw.githubusercontent.com")
-    ? new Response("# exact approved exam\n", { status: 200 })
+  globalThis.fetch = async (input) => String(input).includes("0028-dispatch-data-inventory.md")
+    ? new Response(privacyInventory, { status: 200 })
+    : String(input).includes("raw.githubusercontent.com") ? new Response("# exact approved exam\n", { status: 200 })
     : originalFetch(input);
   try {
     const authorized = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv });

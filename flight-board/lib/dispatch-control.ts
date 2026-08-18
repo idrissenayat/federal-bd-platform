@@ -9,6 +9,11 @@ export type DispatchRoute = {
   membershipVersion: number;
   agentMemberId: string;
   agentIsMember: boolean;
+  channelKnown: boolean;
+  channelNameMatches: boolean;
+  relayBindingMatches: boolean;
+  workspaceBindingMatches: boolean;
+  competingSource: boolean;
 };
 
 export type DispatchIdentityInput = {
@@ -99,7 +104,11 @@ export function validateDispatchRoute(route: DispatchRoute | null, expectedPodId
   if (!route) return { ok: false as const, code: "ROUTE_CONFIG_MISSING", detail: `Missing ${STEER_HANDOFF_ROUTE_KEY}.` };
   if (!route.channelId || !route.channelName || !route.relayUrl) return { ok: false as const, code: "ROUTE_CONFIG_INCOMPLETE", detail: "The canonical route is incomplete." };
   if (route.podId !== expectedPodId) return { ok: false as const, code: "ROUTE_WORKSPACE_MISMATCH", detail: "The canonical route belongs to another workspace/POD." };
+  if (!route.channelKnown) return { ok: false as const, code: "ROUTE_CHANNEL_UNKNOWN", detail: "The configured canonical channel is unknown or deleted." };
+  if (!route.channelNameMatches) return { ok: false as const, code: "ROUTE_CHANNEL_IDENTITY_MISMATCH", detail: "The configured channel ID and audited channel identity disagree." };
+  if (!route.relayBindingMatches || !route.workspaceBindingMatches) return { ok: false as const, code: "ROUTE_RELAY_WORKSPACE_MISMATCH", detail: "The relay and workspace/POD binding disagree with the audited channel registry." };
   if (route.agentMemberId !== expectedAgentMemberId || !route.agentIsMember) return { ok: false as const, code: "ROUTE_AGENT_NOT_ENROLLED", detail: "The assigned agent is not enrolled in the canonical channel." };
+  if (route.competingSource) return { ok: false as const, code: "ROUTE_COMPETING_SOURCE", detail: "A competing routing source exists beside the active audited configuration." };
   if (!Number.isInteger(route.configurationVersion) || route.configurationVersion < 1) return { ok: false as const, code: "ROUTE_VERSION_INVALID", detail: "The canonical route has no valid audited configuration version." };
   return { ok: true as const, code: "ROUTE_OK", detail: `${route.channelName} is bound by configuration v${route.configurationVersion}.` };
 }

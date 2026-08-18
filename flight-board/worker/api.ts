@@ -31,7 +31,7 @@ type Database = {
   batch(statements: Statement[]): Promise<unknown[]>;
 };
 
-type Env = { DB: Database; GITHUB_TOKEN?: string } & DispatchServiceEnv;
+type Env = { DB: Database; GITHUB_TOKEN?: string; DISPATCH_ALLOW_TEST_PRIVACY_POLICY?: string } & DispatchServiceEnv;
 
 type User = { id: string; email: string | null; name: string };
 
@@ -44,6 +44,8 @@ const buzzRelayHttpUrl = "https://blockbuzzmain-production-5bcb.up.railway.app";
 const buzzRelayWsUrl = "wss://blockbuzzmain-production-5bcb.up.railway.app";
 const allowedGitHubRepository = "idrissenayat/federal-bd-platform";
 const gateTwoExamNextAction = "Design a falsifiable Gate 2 Exam from the approved Intent Brief, attach the exact Exam revision, run a fresh Critic review, and present Gate 2 to the Interim Tech Lead. Do not implement before Gate 2 passes.";
+const dispatchPrivacyInventoryUrl = "https://github.com/idrissenayat/federal-bd-platform/blob/367707def83a36bbf03e3a17eae838b89a63cbee/steer/evidence/0028-dispatch-data-inventory.md";
+const dispatchPrivacyInventorySha256 = "d1862566b1d88a9c79f6429bf1b259503edcc5418455ebf9b1b801bde0c2353b";
 
 type PullRequestReference = { owner: string; repo: string; repository: string; number: number };
 
@@ -416,6 +418,13 @@ async function ensureSchema(db: Database) {
       UNIQUE(pod_id, route_key, configuration_version)
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_workspace_routing_active ON workspace_routing (pod_id, route_key, configuration_version)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS buzz_channel_registry (
+      pod_id text NOT NULL, registry_version integer NOT NULL, channel_id text NOT NULL,
+      channel_name text NOT NULL, relay_url text NOT NULL, status text NOT NULL,
+      changed_by text NOT NULL, change_reason text NOT NULL, created_at text NOT NULL,
+      UNIQUE(pod_id, channel_id, registry_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_buzz_channel_registry_active ON buzz_channel_registry (pod_id, channel_id, status)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS agent_channel_memberships (
       pod_id text NOT NULL, channel_id text NOT NULL, member_id text NOT NULL,
       membership_version integer NOT NULL, status text NOT NULL, created_at text NOT NULL,
@@ -499,6 +508,18 @@ async function ensureSchema(db: Database) {
       value integer NOT NULL, case_id text, observed_at text NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_steer_telemetry_metric_observed ON steer_telemetry (metric_name, observed_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_privacy_policies (
+      pod_id text NOT NULL, policy_version integer NOT NULL, inventory_url text NOT NULL,
+      inventory_sha256 text NOT NULL, terminal_retention_days integer NOT NULL,
+      provider_recovery_days integer NOT NULL, status text NOT NULL, changed_by text NOT NULL,
+      change_reason text NOT NULL, created_at text NOT NULL, UNIQUE(pod_id, policy_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_privacy_policy_active ON dispatch_privacy_policies (pod_id, status, policy_version)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_security_diagnostics (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, code text NOT NULL,
+      configuration_version integer, observed_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_security_diagnostics_observed ON dispatch_security_diagnostics (observed_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS code_reviews (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
       item_id integer NOT NULL,
@@ -598,6 +619,14 @@ async function ensureSchema(db: Database) {
     BEFORE DELETE ON relay_event_signers BEGIN SELECT RAISE(ABORT, 'relay signer registry entries are immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_retention_holds_no_update
     BEFORE UPDATE ON dispatch_retention_holds BEGIN SELECT RAISE(ABORT, 'dispatch retention hold events are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_privacy_policies_no_update
+    BEFORE UPDATE ON dispatch_privacy_policies BEGIN SELECT RAISE(ABORT, 'dispatch privacy policy versions are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_privacy_policies_no_delete
+    BEFORE DELETE ON dispatch_privacy_policies BEGIN SELECT RAISE(ABORT, 'dispatch privacy policy versions are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS buzz_channel_registry_no_update
+    BEFORE UPDATE ON buzz_channel_registry BEGIN SELECT RAISE(ABORT, 'Buzz channel registry versions are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS buzz_channel_registry_no_delete
+    BEFORE DELETE ON buzz_channel_registry BEGIN SELECT RAISE(ABORT, 'Buzz channel registry versions are immutable'); END`).run();
   await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_dispatch_events_one_acknowledged ON dispatch_events (intent_id) WHERE event_type = 'ACKNOWLEDGED'").run();
   await db.prepare("PRAGMA optimize").run();
 }
@@ -632,6 +661,11 @@ async function ensureInitialSteerRoute(db: Database, user: User) {
       (pod_id, route_key, configuration_version, channel_id, channel_name, relay_url, changed_by, change_reason, created_at)
       VALUES (?, ?, 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', ?, ?, 'Authenticated human routing decision recorded in STR-028 issue #56.', ?)`)
       .bind(podId, STEER_HANDOFF_ROUTE_KEY, buzzRelayHttpUrl, user.id, now),
+    db.prepare(`INSERT OR IGNORE INTO buzz_channel_registry
+      (pod_id, registry_version, channel_id, channel_name, relay_url, status, changed_by, change_reason, created_at)
+      VALUES (?, 1, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', '#steer-team', ?, 'ACTIVE', ?,
+       'Canonical channel identity verified by the authenticated STR-028 routing decision.', ?)`)
+      .bind(podId, buzzRelayHttpUrl, user.id, now),
     db.prepare(`INSERT OR IGNORE INTO agent_channel_memberships
       (pod_id, channel_id, member_id, membership_version, status, created_at)
       SELECT ?, '10ac2fb4-f7fc-4dbc-bb73-8c545f31a470', 'agent-builder', 1, 'active', ?
@@ -644,6 +678,12 @@ async function ensureInitialSteerRoute(db: Database, user: User) {
     db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:architect', agent_key_version = 3, agent_public_key = '9c764661a78b480a324c8da9a5b86cf0224ad992467c324358e88fab4b85b2ea', agent_public_key_fingerprint = 'cbd5ff3144019ebe879e9365d51021c8a208a672e9c70405dd4a9329afdec72f' WHERE id = 'agent-architect'"),
     db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:docs', agent_key_version = 3, agent_public_key = '2680575df454cefd26835487860724a805502f6285dfe8191251bf7d2bfcbf4d', agent_public_key_fingerprint = '27e3d8f6822c44734835431eab817c28802972aa534caa37a66945803d8d0209' WHERE id = 'agent-docs'"),
     db.prepare("UPDATE members SET agent_key_id = 'buzz-roster-v3:ops', agent_key_version = 3, agent_public_key = '8ebe6f6dfcedc9c867a1083772a4f40d83da100d663d300ecd99562ebbf05349', agent_public_key_fingerprint = '0569025819601fa9497d7e1272734cf0224abc5edc26f751eefa4be4db9a2450' WHERE id = 'agent-ops'"),
+    db.prepare(`INSERT OR IGNORE INTO dispatch_privacy_policies
+      (pod_id, policy_version, inventory_url, inventory_sha256, terminal_retention_days,
+       provider_recovery_days, status, changed_by, change_reason, created_at)
+      VALUES (?, 1, ?, ?, 90, 30, 'BLOCKED_BACKUP_RULING', ?,
+       'STR-028 inventory is immutable; D1 Time Travel backup deletion requires a Privacy/Security ruling.', ?)`)
+      .bind(podId, dispatchPrivacyInventoryUrl, dispatchPrivacyInventorySha256, user.id, now),
   ]);
 }
 
@@ -922,8 +962,17 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
   const assigneeId = String(item.assignee_id ?? "");
   const routeRow = await db.prepare(
     `SELECT r.*, COALESCE(m.membership_version, 0) AS membership_version,
-            CASE WHEN m.status = 'active' THEN 1 ELSE 0 END AS agent_is_member
+            CASE WHEN m.status = 'active' THEN 1 ELSE 0 END AS agent_is_member,
+            CASE WHEN c.channel_id IS NOT NULL AND c.status = 'ACTIVE' THEN 1 ELSE 0 END AS channel_known,
+            CASE WHEN c.channel_name = r.channel_name THEN 1 ELSE 0 END AS channel_name_matches,
+            CASE WHEN c.relay_url = r.relay_url THEN 1 ELSE 0 END AS relay_binding_matches,
+            CASE WHEN c.pod_id = r.pod_id THEN 1 ELSE 0 END AS workspace_binding_matches,
+            0 AS competing_source
      FROM workspace_routing r
+     LEFT JOIN buzz_channel_registry c
+       ON c.pod_id = r.pod_id AND c.channel_id = r.channel_id
+      AND c.registry_version = (SELECT MAX(c2.registry_version) FROM buzz_channel_registry c2
+        WHERE c2.pod_id = r.pod_id AND c2.channel_id = r.channel_id)
      LEFT JOIN agent_channel_memberships m
        ON m.pod_id = r.pod_id AND m.channel_id = r.channel_id AND m.member_id = ?
       AND m.membership_version = (SELECT MAX(m2.membership_version) FROM agent_channel_memberships m2
@@ -940,9 +989,18 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
     membershipVersion: Number(routeRow.membership_version),
     agentMemberId: assigneeId,
     agentIsMember: Boolean(routeRow.agent_is_member),
+    channelKnown: Boolean(routeRow.channel_known),
+    channelNameMatches: Boolean(routeRow.channel_name_matches),
+    relayBindingMatches: Boolean(routeRow.relay_binding_matches),
+    workspaceBindingMatches: Boolean(routeRow.workspace_binding_matches),
+    competingSource: Boolean(routeRow.competing_source),
   } : null;
   const routeCheck = validateDispatchRoute(route, podId, assigneeId);
-  if (!route || !routeCheck.ok) return json({ error: routeCheck.detail, code: routeCheck.code, authorization }, 409);
+  if (!route || !routeCheck.ok) {
+    await db.prepare("INSERT INTO dispatch_security_diagnostics (code, configuration_version, observed_at) VALUES (?, ?, ?)")
+      .bind(routeCheck.code, route?.configurationVersion ?? null, new Date().toISOString()).run();
+    return json({ error: routeCheck.detail, code: routeCheck.code, authorization }, 409);
+  }
 
   const agentKeyId = String(item.agent_key_id ?? "");
   const agentKeyVersion = Number(item.agent_key_version ?? 0);
@@ -950,6 +1008,23 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
   const agentPublicKeyFingerprint = String(item.agent_public_key_fingerprint ?? "");
   if (!agentKeyId || !Number.isInteger(agentKeyVersion) || agentKeyVersion < 1 || !/^[0-9a-f]{64}$/.test(agentPublicKey) || !/^[0-9a-f]{64}$/.test(agentPublicKeyFingerprint)) {
     return json({ error: "The assigned agent has no active versioned acknowledgement key enrollment.", code: "AGENT_KEY_NOT_ENROLLED", authorization }, 409);
+  }
+
+  const privacyPolicy = await db.prepare(`SELECT * FROM dispatch_privacy_policies
+    WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`).bind(podId).first<Record<string, unknown>>();
+  if (!privacyPolicy || Number(privacyPolicy.terminal_retention_days) !== 90
+    || ![7, 30].includes(Number(privacyPolicy.provider_recovery_days))
+    || String(privacyPolicy.inventory_url) !== dispatchPrivacyInventoryUrl
+    || String(privacyPolicy.inventory_sha256) !== dispatchPrivacyInventorySha256) {
+    return json({ error: "The required dispatch privacy inventory and retention policy are missing or version-mismatched.", code: "PRIVACY_POLICY_MISSING", authorization }, 409);
+  }
+  const privacyEvidence = await readEvidence(privacyPolicy.inventory_url);
+  if (privacyEvidence.sha256 !== privacyPolicy.inventory_sha256 || privacyEvidence.revision !== "367707def83a36bbf03e3a17eae838b89a63cbee") {
+    return json({ error: "The immutable dispatch privacy inventory did not resolve to its audited digest.", code: "PRIVACY_INVENTORY_UNRESOLVED", authorization }, 409);
+  }
+  const privacyPolicyStatus = String(privacyPolicy.status);
+  if (privacyPolicyStatus !== "ACTIVE" && !(privacyPolicyStatus === "BLOCKED_BACKUP_RULING" && env.DISPATCH_ALLOW_TEST_PRIVACY_POLICY === "true")) {
+    return json({ error: "Dispatch is blocked until Privacy/Security resolves provider backup deletion. Non-production tests require an explicit test-only setting.", code: "PRIVACY_BACKUP_RULING_REQUIRED", authorization }, 409);
   }
 
   const evidence = await readEvidence(item.evidence_url);
@@ -1004,6 +1079,8 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
     human_authorization_audit_event_id: authorizationAuditEventId,
     canonical_channel_id: route.channelId, canonical_channel_name: route.channelName,
     routing_configuration_version: route.configurationVersion, membership_version: route.membershipVersion,
+    privacy_policy_version: Number(privacyPolicy.policy_version), privacy_policy_status: privacyPolicyStatus,
+    privacy_inventory_url: String(privacyPolicy.inventory_url), privacy_inventory_sha256: String(privacyPolicy.inventory_sha256),
     authorized_next_action_sha256: identity.nextActionDigest,
     authorized_handoff_sha256: authorizedHandoffSha256,
     authorized_handoff_message: handoffMessage,

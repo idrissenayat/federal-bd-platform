@@ -241,6 +241,25 @@ export const workspaceRouting = sqliteTable(
   ],
 );
 
+export const buzzChannelRegistry = sqliteTable(
+  "buzz_channel_registry",
+  {
+    podId: text("pod_id").notNull(),
+    registryVersion: integer("registry_version").notNull(),
+    channelId: text("channel_id").notNull(),
+    channelName: text("channel_name").notNull(),
+    relayUrl: text("relay_url").notNull(),
+    status: text("status").notNull(),
+    changedBy: text("changed_by").notNull(),
+    changeReason: text("change_reason").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("uq_buzz_channel_registry_version").on(table.podId, table.channelId, table.registryVersion),
+    index("idx_buzz_channel_registry_active").on(table.podId, table.channelId, table.status),
+  ],
+);
+
 export const agentChannelMemberships = sqliteTable(
   "agent_channel_memberships",
   {
@@ -465,6 +484,37 @@ export const steerTelemetry = sqliteTable(
     observedAt: text("observed_at").notNull(),
   },
   (table) => [index("idx_steer_telemetry_metric_observed").on(table.metricName, table.observedAt)],
+);
+
+export const dispatchPrivacyPolicies = sqliteTable(
+  "dispatch_privacy_policies",
+  {
+    podId: text("pod_id").notNull(),
+    policyVersion: integer("policy_version").notNull(),
+    inventoryUrl: text("inventory_url").notNull(),
+    inventorySha256: text("inventory_sha256").notNull(),
+    terminalRetentionDays: integer("terminal_retention_days").notNull(),
+    providerRecoveryDays: integer("provider_recovery_days").notNull(),
+    status: text("status").notNull(),
+    changedBy: text("changed_by").notNull(),
+    changeReason: text("change_reason").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("uq_dispatch_privacy_policy_version").on(table.podId, table.policyVersion),
+    index("idx_dispatch_privacy_policy_active").on(table.podId, table.status, table.policyVersion),
+  ],
+);
+
+export const dispatchSecurityDiagnostics = sqliteTable(
+  "dispatch_security_diagnostics",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    code: text("code").notNull(),
+    configurationVersion: integer("configuration_version"),
+    observedAt: text("observed_at").notNull(),
+  },
+  (table) => [index("idx_dispatch_security_diagnostics_observed").on(table.observedAt)],
 );
 
 export const codeReviews = sqliteTable(

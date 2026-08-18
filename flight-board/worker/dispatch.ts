@@ -257,9 +257,16 @@ async function readBody(request: Request) {
 }
 
 async function validateCurrentRoute(db: Database, receipt: ReceiptRecord, outbox: OutboxRecord) {
-  const route = await db.prepare(`SELECT r.channel_id, r.relay_url, r.configuration_version,
-    CASE WHEN m.status = 'active' THEN 1 ELSE 0 END AS member_active
-    FROM workspace_routing r LEFT JOIN agent_channel_memberships m
+  const route = await db.prepare(`SELECT r.channel_id, r.channel_name, r.relay_url, r.configuration_version,
+    CASE WHEN m.status = 'active' THEN 1 ELSE 0 END AS member_active,
+    CASE WHEN c.status = 'ACTIVE' THEN 1 ELSE 0 END AS channel_active,
+    c.channel_name AS registered_channel_name, c.relay_url AS registered_relay_url
+    FROM workspace_routing r
+    LEFT JOIN buzz_channel_registry c
+      ON c.pod_id = r.pod_id AND c.channel_id = r.channel_id
+     AND c.registry_version = (SELECT MAX(c2.registry_version) FROM buzz_channel_registry c2
+       WHERE c2.pod_id = r.pod_id AND c2.channel_id = r.channel_id)
+    LEFT JOIN agent_channel_memberships m
       ON m.pod_id = r.pod_id AND m.channel_id = r.channel_id AND m.member_id = ?
      AND m.membership_version = (SELECT MAX(m2.membership_version) FROM agent_channel_memberships m2
        WHERE m2.pod_id = r.pod_id AND m2.channel_id = r.channel_id AND m2.member_id = ?)
@@ -267,6 +274,9 @@ async function validateCurrentRoute(db: Database, receipt: ReceiptRecord, outbox
     ORDER BY r.configuration_version DESC LIMIT 1`)
     .bind(outbox.member_id, outbox.member_id, receipt.pod_id).first<Record<string, unknown>>();
   if (!route) return "ROUTE_CONFIG_MISSING";
+  if (Number(route.channel_active) !== 1) return "CHANNEL_BINDING_STALE";
+  if (String(route.registered_channel_name) !== String(route.channel_name)) return "CHANNEL_BINDING_STALE";
+  if (String(route.registered_relay_url) !== String(route.relay_url)) return "RELAY_BINDING_STALE";
   if (String(route.channel_id) !== receipt.channel_id) return "CHANNEL_BINDING_STALE";
   if (String(route.relay_url) !== outbox.relay_url) return "RELAY_BINDING_STALE";
   if (Number(route.configuration_version) !== receipt.configuration_version) return "ROUTING_VERSION_STALE";

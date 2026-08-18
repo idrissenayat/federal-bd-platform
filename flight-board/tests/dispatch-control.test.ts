@@ -25,9 +25,13 @@ test("dispatch identity is deterministic and changes on an authorization binding
 
 test("routing fails closed on missing configuration, POD mismatch, and missing membership", () => {
   assert.equal(validateDispatchRoute(null, "pod-a", "agent-builder").code, "ROUTE_CONFIG_MISSING");
-  const route = { podId: "pod-a", configurationVersion: 1, channelId: "channel", channelName: "#steer-team", relayUrl: "https://relay.example", membershipVersion: 1, agentMemberId: "agent-builder", agentIsMember: true };
+  const route = { podId: "pod-a", configurationVersion: 1, channelId: "channel", channelName: "#steer-team", relayUrl: "https://relay.example", membershipVersion: 1, agentMemberId: "agent-builder", agentIsMember: true, channelKnown: true, channelNameMatches: true, relayBindingMatches: true, workspaceBindingMatches: true, competingSource: false };
   assert.equal(validateDispatchRoute(route, "pod-b", "agent-builder").code, "ROUTE_WORKSPACE_MISMATCH");
+  assert.equal(validateDispatchRoute({ ...route, channelKnown: false }, "pod-a", "agent-builder").code, "ROUTE_CHANNEL_UNKNOWN");
+  assert.equal(validateDispatchRoute({ ...route, channelNameMatches: false }, "pod-a", "agent-builder").code, "ROUTE_CHANNEL_IDENTITY_MISMATCH");
+  assert.equal(validateDispatchRoute({ ...route, relayBindingMatches: false }, "pod-a", "agent-builder").code, "ROUTE_RELAY_WORKSPACE_MISMATCH");
   assert.equal(validateDispatchRoute({ ...route, agentIsMember: false }, "pod-a", "agent-builder").code, "ROUTE_AGENT_NOT_ENROLLED");
+  assert.equal(validateDispatchRoute({ ...route, competingSource: true }, "pod-a", "agent-builder").code, "ROUTE_COMPETING_SOURCE");
   assert.equal(validateDispatchRoute(route, "pod-a", "agent-builder").ok, true);
 });
 
