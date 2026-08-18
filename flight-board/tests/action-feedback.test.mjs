@@ -79,6 +79,15 @@ test("AT-17 exposes transport, blocked, pending, empty, and reload outcomes with
   assert.match(page, /Work item unavailable/);
 });
 
+test("AT-17 drawer is a focus-contained modal dialog", () => {
+  assert.match(page, /<dialog ref=\{drawerRef\} open className="item-drawer" aria-modal="true" aria-labelledby=\{`drawer-title-\$\{selected\.id\}`\}/);
+  assert.match(page, /ref=\{drawerCloseRef\} aria-label="Close item"/);
+  assert.match(page, /drawerReturnFocus\.current = document\.activeElement/);
+  assert.match(page, /event\.key === "Escape"/);
+  assert.match(page, /event\.key === "Tab"/);
+  assert.match(page, /cycleDrawerFocus\(event\.currentTarget, event\.shiftKey\)/);
+});
+
 test("named human can activate the exact STR-028 policy from an accessible authenticated control", () => {
   assert.match(page, /Activate the approved STR-028 privacy policy/);
   assert.match(page, /expected_policy_version: data\?\.privacy_policy\?\.policy_version/);

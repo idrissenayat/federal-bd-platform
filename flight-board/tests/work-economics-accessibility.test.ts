@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import { JSDOM } from "jsdom";
 import axe from "axe-core";
-import { AgentDispatchControl, InlineActionFeedback, WorkEconomicsPanel } from "../app/page";
+import { AgentDispatchControl, cycleDrawerFocus, InlineActionFeedback, WorkEconomicsPanel } from "../app/page";
 import { evaluateForecast, type DeliveryForecast } from "../lib/work-economics";
 
 const forecast: DeliveryForecast = {
@@ -87,4 +87,28 @@ test("AT-17 local pending, success, and failure regions have named live semantic
     const results = await (dom.window as unknown as { axe: typeof axe }).axe.run(dom.window.document.querySelector("main")!, { rules: { "color-contrast": { enabled: false } } });
     assert.equal(results.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? "")).length, 0);
   }
+});
+
+test("AT-17 drawer focus remains inside the visible dialog", () => {
+  const dom = new JSDOM(`<button id="origin">Open drawer</button><aside role="dialog"><button id="first">Close</button><input id="middle"><button id="last">Save</button></aside>`);
+  const document = dom.window.document;
+  const drawer = document.querySelector("aside") as HTMLElement;
+  const first = document.querySelector("#first") as HTMLElement;
+  const last = document.querySelector("#last") as HTMLElement;
+  const origin = document.querySelector("#origin") as HTMLElement;
+  for (const element of drawer.querySelectorAll<HTMLElement>("button,input")) {
+    element.getClientRects = () => [{ x: 0, y: 0, width: 10, height: 10, top: 0, right: 10, bottom: 10, left: 0, toJSON: () => ({}) }] as unknown as DOMRectList;
+  }
+
+  last.focus();
+  assert.equal(cycleDrawerFocus(drawer, false), true);
+  assert.equal(document.activeElement, first);
+
+  first.focus();
+  assert.equal(cycleDrawerFocus(drawer, true), true);
+  assert.equal(document.activeElement, last);
+
+  origin.focus();
+  assert.equal(cycleDrawerFocus(drawer, false), true);
+  assert.equal(document.activeElement, first);
 });

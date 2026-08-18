@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { buildApprovalReasoningDraft, recommendGateDecision } from "./decision-reasoning";
 import { WORK_TYPES } from "../lib/work-economics";
 import { buildForecastProposal } from "../lib/forecast-proposal";
@@ -403,6 +403,36 @@ export function InlineActionFeedback({ feedback }: { feedback: ActionFeedback | 
     aria-live={feedback.state === "error" ? "assertive" : "polite"}
     tabIndex={feedback.state === "error" ? -1 : undefined}
   ><strong>{title}</strong><span>{feedback.message}</span></div>;
+}
+
+const drawerFocusableSelector = [
+  "button:not([disabled])",
+  "a[href]",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
+export function cycleDrawerFocus(drawer: HTMLElement, backwards: boolean) {
+  const focusable = Array.from(drawer.querySelectorAll<HTMLElement>(drawerFocusableSelector))
+    .filter((element) => !element.hasAttribute("hidden") && element.getClientRects().length > 0);
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  const active = drawer.ownerDocument.activeElement;
+  if (!first || !last) {
+    drawer.focus();
+    return true;
+  }
+  if (backwards && (active === first || !drawer.contains(active))) {
+    last.focus();
+    return true;
+  }
+  if (!backwards && (active === last || !drawer.contains(active))) {
+    first.focus();
+    return true;
+  }
+  return false;
 }
 
 function NextActionEditor({ item, saving, feedback, onSave }: {
@@ -810,6 +840,9 @@ export default function Home() {
   const loadSequence = useRef(0);
   const mutationSequence = useRef(0);
   const latestMutation = useRef(new Map<number, number>());
+  const drawerRef = useRef<HTMLDialogElement>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const drawerReturnFocus = useRef<HTMLElement | null>(null);
 
   async function load(options: { quiet?: boolean } = {}) {
     const sequence = ++loadSequence.current;
@@ -882,6 +915,13 @@ export default function Home() {
   const decisionItems = data?.items.filter((item) => ["Needed now", "Resubmitted"].includes(item.decision_status)) ?? [];
   const blockedItems = data?.items.filter((item) => item.state === "blocked") ?? [];
   const activeItems = data?.items.filter((item) => item.state === "active") ?? [];
+  const activeDrawerId = selected?.id ?? null;
+
+  useEffect(() => {
+    if (activeDrawerId === null || decisionOpen || codeReviewOpen || reviewTargetItemId) return;
+    const frame = requestAnimationFrame(() => drawerCloseRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [activeDrawerId, decisionOpen, codeReviewOpen, reviewTargetItemId]);
 
   function beginItemAction(id: number, scope: ActionScope, message: string) {
     const actionId = ++mutationSequence.current;
@@ -1130,8 +1170,25 @@ export default function Home() {
   }
 
   function openItem(item: WorkItem) {
+    if (document.activeElement instanceof HTMLElement) drawerReturnFocus.current = document.activeElement;
     setSelectedId(item.id);
     setDecisionOpen(false);
+  }
+
+  function closeItem() {
+    setSelectedId(null);
+    requestAnimationFrame(() => drawerReturnFocus.current?.focus());
+  }
+
+  function handleDrawerKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeItem();
+      return;
+    }
+    if (event.key === "Tab" && event.currentTarget === drawerRef.current && cycleDrawerFocus(event.currentTarget, event.shiftKey)) {
+      event.preventDefault();
+    }
   }
 
   async function openBuzzWorkspace() {
@@ -1320,13 +1377,13 @@ export default function Home() {
 
       {selected && (
         <div className="drawer-scrim">
-          <aside className="item-drawer" aria-label={`${selected.key} details`}>
+          <dialog ref={drawerRef} open className="item-drawer" aria-modal="true" aria-labelledby={`drawer-title-${selected.id}`} tabIndex={-1} onKeyDown={handleDrawerKeyDown}>
             <header className="drawer-header">
               <div><span>{selected.key}</span><StatusPill value={selected.workflow} /></div>
-              <button aria-label="Close item" onClick={() => setSelectedId(null)}>×</button>
+              <button ref={drawerCloseRef} aria-label="Close item" onClick={closeItem}>×</button>
             </header>
             <div className="drawer-body">
-              <h2>{selected.title}</h2>
+              <h2 id={`drawer-title-${selected.id}`}>{selected.title}</h2>
               <p className="drawer-description">{selected.description}</p>
 
               {["Needed now", "Resubmitted"].includes(selected.decision_status) && (
@@ -1400,7 +1457,7 @@ export default function Home() {
                 {itemActivity.length ? itemActivity.map((event) => <div className="activity-row" key={event.id}><Avatar name={event.actor_name} /><div><p><strong>{event.actor_name ?? "Contributor"}</strong> {event.detail}</p><span>{formatDate(event.created_at)}</span></div></div>) : <p className="muted">No activity recorded.</p>}
               </section>
             </div>
-          </aside>
+          </dialog>
         </div>
       )}
 
@@ -1417,10 +1474,10 @@ export default function Home() {
 
       {selectedId !== null && !selected && (
         <div className="drawer-scrim">
-          <aside className="item-drawer item-drawer-unavailable" aria-label="Work item unavailable">
-            <header className="drawer-header"><div><span>Unavailable</span></div><button aria-label="Close unavailable work item" onClick={() => setSelectedId(null)}>×</button></header>
-            <div className="drawer-body"><div className="empty-panel" role="alert" aria-live="assertive" aria-label="Authoritative work item unavailable"><span>!</span><h2>Work item unavailable</h2><p>The authoritative item is not present in the latest workspace response. No durable value was fabricated. Refresh the workspace or close this drawer.</p><button onClick={() => void load()}>Refresh workspace</button></div></div>
-          </aside>
+          <dialog ref={drawerRef} open className="item-drawer item-drawer-unavailable" aria-modal="true" aria-labelledby="unavailable-drawer-title" tabIndex={-1} onKeyDown={handleDrawerKeyDown}>
+            <header className="drawer-header"><div><span>Unavailable</span></div><button ref={drawerCloseRef} aria-label="Close unavailable work item" onClick={closeItem}>×</button></header>
+            <div className="drawer-body"><div className="empty-panel" role="alert" aria-live="assertive" aria-label="Authoritative work item unavailable"><span>!</span><h2 id="unavailable-drawer-title">Work item unavailable</h2><p>The authoritative item is not present in the latest workspace response. No durable value was fabricated. Refresh the workspace or close this drawer.</p><button onClick={() => void load()}>Refresh workspace</button></div></div>
+          </dialog>
         </div>
       )}
 
