@@ -191,7 +191,7 @@ type Bootstrap = {
 };
 
 type ItemMutationSnapshot = AuthoritativeItemSnapshot<WorkItem, Activity, WorkEconomicsEvent>;
-type ItemMutationResult = { ok: true; snapshot: ItemMutationSnapshot; message?: string };
+type ItemMutationResult = { ok: true; snapshot: ItemMutationSnapshot; message?: string; idempotent_replay?: boolean };
 type ActionScope = "controls" | "economics" | "dispatch" | "next-action";
 type ActionFeedback = { id: number; scope: ActionScope; state: "pending" | "success" | "error"; message: string };
 
@@ -322,12 +322,41 @@ async function api(path: string, init?: RequestInit) {
   try {
     data = JSON.parse(body) as { error?: string };
   } catch {
-    throw new Error(response.ok
+    throw new ApiRequestError(response.ok
       ? "The service returned an unreadable response. Refresh and try again."
-      : `The service is temporarily unavailable (HTTP ${response.status}). Refresh and try again.`);
+      : `The service is temporarily unavailable (HTTP ${response.status}). Refresh and try again.`, response.status);
   }
-  if (!response.ok) throw new Error(data.error ?? "The request could not be completed.");
+  if (!response.ok) throw new ApiRequestError(data.error ?? "The request could not be completed.", response.status);
   return data;
+}
+
+class ApiRequestError extends Error {
+  readonly responseReceivedAt = feedbackClock();
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
+function feedbackClock() { return performance.now(); }
+
+type TelemetryObservation = { metric_name: string; label_name?: string; label_value?: string; value: number; case_id?: string };
+
+function emitTelemetry(observation: TelemetryObservation) {
+  void fetch("/api/telemetry", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ label_name: "", label_value: "", ...observation }),
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
+function emitFeedbackAfterPaint(receivedAt: number, histogram: string, outcomeMetric: string, outcome: string) {
+  requestAnimationFrame(() => {
+    emitTelemetry({ metric_name: histogram, value: Math.max(0, Math.round(performance.now() - receivedAt)) });
+    emitTelemetry({ metric_name: outcomeMetric, label_name: "outcome", label_value: outcome, value: 1 });
+  });
+}
+
+function failureOutcome(error: unknown) {
+  return error instanceof ApiRequestError ? error.status === 409 ? "conflict" : error.status >= 400 && error.status < 500 ? "validation" : "transport" : "transport";
 }
 
 function StatusPill({ value, kind }: { value: string; kind?: string }) {
@@ -833,12 +862,15 @@ export default function Home() {
     setSaving(true);
     try {
       const result = await api(`/api/items/${id}`, { method: "PATCH", body: JSON.stringify(changes) }) as ItemMutationResult;
+      const responseReceivedAt = feedbackClock();
       if (latestMutation.current.get(id) !== actionId) return;
       applySnapshot(result.snapshot);
       finishItemAction(id, actionId, scope, "success", successMessage);
+      emitFeedbackAfterPaint(responseReceivedAt, "steer_work_item_save_feedback_latency_ms", "steer_work_item_save_outcome_total", "success");
       void load({ quiet: true });
     } catch (caught) {
       finishItemAction(id, actionId, scope, "error", caught instanceof Error ? caught.message : "The item could not be updated. Your input is preserved for correction or retry.");
+      emitFeedbackAfterPaint(caught instanceof ApiRequestError ? caught.responseReceivedAt : feedbackClock(), "steer_work_item_save_feedback_latency_ms", "steer_work_item_save_outcome_total", failureOutcome(caught));
     } finally {
       if (latestMutation.current.get(id) === actionId) setSaving(false);
     }
@@ -850,14 +882,17 @@ export default function Home() {
     setNotice(null);
     try {
       const result = await api(`/api/items/${id}/work-economics`, { method: "PATCH", body: JSON.stringify({ section, value, reason }) }) as ItemMutationResult;
+      const responseReceivedAt = feedbackClock();
       if (latestMutation.current.get(id) !== actionId) return;
       applySnapshot(result.snapshot);
       finishItemAction(id, actionId, "economics", "success", section === "valueHypothesis"
         ? "Value hypothesis accepted from the authoritative response. Gate 1 can now be reviewed."
         : "The governed record was saved from the authoritative response.");
+      emitFeedbackAfterPaint(responseReceivedAt, "steer_work_item_save_feedback_latency_ms", "steer_work_item_save_outcome_total", "success");
       void load({ quiet: true });
     } catch (caught) {
       finishItemAction(id, actionId, "economics", "error", caught instanceof Error ? caught.message : "The Work Economics record could not be updated. Your input is preserved.");
+      emitFeedbackAfterPaint(caught instanceof ApiRequestError ? caught.responseReceivedAt : feedbackClock(), "steer_work_item_save_feedback_latency_ms", "steer_work_item_save_outcome_total", failureOutcome(caught));
     } finally {
       if (latestMutation.current.get(id) === actionId) setSaving(false);
     }
@@ -1080,6 +1115,7 @@ export default function Home() {
     setDispatchingId(item.id);
     try {
       const result = await api(`/api/items/${item.id}/dispatch`, { method: "POST", body: "{}" }) as ItemMutationResult;
+      const responseReceivedAt = feedbackClock();
       if (!result.message) throw new Error("The authorized handoff message was not returned.");
       if (latestMutation.current.get(item.id) !== actionId) return;
       applySnapshot(result.snapshot);
@@ -1087,14 +1123,17 @@ export default function Home() {
         await navigator.clipboard.writeText(result.message);
       } catch {
         finishItemAction(item.id, actionId, "dispatch", "error", "The handoff was authorized once, but the message could not be copied. Do not authorize it again; use the recorded activity and outbox entry.");
+        emitFeedbackAfterPaint(responseReceivedAt, "steer_agent_handoff_feedback_latency_ms", "steer_agent_handoff_outcome_total", result.idempotent_replay ? "duplicate_suppressed" : "queued");
         void load({ quiet: true });
         return;
       }
       setCopiedHandoffId(item.id);
       finishItemAction(item.id, actionId, "dispatch", "success", "One handoff was authorized and copied. The drawer now shows the authoritative state.");
+      emitFeedbackAfterPaint(responseReceivedAt, "steer_agent_handoff_feedback_latency_ms", "steer_agent_handoff_outcome_total", result.idempotent_replay ? "duplicate_suppressed" : "queued");
       void load({ quiet: true });
     } catch (caught) {
       finishItemAction(item.id, actionId, "dispatch", "error", caught instanceof Error ? caught.message : "The agent handoff could not be authorized. No retry was started.");
+      emitFeedbackAfterPaint(caught instanceof ApiRequestError ? caught.responseReceivedAt : feedbackClock(), "steer_agent_handoff_feedback_latency_ms", "steer_agent_handoff_outcome_total", caught instanceof ApiRequestError && caught.status === 409 ? "blocked" : "error");
     } finally {
       setDispatchingId(null);
     }

@@ -362,6 +362,47 @@ async function handleNextDispatch(request: Request, db: Database, env: DispatchS
   }
 }
 
+async function handleRetentionRun(request: Request, db: Database, env: DispatchServiceEnv) {
+  if (!serviceAuthorized(request, env)) return json({ error: "Dispatch service authentication required.", code: "SERVICE_AUTH_REQUIRED" }, 401);
+  const now = new Date();
+  const cutoffAt = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const eligible = await db.prepare(`SELECT r.intent_id FROM dispatch_receipts r
+    JOIN dispatch_outbox o ON o.intent_id = r.intent_id
+    WHERE o.current_state IN ('ACKNOWLEDGED','FAILED_FINAL','SUPERSEDED','CANCELLED')
+      AND o.updated_at <= ?
+      AND NOT EXISTS (
+        SELECT 1 FROM dispatch_retention_holds h
+        WHERE h.intent_id = r.intent_id AND h.action = 'HOLD' AND h.expires_at > ?
+          AND NOT EXISTS (
+            SELECT 1 FROM dispatch_retention_holds release
+            WHERE release.intent_id = h.intent_id AND release.action = 'RELEASE' AND release.created_at > h.created_at
+          )
+      )
+    ORDER BY o.updated_at LIMIT 100`).bind(cutoffAt, now.toISOString()).all<{ intent_id: string }>();
+  let deletedCount = 0;
+  for (const candidate of eligible.results ?? []) {
+    const authorizationNonce = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    await db.batch([
+      db.prepare("INSERT INTO dispatch_retention_authorizations (intent_id, authorization_nonce, expires_at) VALUES (?, ?, ?)")
+        .bind(candidate.intent_id, authorizationNonce, expiresAt),
+      db.prepare("DELETE FROM dispatch_events WHERE intent_id = ?").bind(candidate.intent_id),
+      db.prepare("DELETE FROM dispatch_attempts WHERE intent_id = ?").bind(candidate.intent_id),
+      db.prepare("DELETE FROM dispatch_outbox WHERE intent_id = ?").bind(candidate.intent_id),
+      db.prepare("DELETE FROM dispatch_authorization_audits WHERE intent_id = ?").bind(candidate.intent_id),
+      db.prepare("DELETE FROM notifications WHERE dedupe_key = ?").bind(`dispatch-${candidate.intent_id}`),
+      db.prepare("DELETE FROM dispatch_retention_holds WHERE intent_id = ?").bind(candidate.intent_id),
+      db.prepare("DELETE FROM dispatch_receipts WHERE intent_id = ?").bind(candidate.intent_id),
+      db.prepare("DELETE FROM dispatch_retention_authorizations WHERE intent_id = ? AND authorization_nonce = ?")
+        .bind(candidate.intent_id, authorizationNonce),
+    ]);
+    deletedCount += 1;
+  }
+  await db.prepare(`INSERT INTO dispatch_retention_runs (cutoff_at, eligible_count, deleted_count, created_at)
+    VALUES (?, ?, ?, ?)`).bind(cutoffAt, (eligible.results ?? []).length, deletedCount, now.toISOString()).run();
+  return json({ ok: true, cutoff_at: cutoffAt, eligible_count: (eligible.results ?? []).length, deleted_count: deletedCount });
+}
+
 async function handleServiceCommand(request: Request, db: Database, env: DispatchServiceEnv, intentId: string) {
   if (!serviceAuthorized(request, env)) return json({ error: "Dispatch service authentication required.", code: "SERVICE_AUTH_REQUIRED" }, 401);
   const dispatch = await loadDispatch(db, intentId);
@@ -528,6 +569,7 @@ async function handleAcknowledgement(request: Request, db: Database, env: Dispat
 export async function handleDispatchServiceApi(request: Request, db: Database, env: DispatchServiceEnv) {
   const url = new URL(request.url);
   if (request.method === "POST" && url.pathname === "/api/dispatches/next") return handleNextDispatch(request, db, env);
+  if (request.method === "POST" && url.pathname === "/api/dispatch-retention/run") return handleRetentionRun(request, db, env);
   const commandMatch = url.pathname.match(/^\/api\/dispatches\/([0-9a-f]{64})\/commands$/);
   if (request.method === "POST" && commandMatch) return handleServiceCommand(request, db, env, commandMatch[1]);
   const readMatch = url.pathname.match(/^\/api\/dispatches\/([0-9a-f]{64})\/read$/);

@@ -104,6 +104,21 @@ test("general item mutation and dispatch enforce same-POD scope and retain paylo
   assert.ok(denials.every((event) => !String(event.reason).includes("sensitive payload")));
 });
 
+test("STR-028 telemetry accepts only bounded labels and rejects PII-shaped extra fields", async () => {
+  const { db } = await setup();
+  const accepted = await handleApi(request("member-a", "/api/telemetry", "POST", {
+    metric_name: "steer_work_item_save_outcome_total", label_name: "outcome", label_value: "success", value: 1, case_id: "SAVE-01",
+  }), { DB: db });
+  assert.equal(accepted?.status, 204);
+  const rejected = await handleApi(request("member-a", "/api/telemetry", "POST", {
+    metric_name: "steer_work_item_save_outcome_total", label_name: "outcome", label_value: "success", value: 1, actor_id: "member-a",
+  }), { DB: db });
+  assert.equal(rejected?.status, 400);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM steer_telemetry").get()!.total, 1);
+  const row = db.sqlite.prepare("SELECT metric_name, label_name, label_value, value, case_id FROM steer_telemetry").get()!;
+  assert.deepEqual({ ...row }, { metric_name: "steer_work_item_save_outcome_total", label_name: "outcome", label_value: "success", value: 1, case_id: "SAVE-01" });
+});
+
 test("successful dispatch creates one immutable receipt, outbox identity, and QUEUED event across replay", async () => {
   const { db, itemId } = await setup();
   const revision = "b".repeat(40);
@@ -224,6 +239,21 @@ test("service fencing, verified relay delivery, signed agent acknowledgement, an
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_outbox").get()!.total, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_attempts").get()!.total, 1);
     assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events WHERE event_type = 'ACKNOWLEDGED'").get()!.total, 1);
+
+    db.sqlite.prepare("UPDATE dispatch_outbox SET updated_at = '2026-01-01T00:00:00.000Z'").run();
+    const hold = await handleApi(request("member-a", `/api/dispatches/${intentId}/retention-holds`, "POST", { action: "HOLD", reason_code: "SECURITY_REVIEW", expires_at: new Date(Date.now() + 86_400_000).toISOString() }), { DB: db, ...dispatchEnv });
+    assert.equal(hold?.status, 201, await hold?.text());
+    const heldRun = await handleApi(serviceRequest("/api/dispatch-retention/run", {}), { DB: db, ...dispatchEnv });
+    assert.equal(heldRun?.status, 200, await heldRun?.clone().text());
+    assert.equal((await heldRun?.json() as { deleted_count: number }).deleted_count, 0);
+    const release = await handleApi(request("member-a", `/api/dispatches/${intentId}/retention-holds`, "POST", { action: "RELEASE", reason_code: "SECURITY_REVIEW_COMPLETE" }), { DB: db, ...dispatchEnv });
+    assert.equal(release?.status, 201, await release?.text());
+    const deletion = await handleApi(serviceRequest("/api/dispatch-retention/run", {}), { DB: db, ...dispatchEnv });
+    assert.equal(deletion?.status, 200, await deletion?.clone().text());
+    assert.equal((await deletion?.json() as { deleted_count: number }).deleted_count, 1);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_receipts").get()!.total, 0);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_events").get()!.total, 0);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM dispatch_authorization_audits").get()!.total, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -480,6 +480,25 @@ async function ensureSchema(db: Database) {
       created_at text NOT NULL, UNIQUE(pod_id, key_id, key_version)
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_relay_event_signers_active ON relay_event_signers (pod_id, relay_url, channel_id, status)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_retention_holds (
+      hold_event_id text PRIMARY KEY NOT NULL, intent_id text NOT NULL, action text NOT NULL,
+      reason_code text NOT NULL, expires_at text NOT NULL, actor_id text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_retention_holds_intent_created ON dispatch_retention_holds (intent_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_retention_authorizations (
+      intent_id text PRIMARY KEY NOT NULL, authorization_nonce text NOT NULL, expires_at text NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_retention_runs (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, cutoff_at text NOT NULL,
+      eligible_count integer NOT NULL, deleted_count integer NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dispatch_retention_runs_created ON dispatch_retention_runs (created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS steer_telemetry (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, metric_name text NOT NULL,
+      label_name text NOT NULL DEFAULT '', label_value text NOT NULL DEFAULT '',
+      value integer NOT NULL, case_id text, observed_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_steer_telemetry_metric_observed ON steer_telemetry (metric_name, observed_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS code_reviews (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
       item_id integer NOT NULL,
@@ -550,16 +569,25 @@ async function ensureSchema(db: Database) {
   await ensureColumn(db, "dispatch_outbox", "accepted_acknowledgement_sha256", "accepted_acknowledgement_sha256 text");
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_receipts_no_update
     BEFORE UPDATE ON dispatch_receipts BEGIN SELECT RAISE(ABORT, 'dispatch receipts are immutable'); END`).run();
-  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_receipts_no_delete
-    BEFORE DELETE ON dispatch_receipts BEGIN SELECT RAISE(ABORT, 'dispatch receipts require the governed retention path'); END`).run();
+  await db.prepare("DROP TRIGGER IF EXISTS dispatch_receipts_no_delete").run();
+  await db.prepare(`CREATE TRIGGER dispatch_receipts_no_delete
+    BEFORE DELETE ON dispatch_receipts WHEN NOT EXISTS (
+      SELECT 1 FROM dispatch_retention_authorizations a WHERE a.intent_id = OLD.intent_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'dispatch receipts require the governed retention path'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_events_no_update
     BEFORE UPDATE ON dispatch_events BEGIN SELECT RAISE(ABORT, 'dispatch events are append-only'); END`).run();
-  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_events_no_delete
-    BEFORE DELETE ON dispatch_events BEGIN SELECT RAISE(ABORT, 'dispatch events require the governed retention path'); END`).run();
+  await db.prepare("DROP TRIGGER IF EXISTS dispatch_events_no_delete").run();
+  await db.prepare(`CREATE TRIGGER dispatch_events_no_delete
+    BEFORE DELETE ON dispatch_events WHEN NOT EXISTS (
+      SELECT 1 FROM dispatch_retention_authorizations a WHERE a.intent_id = OLD.intent_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'dispatch events require the governed retention path'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_authorization_audits_no_update
     BEFORE UPDATE ON dispatch_authorization_audits BEGIN SELECT RAISE(ABORT, 'dispatch authorization audits are immutable'); END`).run();
-  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_authorization_audits_no_delete
-    BEFORE DELETE ON dispatch_authorization_audits BEGIN SELECT RAISE(ABORT, 'dispatch authorization audits require the governed retention path'); END`).run();
+  await db.prepare("DROP TRIGGER IF EXISTS dispatch_authorization_audits_no_delete").run();
+  await db.prepare(`CREATE TRIGGER dispatch_authorization_audits_no_delete
+    BEFORE DELETE ON dispatch_authorization_audits WHEN NOT EXISTS (
+      SELECT 1 FROM dispatch_retention_authorizations a WHERE a.intent_id = OLD.intent_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'dispatch authorization audits require the governed retention path'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_event_signers_no_update
     BEFORE UPDATE ON dispatch_event_signers BEGIN SELECT RAISE(ABORT, 'dispatch signer registry entries are immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_event_signers_no_delete
@@ -568,6 +596,8 @@ async function ensureSchema(db: Database) {
     BEFORE UPDATE ON relay_event_signers BEGIN SELECT RAISE(ABORT, 'relay signer registry entries are immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS relay_event_signers_no_delete
     BEFORE DELETE ON relay_event_signers BEGIN SELECT RAISE(ABORT, 'relay signer registry entries are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_retention_holds_no_update
+    BEFORE UPDATE ON dispatch_retention_holds BEGIN SELECT RAISE(ABORT, 'dispatch retention hold events are immutable'); END`).run();
   await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_dispatch_events_one_acknowledged ON dispatch_events (intent_id) WHERE event_type = 'ACKNOWLEDGED'").run();
   await db.prepare("PRAGMA optimize").run();
 }
@@ -1049,6 +1079,70 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
     ),
   ]);
   return json({ ok: true, idempotent_replay: false, authorization: { ...authorization, channel: route.channelName }, receipt, message: handoffMessage, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
+}
+
+async function manageDispatchRetentionHold(request: Request, db: Database, user: User, intentId: string) {
+  const member = await memberContext(db, user);
+  if (!member || member.kind !== "human" || !/(Tech Lead|Platform|Ops Lead|Security)/.test(member.role)) {
+    return json({ error: "A named Tech, Platform / Ops, or Security authority must manage retention holds." }, 403);
+  }
+  const dispatch = await db.prepare(`SELECT r.intent_id FROM dispatch_receipts r
+    JOIN members actor ON actor.id = ? AND actor.pod_id = r.pod_id WHERE r.intent_id = ?`)
+    .bind(user.id, intentId).first<{ intent_id: string }>();
+  if (!dispatch) return json({ error: "Dispatch intent not found in your POD." }, 404);
+  const body = await request.json() as Record<string, unknown>;
+  const action = String(body.action ?? "");
+  const reasonCode = String(body.reason_code ?? "");
+  if (!['HOLD', 'RELEASE'].includes(action) || !/^[A-Z0-9_:-]{3,64}$/.test(reasonCode)) {
+    return json({ error: "Use HOLD or RELEASE with a bounded non-PII reason code." }, 400);
+  }
+  const now = new Date();
+  const requestedExpiry = action === "HOLD" ? Date.parse(String(body.expires_at ?? "")) : now.getTime();
+  if (!Number.isFinite(requestedExpiry) || requestedExpiry <= now.getTime() || requestedExpiry > now.getTime() + 365 * 24 * 60 * 60 * 1000) {
+    if (action === "HOLD") return json({ error: "A hold must have an explicit future expiry no more than 365 days away." }, 400);
+  }
+  const holdEventId = crypto.randomUUID();
+  await db.prepare(`INSERT INTO dispatch_retention_holds
+    (hold_event_id, intent_id, action, reason_code, expires_at, actor_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .bind(holdEventId, intentId, action, reasonCode, new Date(requestedExpiry).toISOString(), user.id, now.toISOString()).run();
+  return json({ ok: true, hold_event_id: holdEventId, action, expires_at: new Date(requestedExpiry).toISOString() }, 201);
+}
+
+const telemetryContract: Record<string, { labelName: string; values: string[]; histogram?: boolean }> = {
+  steer_work_item_save_feedback_latency_ms: { labelName: "", values: [], histogram: true },
+  steer_agent_handoff_feedback_latency_ms: { labelName: "", values: [], histogram: true },
+  steer_work_item_save_outcome_total: { labelName: "outcome", values: ["success", "validation", "conflict", "transport"] },
+  steer_post_write_reconciliation_total: { labelName: "result", values: ["fresh", "stale_suppressed", "authoritative_reload", "error"] },
+  steer_agent_handoff_outcome_total: { labelName: "outcome", values: ["queued", "delivered", "blocked", "duplicate_suppressed", "error"] },
+  steer_stale_ui_recurrence_total: { labelName: "severity", values: ["critical", "noncritical"] },
+  steer_duplicate_dispatch_total: { labelName: "", values: [] },
+};
+
+async function recordBoundedTelemetry(request: Request, db: Database) {
+  const body = await request.json() as Record<string, unknown>;
+  if (Object.keys(body).some((key) => !["metric_name", "label_name", "label_value", "value", "case_id"].includes(key))) {
+    return json({ error: "Telemetry accepts only the bounded STR-028 contract fields." }, 400);
+  }
+  const metricName = String(body.metric_name ?? "");
+  const contract = telemetryContract[metricName];
+  const labelName = String(body.label_name ?? "");
+  const labelValue = String(body.label_value ?? "");
+  const value = Number(body.value);
+  const caseId = body.case_id === undefined || body.case_id === null || body.case_id === "" ? null : String(body.case_id);
+  if (!contract || labelName !== contract.labelName || (contract.values.length ? !contract.values.includes(labelValue) : labelValue !== "")) {
+    return json({ error: "Telemetry metric or label is outside the bounded allowlist." }, 400);
+  }
+  if (!Number.isInteger(value) || value < 0 || (contract.histogram ? value > 60_000 : value !== 1)) {
+    return json({ error: contract.histogram ? "Latency must be an integer from 0 through 60000 ms." : "Counter observations must have value 1." }, 400);
+  }
+  if (caseId && !/^(SAVE|DISP|FAIL|ORDER|REC)-[A-Z0-9-]{1,24}$/.test(caseId)) {
+    return json({ error: "Only a pre-enrolled bounded matrix case ID may label telemetry." }, 400);
+  }
+  await db.prepare(`INSERT INTO steer_telemetry
+    (metric_name, label_name, label_value, value, case_id, observed_at) VALUES (?, ?, ?, ?, ?, ?)`)
+    .bind(metricName, labelName, labelValue, value, caseId, new Date().toISOString()).run();
+  return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
 }
 
 async function createItem(request: Request, db: Database, user: User) {
@@ -2235,6 +2329,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     await ensureCurrentUser(env.DB, user);
     if (request.method === "GET" && url.pathname === "/api/buzz-status") return getBuzzStatus();
     if (request.method === "GET" && url.pathname === "/api/bootstrap") return json(await bootstrap(env.DB, user));
+    if (request.method === "POST" && url.pathname === "/api/telemetry") return recordBoundedTelemetry(request, env.DB);
     if (request.method === "POST" && url.pathname === "/api/items") return createItem(request, env.DB, user);
     const itemMatch = url.pathname.match(/^\/api\/items\/(\d+)$/);
     if (request.method === "PATCH" && itemMatch) return updateItem(request, env.DB, user, Number(itemMatch[1]));
@@ -2244,6 +2339,8 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "POST" && reviewMatch) return runCriticReview(env.DB, user, Number(reviewMatch[1]));
     const dispatchMatch = url.pathname.match(/^\/api\/items\/(\d+)\/dispatch$/);
     if (request.method === "POST" && dispatchMatch) return authorizeAgentDispatch(env.DB, env, user, Number(dispatchMatch[1]));
+    const retentionHoldMatch = url.pathname.match(/^\/api\/dispatches\/([0-9a-f]{64})\/retention-holds$/);
+    if (request.method === "POST" && retentionHoldMatch) return manageDispatchRetentionHold(request, env.DB, user, retentionHoldMatch[1]);
     const codeReviewMatch = url.pathname.match(/^\/api\/items\/(\d+)\/code-review$/);
     if (request.method === "GET" && codeReviewMatch) return loadCodeReview(env.DB, env, user, Number(codeReviewMatch[1]));
     if (request.method === "POST" && codeReviewMatch) return actOnCodeReview(request, env.DB, env, user, Number(codeReviewMatch[1]));

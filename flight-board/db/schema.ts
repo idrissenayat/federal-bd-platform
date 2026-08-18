@@ -418,6 +418,55 @@ export const relayEventSigners = sqliteTable(
   ],
 );
 
+export const dispatchRetentionHolds = sqliteTable(
+  "dispatch_retention_holds",
+  {
+    holdEventId: text("hold_event_id").primaryKey(),
+    intentId: text("intent_id").notNull(),
+    action: text("action").notNull(),
+    reasonCode: text("reason_code").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    actorId: text("actor_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_dispatch_retention_holds_intent_created").on(table.intentId, table.createdAt)],
+);
+
+export const dispatchRetentionAuthorizations = sqliteTable(
+  "dispatch_retention_authorizations",
+  {
+    intentId: text("intent_id").primaryKey(),
+    authorizationNonce: text("authorization_nonce").notNull(),
+    expiresAt: text("expires_at").notNull(),
+  },
+);
+
+export const dispatchRetentionRuns = sqliteTable(
+  "dispatch_retention_runs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    cutoffAt: text("cutoff_at").notNull(),
+    eligibleCount: integer("eligible_count").notNull(),
+    deletedCount: integer("deleted_count").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_dispatch_retention_runs_created").on(table.createdAt)],
+);
+
+export const steerTelemetry = sqliteTable(
+  "steer_telemetry",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    metricName: text("metric_name").notNull(),
+    labelName: text("label_name").notNull().default(""),
+    labelValue: text("label_value").notNull().default(""),
+    value: integer("value").notNull(),
+    caseId: text("case_id"),
+    observedAt: text("observed_at").notNull(),
+  },
+  (table) => [index("idx_steer_telemetry_metric_observed").on(table.metricName, table.observedAt)],
+);
+
 export const codeReviews = sqliteTable(
   "code_reviews",
   {
