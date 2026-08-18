@@ -44,6 +44,6 @@ test("STR-028 measured ledger closes the exact 20-case denominator and both p95 
   assert.equal(summary.unresolved_critical_recurrences as unknown as number, 0);
   const serialized = JSON.stringify(ledger).toLowerCase();
   for (const forbidden of ["email", "display_name", "message_body", "private_key", "authorization_text", "scope_text", "actor_id", "member_id"]) {
-    assert.ok(!serialized.includes(`\"${forbidden}\"`), forbidden);
+    assert.ok(!serialized.includes(`"${forbidden}"`), forbidden);
   }
 });
