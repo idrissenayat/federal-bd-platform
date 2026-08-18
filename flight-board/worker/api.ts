@@ -1913,7 +1913,10 @@ async function activatePrivacyPolicy(request: Request, db: Database, user: User)
   if (!actor || actor.kind !== "human" || !actor.pod_id || !privacyPolicyAuthority(actor.role)) {
     return json({ error: "A named same-POD Privacy, Security, or combined Product and Tech authority must activate this policy.", code: "PRIVACY_POLICY_AUTHORITY_INVALID" }, 403);
   }
-  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  const contentType = request.headers.get("content-type") ?? "";
+  const body = contentType.includes("application/x-www-form-urlencoded")
+    ? Object.fromEntries(await request.formData())
+    : await request.json().catch(() => null) as Record<string, unknown> | null;
   const allowedKeys = ["expected_policy_version", "idempotency_key", "inventory_url", "inventory_sha256", "ruling_url", "ruling_sha256", "terminal_retention_days", "provider_recovery_days", "status", "reason_code"];
   if (!body || Object.keys(body).some((key) => !allowedKeys.includes(key))) {
     return json({ error: "Policy activation accepts only the exact bounded ruling contract.", code: "PRIVACY_POLICY_REQUEST_INVALID" }, 400);

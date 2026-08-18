@@ -69,6 +69,18 @@ function request(user: string, path: string, method = "GET", body?: unknown) {
   });
 }
 
+function formRequest(user: string, path: string, body: Record<string, unknown>) {
+  return new Request(`https://steer.test${path}`, {
+    method: "POST",
+    headers: {
+      "oai-authenticated-user-id": user,
+      "oai-authenticated-user-email": `${user}@example.test`,
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams(Object.entries(body).map(([key, value]) => [key, String(value)])),
+  });
+}
+
 function serviceRequest(path: string, body: unknown) {
   return new Request(`https://steer.test${path}`, {
     method: "POST",
@@ -223,7 +235,7 @@ test("privacy activation is authenticated, ruling-bound, immutable, CAS-safe, an
     const crossPodField = await handleApi(request("member-a", "/api/privacy-policy/activate", "POST", { ...activation, pod_id: "pod-b" }), { DB: db });
     assert.equal(crossPodField?.status, 400);
 
-    const activated = await handleApi(request("member-a", "/api/privacy-policy/activate", "POST", activation), { DB: db });
+    const activated = await handleApi(formRequest("member-a", "/api/privacy-policy/activate", activation), { DB: db });
     assert.equal(activated?.status, 201, await activated?.clone().text());
     const activatedBody = await activated?.json() as { policy_version: number; idempotent_replay: boolean; authorization_event_id: string; activation_receipt_sha256: string };
     assert.equal(activatedBody.policy_version, 2);
