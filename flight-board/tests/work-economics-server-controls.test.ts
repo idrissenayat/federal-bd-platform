@@ -161,6 +161,10 @@ test("STR-028 telemetry accepts only bounded labels and rejects PII-shaped extra
     metric_name: "steer_work_item_save_outcome_total", label_name: "outcome", label_value: "success", value: 1, actor_id: "member-a",
   }), { DB: db });
   assert.equal(rejected?.status, 400);
+  const substitutedCase = await handleApi(request("member-a", "/api/telemetry", "POST", {
+    metric_name: "steer_work_item_save_outcome_total", label_name: "outcome", label_value: "success", value: 1, case_id: "SAVE-99",
+  }), { DB: db });
+  assert.equal(substitutedCase?.status, 400);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM steer_telemetry").get()!.total, 1);
   const row = db.sqlite.prepare("SELECT metric_name, label_name, label_value, value, case_id FROM steer_telemetry").get()!;
   assert.deepEqual({ ...row }, { metric_name: "steer_work_item_save_outcome_total", label_name: "outcome", label_value: "success", value: 1, case_id: "SAVE-01" });

@@ -12,6 +12,7 @@ import {
 import { acceptedValueHypothesisReady, humanAcceptanceState, validateAndNormalizeWorkEconomics, type WorkEconomicsSection } from "../lib/work-economics-validation";
 import { buildDispatchIdentity, exactGitEvidence, STEER_HANDOFF_ROUTE_KEY, validateDispatchRoute, type DispatchRoute } from "../lib/dispatch-control";
 import { canonicalJson, createSignedDispatchEvent, sha256Hex, type DispatchState } from "../lib/dispatch-lifecycle";
+import { isStr028CaseId } from "../lib/str028-manifest";
 import { buildInitialQueuedEvent, ensureDispatchServiceSigner, handleDispatchServiceApi, type DispatchServiceEnv } from "./dispatch";
 
 type D1Result<T = Record<string, unknown>> = {
@@ -1328,7 +1329,7 @@ async function recordBoundedTelemetry(request: Request, db: Database) {
   if (!Number.isInteger(value) || value < 0 || (contract.histogram ? value > 60_000 : value !== 1)) {
     return json({ error: contract.histogram ? "Latency must be an integer from 0 through 60000 ms." : "Counter observations must have value 1." }, 400);
   }
-  if (caseId && !/^(SAVE|DISP|FAIL|ORDER|REC)-[A-Z0-9-]{1,24}$/.test(caseId)) {
+  if (caseId && !isStr028CaseId(caseId)) {
     return json({ error: "Only a pre-enrolled bounded matrix case ID may label telemetry." }, 400);
   }
   await db.prepare(`INSERT INTO steer_telemetry
