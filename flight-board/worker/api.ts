@@ -1378,30 +1378,44 @@ const telemetryContract: Record<string, { labelName: string; values: string[]; h
 
 async function recordBoundedTelemetry(request: Request, db: Database, env: Env) {
   const body = await request.json() as Record<string, unknown>;
-  if (Object.keys(body).some((key) => !["metric_name", "label_name", "label_value", "value", "case_id"].includes(key))) {
+  const batched = Object.keys(body).length === 1 && Array.isArray(body.observations);
+  const observations = batched ? body.observations as unknown[] : [body];
+  if (!observations.length || observations.length > 4 || observations.some((entry) => !entry || typeof entry !== "object" || Array.isArray(entry))) {
+    return json({ error: "Telemetry accepts one through four bounded observations." }, 400);
+  }
+  if (batched ? Object.keys(body).some((key) => key !== "observations") : Object.keys(body).some((key) => !["metric_name", "label_name", "label_value", "value", "case_id"].includes(key))) {
     return json({ error: "Telemetry accepts only the bounded STR-028 contract fields." }, 400);
   }
-  const metricName = String(body.metric_name ?? "");
-  const contract = telemetryContract[metricName];
-  const labelName = String(body.label_name ?? "");
-  const labelValue = String(body.label_value ?? "");
-  const value = Number(body.value);
-  const caseId = body.case_id === undefined || body.case_id === null || body.case_id === "" ? null : String(body.case_id);
-  if (!contract || labelName !== contract.labelName || (contract.values.length ? !contract.values.includes(labelValue) : labelValue !== "")) {
-    return json({ error: "Telemetry metric or label is outside the bounded allowlist." }, 400);
+  const validated: { metricName: string; labelName: string; labelValue: string; value: number; caseId: string | null }[] = [];
+  for (const entry of observations) {
+    const observation = entry as Record<string, unknown>;
+    if (Object.keys(observation).some((key) => !["metric_name", "label_name", "label_value", "value", "case_id"].includes(key))) {
+      return json({ error: "Telemetry accepts only the bounded STR-028 contract fields." }, 400);
+    }
+    const metricName = String(observation.metric_name ?? "");
+    const contract = telemetryContract[metricName];
+    const labelName = String(observation.label_name ?? "");
+    const labelValue = String(observation.label_value ?? "");
+    const value = Number(observation.value);
+    const caseId = observation.case_id === undefined || observation.case_id === null || observation.case_id === "" ? null : String(observation.case_id);
+    if (!contract || labelName !== contract.labelName || (contract.values.length ? !contract.values.includes(labelValue) : labelValue !== "")) {
+      return json({ error: "Telemetry metric or label is outside the bounded allowlist." }, 400);
+    }
+    if (!Number.isInteger(value) || value < 0 || (contract.histogram ? value > 60_000 : value !== 1)) {
+      return json({ error: contract.histogram ? "Latency must be an integer from 0 through 60000 ms." : "Counter observations must have value 1." }, 400);
+    }
+    if (caseId && !isStr028CaseId(caseId)) {
+      return json({ error: "Only a pre-enrolled bounded matrix case ID may label telemetry." }, 400);
+    }
+    if (caseId && env.DISPATCH_ALLOW_TEST_PRIVACY_POLICY !== "true") {
+      return json({ error: "Fixed-matrix case labels are accepted only in the explicit non-production test environment." }, 409);
+    }
+    validated.push({ metricName, labelName, labelValue, value, caseId });
   }
-  if (!Number.isInteger(value) || value < 0 || (contract.histogram ? value > 60_000 : value !== 1)) {
-    return json({ error: contract.histogram ? "Latency must be an integer from 0 through 60000 ms." : "Counter observations must have value 1." }, 400);
-  }
-  if (caseId && !isStr028CaseId(caseId)) {
-    return json({ error: "Only a pre-enrolled bounded matrix case ID may label telemetry." }, 400);
-  }
-  if (caseId && env.DISPATCH_ALLOW_TEST_PRIVACY_POLICY !== "true") {
-    return json({ error: "Fixed-matrix case labels are accepted only in the explicit non-production test environment." }, 409);
-  }
-  await db.prepare(`INSERT INTO steer_telemetry
+  const observedAt = new Date().toISOString();
+  await db.batch(validated.map((observation) => db.prepare(`INSERT INTO steer_telemetry
     (metric_name, label_name, label_value, value, case_id, observed_at) VALUES (?, ?, ?, ?, ?, ?)`)
-    .bind(metricName, labelName, labelValue, value, caseId, new Date().toISOString()).run();
+    .bind(observation.metricName, observation.labelName, observation.labelValue, observation.value, observation.caseId, observedAt)));
   return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
 }
 

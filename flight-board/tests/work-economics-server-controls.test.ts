@@ -206,6 +206,33 @@ test("STR-028 telemetry accepts only bounded labels and rejects PII-shaped extra
   assert.deepEqual({ ...row }, { metric_name: "steer_work_item_save_outcome_total", label_name: "outcome", label_value: "success", value: 1, case_id: "SAVE-01" });
 });
 
+test("STR-028 feedback latency and outcome telemetry commit as one bounded atomic batch", async () => {
+  const { db } = await setup();
+  const accepted = await handleApi(request("member-a", "/api/telemetry", "POST", {
+    observations: [
+      { metric_name: "steer_work_item_save_feedback_latency_ms", label_name: "", label_value: "", value: 11, case_id: "FAIL-01" },
+      { metric_name: "steer_work_item_save_outcome_total", label_name: "outcome", label_value: "conflict", value: 1, case_id: "FAIL-01" },
+    ],
+  }), { DB: db, ...dispatchEnv });
+  assert.equal(accepted?.status, 204);
+  const rows = db.sqlite.prepare("SELECT metric_name, label_value, value, case_id, observed_at FROM steer_telemetry ORDER BY id").all() as Array<Record<string, unknown>>;
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((row) => ({ metric_name: row.metric_name, label_value: row.label_value, value: row.value, case_id: row.case_id })), [
+    { metric_name: "steer_work_item_save_feedback_latency_ms", label_value: "", value: 11, case_id: "FAIL-01" },
+    { metric_name: "steer_work_item_save_outcome_total", label_value: "conflict", value: 1, case_id: "FAIL-01" },
+  ]);
+  assert.equal(rows[0].observed_at, rows[1].observed_at);
+
+  const invalid = await handleApi(request("member-a", "/api/telemetry", "POST", {
+    observations: [
+      { metric_name: "steer_work_item_save_feedback_latency_ms", label_name: "", label_value: "", value: 12, case_id: "FAIL-02" },
+      { metric_name: "steer_work_item_save_outcome_total", label_name: "outcome", label_value: "validation", value: 1, case_id: "FAIL-02", actor_id: "member-a" },
+    ],
+  }), { DB: db, ...dispatchEnv });
+  assert.equal(invalid?.status, 400);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM steer_telemetry").get()!.total, 2);
+});
+
 test("FAIL-01 rejects stale mutation revision r0 against authoritative r1 without a durable side effect", async () => {
   const { db, itemId } = await setup();
   db.sqlite.prepare("UPDATE work_items SET updated_at = '2026-08-14T14:01:00.000Z' WHERE id = ?").run(itemId);

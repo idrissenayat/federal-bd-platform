@@ -346,20 +346,28 @@ function activeStr028CaseId() {
   return isStr028CaseId(value) ? value : undefined;
 }
 
-function emitTelemetry(observation: TelemetryObservation) {
+function emitTelemetryBatch(observations: TelemetryObservation[]) {
   void fetch("/api/telemetry", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ label_name: "", label_value: "", ...observation }),
+    body: JSON.stringify({
+      observations: observations.map((observation) => ({ label_name: "", label_value: "", ...observation })),
+    }),
     keepalive: true,
   }).catch(() => undefined);
+}
+
+function emitTelemetry(observation: TelemetryObservation) {
+  emitTelemetryBatch([observation]);
 }
 
 function emitFeedbackAfterPaint(receivedAt: number, histogram: string, outcomeMetric: string, outcome: string) {
   requestAnimationFrame(() => {
     const case_id = activeStr028CaseId();
-    emitTelemetry({ metric_name: histogram, value: Math.max(0, Math.round(performance.now() - receivedAt)), case_id });
-    emitTelemetry({ metric_name: outcomeMetric, label_name: "outcome", label_value: outcome, value: 1, case_id });
+    emitTelemetryBatch([
+      { metric_name: histogram, value: Math.max(0, Math.round(performance.now() - receivedAt)), case_id },
+      { metric_name: outcomeMetric, label_name: "outcome", label_value: outcome, value: 1, case_id },
+    ]);
   });
 }
 

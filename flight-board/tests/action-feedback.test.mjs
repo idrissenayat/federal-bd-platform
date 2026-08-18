@@ -35,6 +35,12 @@ test("drawer mutations use authoritative snapshots and action-local feedback", (
   assert.match(css, /\.inline-action-feedback/);
 });
 
+test("paired feedback telemetry uses one bounded batch request", () => {
+  assert.match(page, /function emitTelemetryBatch\(observations: TelemetryObservation\[\]\)/);
+  assert.match(page, /observations: observations\.map/);
+  assert.match(page, /emitTelemetryBatch\(\[\s*\{ metric_name: histogram[\s\S]*\{ metric_name: outcomeMetric/);
+});
+
 test("narrow drawers contain governed forms and long audit evidence", () => {
   assert.match(css, /\.item-drawer \{ overflow-x: hidden; \}/);
   assert.match(css, /\.drawer-body, \.detail-section, \.field-grid, \.field-grid label,[^}]*min-width: 0;/s);
