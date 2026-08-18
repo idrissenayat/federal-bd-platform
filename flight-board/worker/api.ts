@@ -1008,6 +1008,10 @@ async function bootstrap(db: Database, user: User) {
     work_economics: safeEconomicsFromRow(item as Record<string, unknown>, generatedAt),
     dispatch_authorization: evaluateAgentDispatch(item as Record<string, unknown>),
   })) as unknown as Array<Record<string, unknown> & { key: string; state: string; assignee_name?: string | null; work_economics: ReturnType<typeof safeEconomicsFromRow> }>;
+  const privacyPolicy = await db.prepare(`SELECT policy_version, status, inventory_url, inventory_sha256,
+      ruling_url, ruling_sha256, authorization_event_id, activation_receipt_sha256
+    FROM dispatch_privacy_policies WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`)
+    .bind(currentMember?.pod_id ?? "steer-flight-team").first<Record<string, unknown>>();
   return {
     generated_at: generatedAt,
     user: { ...user, role: currentMember?.role ?? "Contributor", authority: currentMember?.authority ?? "May own work", role_contexts: roleContexts(currentMember?.role ?? "Contributor") },
@@ -1020,6 +1024,7 @@ async function bootstrap(db: Database, user: User) {
     work_economics_events: (economicsEvents.results ?? []).map((event) => safeEconomicsEvent(event as Record<string, unknown>)),
     pull_forecast: buildPullForecast(authorizedItems, 2, generatedAt),
     service_level_distributions: buildServiceLevelDistributions(authorizedItems),
+    privacy_policy: privacyPolicy ?? null,
   };
 }
 

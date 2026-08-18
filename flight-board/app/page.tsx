@@ -189,6 +189,7 @@ type Bootstrap = {
   work_economics_events: WorkEconomicsEvent[];
   pull_forecast: PullForecast;
   service_level_distributions: ServiceLevelDistribution[];
+  privacy_policy: { policy_version: number; status: string; inventory_url: string; inventory_sha256: string; ruling_url: string | null; ruling_sha256: string | null; authorization_event_id: string | null; activation_receipt_sha256: string | null } | null;
 };
 
 type ItemMutationSnapshot = AuthoritativeItemSnapshot<WorkItem, Activity, WorkEconomicsEvent>;
@@ -1185,6 +1186,29 @@ export default function Home() {
     }
   }
 
+  async function activateApprovedPrivacyPolicy() {
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await api("/api/privacy-policy/activate", { method: "POST", body: JSON.stringify({
+        expected_policy_version: data?.privacy_policy?.policy_version ?? 1,
+        idempotency_key: "str028-provider-ruling-2026-08-18-staging",
+        inventory_url: "https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md",
+        inventory_sha256: "c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d",
+        ruling_url: "https://github.com/idrissenayat/federal-bd-platform/blob/d9dbe0b70e812f680ae23fad2ce4ffafc6e65229/steer/evidence/0028-gate-3-case-evidence.md",
+        ruling_sha256: "12522b22dca4ade812288a2bf47cb6c71405e89275a0db234d20ed8decafe83d",
+        terminal_retention_days: 90, provider_recovery_days: 30, status: "ACTIVE",
+        reason_code: "STR-028_PROVIDER_RECOVERY_RULING_APPROVED",
+      }) }) as { policy_version: number; idempotent_replay: boolean };
+      setNotice(`Privacy policy version ${result.policy_version} is active and bound to the approved STR-028 ruling${result.idempotent_replay ? " (existing receipt reused)" : ""}.`);
+      await load({ quiet: true });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The approved privacy policy could not be activated.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading) {
     return <div className="app-loading"><span className="loading-mark"><i /><i /><i /></span><strong>Preparing your STEER workspace</strong><p>Loading work, evidence, and team authority…</p></div>;
   }
@@ -1246,6 +1270,7 @@ export default function Home() {
           </div>
           <div className="top-actions">
             <a href={`${githubRoot}/issues/14`} target="_blank" rel="noreferrer" title="Open current GitHub issue">Evidence ↗</a>
+            {data.privacy_policy?.status !== "ACTIVE" && data.user.role.includes("Product Lead") && data.user.role.includes("Tech Lead") && <button disabled={saving} onClick={() => void activateApprovedPrivacyPolicy()} aria-label="Activate the approved STR-028 privacy policy">{saving ? "Activating…" : "Activate approved privacy policy"}</button>}
             <button className="create-button" onClick={() => setCreateOpen(true)}><span>＋</span> Create work item</button>
           </div>
         </header>

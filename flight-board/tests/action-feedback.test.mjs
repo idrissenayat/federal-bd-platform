@@ -78,3 +78,10 @@ test("AT-17 exposes transport, blocked, pending, empty, and reload outcomes with
   assert.match(page, /Workspace unavailable/);
   assert.match(page, /Work item unavailable/);
 });
+
+test("named human can activate the exact STR-028 policy from an accessible authenticated control", () => {
+  assert.match(page, /Activate the approved STR-028 privacy policy/);
+  assert.match(page, /expected_policy_version: data\?\.privacy_policy\?\.policy_version/);
+  assert.match(page, /STR-028_PROVIDER_RECOVERY_RULING_APPROVED/);
+  assert.match(page, /Privacy policy version \$\{result\.policy_version\} is active/);
+});

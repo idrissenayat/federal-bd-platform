@@ -242,6 +242,12 @@ test("privacy activation is authenticated, ruling-bound, immutable, CAS-safe, an
     assert.equal(activatedBody.idempotent_replay, false);
     assert.match(activatedBody.authorization_event_id, /^[0-9a-f]{64}$/);
     assert.match(activatedBody.activation_receipt_sha256, /^[0-9a-f]{64}$/);
+    const activeBootstrap = await handleApi(request("member-a", "/api/bootstrap"), { DB: db });
+    const activeBootstrapBody = await activeBootstrap?.json() as { privacy_policy: Record<string, unknown> };
+    assert.equal(activeBootstrapBody.privacy_policy.status, "ACTIVE");
+    assert.equal(activeBootstrapBody.privacy_policy.policy_version, 2);
+    assert.equal(activeBootstrapBody.privacy_policy.authorization_event_id, activatedBody.authorization_event_id);
+    assert.equal(activeBootstrapBody.privacy_policy.activation_receipt_sha256, activatedBody.activation_receipt_sha256);
 
     const replay = await handleApi(request("member-a", "/api/privacy-policy/activate", "POST", activation), { DB: db });
     assert.equal(replay?.status, 200, await replay?.clone().text());
@@ -258,6 +264,7 @@ test("privacy activation is authenticated, ruling-bound, immutable, CAS-safe, an
     assert.equal((await stale?.json() as { code: string }).code, "PRIVACY_POLICY_VERSION_STALE");
     assert.throws(() => db.sqlite.prepare("UPDATE dispatch_privacy_policies SET status = 'BLOCKED' WHERE pod_id = 'pod-a' AND policy_version = 2").run(), /immutable/);
 
+    db.sqlite.prepare("DELETE FROM workspace_routing WHERE pod_id = 'pod-a'").run();
     prepareDispatchAuthorizationSeed(db, itemId, "b".repeat(40));
     const dispatched = await handleApi(request("member-a", `/api/items/${itemId}/dispatch`, "POST"), { DB: db, ...dispatchEnv, DISPATCH_ALLOW_TEST_PRIVACY_POLICY: undefined });
     assert.equal(dispatched?.status, 200, await dispatched?.clone().text());
