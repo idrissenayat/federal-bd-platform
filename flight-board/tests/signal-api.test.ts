@@ -203,6 +203,13 @@ test("unsafe input persists only content-free rejection metadata and missing cre
 test("signal retention honors policy-bound legal holds and deletes only eligible same-POD records", async () => {
   const db = new D1Database();
   await initialize(db);
+  db.sqlite.exec("DROP TRIGGER signals_no_delete; CREATE TRIGGER signals_no_delete BEFORE DELETE ON signals BEGIN SELECT RAISE(ABORT, 'signals require the governed retention path'); END;");
+  const concurrentUpgrade = await Promise.all([
+    handleApi(request("/api/bootstrap"), { DB: db }),
+    handleApi(request("/api/bootstrap"), { DB: db }),
+  ]);
+  assert.deepEqual(concurrentUpgrade.map((response) => response?.status), [200, 200]);
+  assert.match(String(db.sqlite.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'signals_no_delete'").get()?.sql), /signal_retention_authorizations/);
   db.sqlite.prepare("UPDATE members SET role = 'Platform / Ops Lead' WHERE id = 'signal-human'").run();
   await handleApi(request("/api/bootstrap", "GET", undefined, "other-human"), { DB: db });
   db.sqlite.prepare("UPDATE members SET pod_id = 'other-pod', role = 'Platform / Ops Lead' WHERE id = 'other-human'").run();

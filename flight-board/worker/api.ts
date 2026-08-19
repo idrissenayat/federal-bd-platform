@@ -298,6 +298,34 @@ async function ensureColumn(db: Database, table: string, column: string, definit
   }
 }
 
+async function upgradeSignalRetentionDeleteTriggers(db: Database) {
+  const current = await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'signals_no_delete'")
+    .first<{ sql: string | null }>();
+  if (!current?.sql || current.sql.includes("signal_retention_authorizations")) return;
+  await db.batch([
+    db.prepare("DROP TRIGGER IF EXISTS signals_no_delete"),
+    db.prepare(`CREATE TRIGGER signals_no_delete BEFORE DELETE ON signals WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signals require the governed retention path'); END`),
+    db.prepare("DROP TRIGGER IF EXISTS signal_events_no_delete"),
+    db.prepare(`CREATE TRIGGER signal_events_no_delete BEFORE DELETE ON signal_events WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal events require the governed retention path'); END`),
+    db.prepare("DROP TRIGGER IF EXISTS signal_proposals_no_delete"),
+    db.prepare(`CREATE TRIGGER signal_proposals_no_delete BEFORE DELETE ON signal_proposals WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal proposals require the governed retention path'); END`),
+    db.prepare("DROP TRIGGER IF EXISTS signal_sources_no_delete"),
+    db.prepare(`CREATE TRIGGER signal_sources_no_delete BEFORE DELETE ON signal_sources WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal sources require the governed retention path'); END`),
+  ]);
+}
+
 async function ensureSchema(db: Database) {
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS members (
@@ -743,6 +771,7 @@ async function ensureSchema(db: Database) {
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_signal_retention_runs_created ON signal_retention_runs (created_at)"),
   ]);
+  await upgradeSignalRetentionDeleteTriggers(db);
   await ensureColumn(db, "work_items", "rework_instructions", "rework_instructions text");
   await ensureColumn(db, "signal_proposals", "supersedes_proposal_id", "supersedes_proposal_id text");
   await ensureColumn(db, "signal_generation_attempts", "target_proposal_version", "target_proposal_version integer NOT NULL DEFAULT 1");
