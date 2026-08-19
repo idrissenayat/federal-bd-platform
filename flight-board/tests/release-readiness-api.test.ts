@@ -144,7 +144,12 @@ test("hosted readiness cases are staging-only, signed, immutable, and replay-saf
     headers: { authorization: `Bearer ${serviceToken}`, "content-type": "application/json" },
     body: JSON.stringify(input),
   });
-  const env = { DB: db, DECISION_SERVICE_TOKEN: serviceToken, DECISION_SERVICE_PRIVATE_KEY: privateKey, DECISION_SERVICE_KEY_ID: "hosted-readiness-key", DECISION_SERVICE_KEY_VERSION: "1", STEER_DEPLOYMENT_ENV: "staging" };
+  const env = {
+    DB: db, DECISION_SERVICE_TOKEN: serviceToken, DECISION_SERVICE_PRIVATE_KEY: privateKey,
+    DECISION_SERVICE_KEY_ID: "hosted-readiness-key", DECISION_SERVICE_KEY_VERSION: "1", STEER_DEPLOYMENT_ENV: "staging",
+    STEER_SOURCE_REVISION: "b".repeat(40), STEER_BUILD_SHA256: "c".repeat(64), STEER_MIGRATION_SET_SHA256: "d".repeat(64),
+    STEER_RUNTIME_POLICY_SHA256: await releaseReadinessDigest(RELEASE_READINESS_POLICY_V1),
+  };
   const created = await handleApi(request(), env);
   assert.equal(created?.status, 201, await created?.clone().text());
   const result = await created?.json() as { response: { result: { status: string }; classification: { tier: string } }; response_sha256: string; service_signature: string; replay: boolean };

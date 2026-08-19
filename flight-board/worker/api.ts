@@ -48,6 +48,10 @@ type Env = {
   DECISION_SERVICE_KEY_VERSION?: string;
   DECISION_SERVICE_TOKEN?: string;
   STEER_DEPLOYMENT_ENV?: string;
+  STEER_SOURCE_REVISION?: string;
+  STEER_BUILD_SHA256?: string;
+  STEER_MIGRATION_SET_SHA256?: string;
+  STEER_RUNTIME_POLICY_SHA256?: string;
 } & DispatchServiceEnv;
 
 type User = { id: string; email: string | null; name: string };
@@ -3619,6 +3623,14 @@ async function runStagingReadinessCase(request: Request, db: Database, env: Env)
   const keyId = String(env.DECISION_SERVICE_KEY_ID ?? "");
   const keyVersion = Number(env.DECISION_SERVICE_KEY_VERSION ?? 0);
   if (!hex64(privateKey) || !keyId || !Number.isInteger(keyVersion) || keyVersion < 1) return json({ error: "Hosted readiness signing configuration is incomplete." }, 503);
+  const sourceRevision = String(env.STEER_SOURCE_REVISION ?? "");
+  const buildSha256 = String(env.STEER_BUILD_SHA256 ?? "");
+  const migrationSetSha256 = String(env.STEER_MIGRATION_SET_SHA256 ?? "");
+  const runtimePolicySha256 = String(env.STEER_RUNTIME_POLICY_SHA256 ?? "");
+  const exactPolicySha256 = await releaseReadinessDigest(RELEASE_READINESS_POLICY_V1);
+  if (!hex40(sourceRevision) || ![buildSha256, migrationSetSha256, runtimePolicySha256].every(hex64) || runtimePolicySha256 !== exactPolicySha256) {
+    return json({ error: "The hosted readiness runner is not bound to an exact source, build, migration set, and approved runtime policy." }, 503);
+  }
   const publicKey = decisionIssuerPublicKey(privateKey);
   const signer = await db.prepare(`SELECT public_key FROM decision_issuer_signers
     WHERE key_id = ? AND key_version = ? AND status = 'ACTIVE' ORDER BY created_at DESC LIMIT 1`)
@@ -3677,7 +3689,8 @@ async function runStagingReadinessCase(request: Request, db: Database, env: Env)
   const requestSha256 = await releaseReadinessDigest(requestRecord);
   const responseRecord = {
     schema: "steer.hosted-readiness-case-result/v1", run_id: runId, case_id: caseId, request_sha256: requestSha256,
-    policy_sha256: await releaseReadinessDigest(RELEASE_READINESS_POLICY_V1), classification,
+    source_revision: sourceRevision, build_sha256: buildSha256, migration_set_sha256: migrationSetSha256,
+    policy_sha256: runtimePolicySha256, classification,
     selected_path: satisfactionPath, effective_not_before: effective, eligible_signatures: signatures,
     result: evaluated, key_id: keyId, key_version: keyVersion,
   };
