@@ -99,3 +99,26 @@ test("privacy activation migration preserves the blocked version and adds append
   assert.equal(db.prepare("SELECT status FROM dispatch_privacy_policies WHERE policy_version = 2").get()!.status, "ACTIVE");
   assert.throws(() => insert.run("a".repeat(64), "b".repeat(64), "c".repeat(64), "d".repeat(64)), /UNIQUE/);
 });
+
+test("risk readiness migration preserves legacy decision receipts and adds immutable authority", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(`CREATE TABLE decision_intents (
+    intent_id text PRIMARY KEY NOT NULL, intent_json text NOT NULL
+  );`);
+  db.prepare("INSERT INTO decision_intents (intent_id, intent_json) VALUES ('legacy-intent', '{}')").run();
+  const migration = readFileSync(new URL("../drizzle/0021_risk_based_release_readiness.sql", import.meta.url), "utf8").replaceAll("--> statement-breakpoint", "");
+  db.exec(migration);
+  const legacy = db.prepare("SELECT intent_id, readiness_snapshot_sha256 FROM decision_intents").get()!;
+  assert.deepEqual({ ...legacy }, { intent_id: "legacy-intent", readiness_snapshot_sha256: "" });
+  db.prepare(`INSERT INTO decision_readiness_snapshots
+    (snapshot_id, item_id, pod_id, snapshot_json, snapshot_sha256, evidence_set_sha256,
+     critic_review_id, tier, satisfaction_path, effective_not_before, current_state,
+     predecessor_snapshot_sha256, created_by, created_at)
+    VALUES ('snapshot-a', 74, 'pod-a', '{}', ?, ?, 1, 'DEFAULT_OPEN', 'TIME',
+      '2026-08-19T20:00:00.000Z', 'ACTIVE', NULL, 'human-a', '2026-08-19T20:00:00.000Z')`)
+    .run("a".repeat(64), "b".repeat(64));
+  assert.throws(() => db.prepare("UPDATE decision_readiness_snapshots SET effective_not_before = '2000-01-01T00:00:00Z' WHERE snapshot_id = 'snapshot-a'").run(), /authority is immutable/);
+  db.prepare("UPDATE decision_readiness_snapshots SET current_state = 'INVALIDATED', invalidation_reason = 'CANDIDATE_DRIFT' WHERE snapshot_id = 'snapshot-a'").run();
+  assert.throws(() => db.prepare("UPDATE decision_readiness_snapshots SET current_state = 'ACTIVE', invalidation_reason = NULL WHERE snapshot_id = 'snapshot-a'").run(), /state transition is invalid/);
+  assert.throws(() => db.prepare("UPDATE decision_intents SET readiness_snapshot_sha256 = ? WHERE intent_id = 'legacy-intent'").run("c".repeat(64)), /readiness authority is immutable/);
+});

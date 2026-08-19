@@ -20,11 +20,15 @@ let one feature skip the exam, the exam becomes optional, and optional means gon
 (Genuinely trivial changes — typos, copy — use the standing class defined in
 `templates/trivial-exam.md`, copied once to `exams/trivial.md`.)
 
-**3. Cooling-off replaces the second signer.**
+**3. System-enforced release readiness replaces the second signer.**
 Sign Gate 1 and Gate 2 in **different work sessions** (evening brief, morning sign is ideal).
-Sign Gate 3 at least a few hours after the build lands, never in the same sitting you
-watched the agents finish. Sleep is the cheapest independent reviewer you will ever hire.
-Items on the default-closed list get a full 24 hours.
+For Gate 3, the platform freezes exact staging verification and Critic evidence, derives
+a closed-vocabulary risk tier, and enforces 0 hours for default-open, 4 hours for elevated,
+and 24 hours for default-closed work. The clock is separation, not assurance: the Critic,
+tests, and domain controls remain mandatory. Passing time never approves or ships work;
+return in a fresh session and explicitly finalize after the server reports `READY`.
+Missing, unknown, mismatched, under-tagged, or drifted evidence fails closed and requires
+a replacement snapshot/session/intent. Older receipts keep their original 24-hour rule.
 *Exemption — the tracer class:* infrastructure tracer bullets (features with no
 user-visible behavior, e.g. a /health endpoint) may stack their gates in one day.
 The exemption is the class, never the item — a real feature never qualifies.
@@ -83,7 +87,7 @@ The first full-time hire (Tech Lead) retires rule 3 — that's why they're first
 
 | Hire | They take | You keep | Rules retired |
 |---|---|---|---|
-| Tech Lead | Gate 2, exam ownership, judgment review, Critic tuning | Gates 1 & 3 | Rule 3 (cooling-off) for Gates 1/2 |
+| Tech Lead | Gate 2, exam ownership, judgment review, Critic tuning | Gates 1 & 3 | Rule 3 time separation for Gates 1/2 |
 | Product Designer | Design intent, design system, UX judgment, independent ◆3 reader | — | Solo ◆3 Critic-reader stand-in |
 | Platform Engineer | Fleet, pipeline, rails, cost watch | — | Your infra hat |
 | Fractional specialists | Their guardrail set + tagged co-signs | — | Solo caution on their domain |

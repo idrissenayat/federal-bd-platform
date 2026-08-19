@@ -13,7 +13,8 @@ import { acceptedValueHypothesisReady, humanAcceptanceState, validateAndNormaliz
 import { buildDispatchIdentity, exactGitEvidence, STEER_HANDOFF_ROUTE_KEY, validateDispatchRoute, type DispatchRoute } from "../lib/dispatch-control";
 import { canonicalJson, createSignedDispatchEvent, dispatchPublicKey, sha256Hex, type DispatchState } from "../lib/dispatch-lifecycle";
 import { isStr028CaseId } from "../lib/str028-manifest";
-import { buildDecisionEvent, createDecisionIssuerEnvelope, createUuidV7, decisionDigest, decisionFinalizationError, decisionIssuerPublicKey, safeDecisionExport, validateDecisionIntent, verifyDecisionIssuerEnvelope, type DecisionIntentPayload, type PreparedDecisionPackage } from "../lib/decision-package";
+import { buildDecisionEvent, createDecisionIssuerEnvelope, createUuidV7, decisionDigest, decisionFinalizationError, decisionIssuerPublicKey, safeDecisionExport, signAuthorityPayload, validateDecisionIntent, verifyAuthorityPayload, verifyDecisionIssuerEnvelope, type DecisionIntentPayload, type PreparedDecisionPackage } from "../lib/decision-package";
+import { classifyRiskCodes, effectiveNotBefore, parseRiskCodes, RELEASE_READINESS_POLICY_V1, releaseReadinessDigest, readinessStatus, requiredRolesFor, validateSatisfactionPath, type ReleaseReadinessSnapshot, type RiskCode, type SatisfactionPath } from "../lib/release-readiness";
 import { buildReviewIdentity, createSignedReviewEvent, validateReviewAssignmentPayload, verifyReviewerBinding, type ReviewAssignmentPayload } from "../lib/review-lifecycle";
 import { buildInitialQueuedEvent, ensureDispatchServiceSigner, handleDispatchServiceApi, type DispatchServiceEnv } from "./dispatch";
 
@@ -46,6 +47,7 @@ type Env = {
   DECISION_SERVICE_KEY_ID?: string;
   DECISION_SERVICE_KEY_VERSION?: string;
   DECISION_SERVICE_TOKEN?: string;
+  STEER_DEPLOYMENT_ENV?: string;
 } & DispatchServiceEnv;
 
 type User = { id: string; email: string | null; name: string };
@@ -66,6 +68,10 @@ const dispatchPrivacyRulingRevision = "d9dbe0b70e812f680ae23fad2ce4ffafc6e65229"
 const dispatchPrivacyRulingUrl = `https://github.com/idrissenayat/federal-bd-platform/blob/${dispatchPrivacyRulingRevision}/steer/evidence/0028-gate-3-case-evidence.md`;
 const dispatchPrivacyRulingSha256 = "12522b22dca4ade812288a2bf47cb6c71405e89275a0db234d20ed8decafe83d";
 const dispatchPrivacyActivationReason = "STR-028_PROVIDER_RECOVERY_RULING_APPROVED";
+const readinessPolicyRulingRevision = "1b8ad059a8ee2a4a94c7828bc617d4909a52813c";
+const readinessPolicyRulingUrl = `https://github.com/idrissenayat/federal-bd-platform/blob/${readinessPolicyRulingRevision}/steer/exams/0074-risk-based-gate3-readiness.md`;
+const readinessPolicyRulingSha256 = "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6";
+const readinessPolicyActivationReason = "ISSUE_74_GATE_2_POLICY_APPROVED";
 
 type PullRequestReference = { owner: string; repo: string; repository: string; number: number };
 
@@ -417,6 +423,7 @@ async function ensureSchema(db: Database) {
       submitter_id text NOT NULL, submitter_role text NOT NULL, decision_session_id text NOT NULL UNIQUE,
       created_at text NOT NULL, updated_at text NOT NULL,
       effective_not_before text NOT NULL, signer_policy_version integer NOT NULL,
+      readiness_snapshot_sha256 text NOT NULL DEFAULT '',
       UNIQUE(pod_id, idempotency_key)
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_decision_intents_item_created ON decision_intents (item_id, created_at)"),
@@ -433,6 +440,42 @@ async function ensureSchema(db: Database) {
       ruling_url text NOT NULL, ruling_sha256 text NOT NULL, created_at text NOT NULL, UNIQUE(pod_id, policy_version)
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_decision_signer_policies_active ON decision_signer_policies (pod_id, status, policy_version)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS decision_readiness_policies (
+      pod_id text NOT NULL, policy_version integer NOT NULL, policy_json text NOT NULL,
+      policy_sha256 text NOT NULL, status text NOT NULL, activated_by text NOT NULL,
+      activation_reason text NOT NULL, ruling_url text NOT NULL, ruling_sha256 text NOT NULL,
+      created_at text NOT NULL, UNIQUE(pod_id, policy_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_decision_readiness_policy_active ON decision_readiness_policies (pod_id, status, policy_version)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS staging_verification_receipts (
+      receipt_id text PRIMARY KEY NOT NULL, item_id integer NOT NULL, pod_id text NOT NULL,
+      receipt_json text NOT NULL, receipt_sha256 text NOT NULL UNIQUE,
+      source_revision text NOT NULL, build_sha256 text NOT NULL, migration_set_sha256 text NOT NULL,
+      runtime_policy_sha256 text NOT NULL, completed_at text NOT NULL,
+      key_id text NOT NULL, key_version integer NOT NULL, service_signature text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_staging_verification_receipts_item_created ON staging_verification_receipts (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS decision_readiness_snapshots (
+      snapshot_id text PRIMARY KEY NOT NULL, item_id integer NOT NULL, pod_id text NOT NULL,
+      snapshot_json text NOT NULL, snapshot_sha256 text NOT NULL UNIQUE, evidence_set_sha256 text NOT NULL,
+      critic_review_id integer NOT NULL, tier text NOT NULL, satisfaction_path text NOT NULL,
+      effective_not_before text NOT NULL, current_state text NOT NULL, invalidation_reason text,
+      predecessor_snapshot_sha256 text, created_by text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_decision_readiness_snapshots_item_created ON decision_readiness_snapshots (item_id, created_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_decision_readiness_snapshots_pod_state ON decision_readiness_snapshots (pod_id, current_state)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS decision_readiness_events (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, snapshot_id text NOT NULL,
+      event_type text NOT NULL, event_json text NOT NULL, event_sha256 text NOT NULL UNIQUE,
+      actor_id text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_decision_readiness_events_snapshot_created ON decision_readiness_events (snapshot_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS decision_readiness_countersignatures (
+      snapshot_id text NOT NULL, member_id text NOT NULL, role text NOT NULL,
+      proof_json text NOT NULL, proof_sha256 text NOT NULL, status text NOT NULL, created_at text NOT NULL,
+      UNIQUE(snapshot_id, member_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_decision_readiness_countersignatures_snapshot ON decision_readiness_countersignatures (snapshot_id, status)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS decision_proof_events (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL, intent_id text NOT NULL, sequence integer NOT NULL,
       event_type text NOT NULL, resulting_state text NOT NULL, previous_event_sha256 text,
@@ -692,6 +735,7 @@ async function ensureSchema(db: Database) {
     BEFORE UPDATE ON decision_packages BEGIN SELECT RAISE(ABORT, 'decision packages are immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_packages_no_delete
     BEFORE DELETE ON decision_packages BEGIN SELECT RAISE(ABORT, 'decision packages require governed retention'); END`).run();
+  await ensureColumn(db, "decision_intents", "readiness_snapshot_sha256", "readiness_snapshot_sha256 text NOT NULL DEFAULT ''");
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_intents_immutable_payload
     BEFORE UPDATE ON decision_intents WHEN
       NEW.intent_json != OLD.intent_json OR NEW.intent_sha256 != OLD.intent_sha256 OR
@@ -699,6 +743,7 @@ async function ensureSchema(db: Database) {
       NEW.decision_session_id != OLD.decision_session_id OR
       NEW.required_countersignatures != OLD.required_countersignatures OR
       NEW.effective_not_before != OLD.effective_not_before OR NEW.signer_policy_version != OLD.signer_policy_version OR
+      NEW.readiness_snapshot_sha256 != OLD.readiness_snapshot_sha256 OR
       NEW.created_at != OLD.created_at
     BEGIN SELECT RAISE(ABORT, 'decision intent authority is immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_intents_immutable_authority_v2
@@ -707,6 +752,9 @@ async function ensureSchema(db: Database) {
       NEW.required_countersignatures != OLD.required_countersignatures OR
       NEW.effective_not_before != OLD.effective_not_before OR NEW.signer_policy_version != OLD.signer_policy_version
     BEGIN SELECT RAISE(ABORT, 'decision intent signer authority is immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_intents_readiness_immutable_v3
+    BEFORE UPDATE ON decision_intents WHEN NEW.readiness_snapshot_sha256 != OLD.readiness_snapshot_sha256
+    BEGIN SELECT RAISE(ABORT, 'decision intent readiness authority is immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_proof_events_no_update
     BEFORE UPDATE ON decision_proof_events BEGIN SELECT RAISE(ABORT, 'decision proof events are append-only'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_proof_events_no_delete
@@ -722,8 +770,42 @@ async function ensureSchema(db: Database) {
     BEFORE UPDATE ON decision_signer_policies BEGIN SELECT RAISE(ABORT, 'decision signer policies are immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_signer_policies_no_delete
     BEFORE DELETE ON decision_signer_policies BEGIN SELECT RAISE(ABORT, 'decision signer policies require governed retention'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_readiness_policies_no_update
+    BEFORE UPDATE ON decision_readiness_policies BEGIN SELECT RAISE(ABORT, 'decision readiness policies are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_readiness_policies_no_delete
+    BEFORE DELETE ON decision_readiness_policies BEGIN SELECT RAISE(ABORT, 'decision readiness policies require governed retention'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS staging_verification_receipts_no_update
+    BEFORE UPDATE ON staging_verification_receipts BEGIN SELECT RAISE(ABORT, 'staging verification receipts are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS staging_verification_receipts_no_delete
+    BEFORE DELETE ON staging_verification_receipts BEGIN SELECT RAISE(ABORT, 'staging verification receipts require governed retention'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_readiness_snapshots_authority_immutable
+    BEFORE UPDATE ON decision_readiness_snapshots WHEN
+      NEW.snapshot_id != OLD.snapshot_id OR NEW.item_id != OLD.item_id OR NEW.pod_id != OLD.pod_id OR
+      NEW.snapshot_json != OLD.snapshot_json OR NEW.snapshot_sha256 != OLD.snapshot_sha256 OR
+      NEW.evidence_set_sha256 != OLD.evidence_set_sha256 OR NEW.critic_review_id != OLD.critic_review_id OR
+      NEW.tier != OLD.tier OR NEW.satisfaction_path != OLD.satisfaction_path OR
+      NEW.effective_not_before != OLD.effective_not_before OR NEW.created_by != OLD.created_by OR
+      COALESCE(NEW.predecessor_snapshot_sha256, '') != COALESCE(OLD.predecessor_snapshot_sha256, '') OR NEW.created_at != OLD.created_at
+    BEGIN SELECT RAISE(ABORT, 'decision readiness snapshot authority is immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_readiness_snapshots_state_transition
+    BEFORE UPDATE ON decision_readiness_snapshots WHEN
+      (OLD.current_state != NEW.current_state OR COALESCE(OLD.invalidation_reason, '') != COALESCE(NEW.invalidation_reason, '')) AND NOT (
+        OLD.current_state = 'ACTIVE' AND NEW.current_state = 'INVALIDATED' AND LENGTH(COALESCE(NEW.invalidation_reason, '')) > 0
+      )
+    BEGIN SELECT RAISE(ABORT, 'decision readiness snapshot state transition is invalid'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_readiness_snapshots_no_delete
+    BEFORE DELETE ON decision_readiness_snapshots BEGIN SELECT RAISE(ABORT, 'decision readiness snapshots require governed retention'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_readiness_events_no_update
+    BEFORE UPDATE ON decision_readiness_events BEGIN SELECT RAISE(ABORT, 'decision readiness events are append-only'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_readiness_events_no_delete
+    BEFORE DELETE ON decision_readiness_events BEGIN SELECT RAISE(ABORT, 'decision readiness events require governed retention'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_readiness_countersignatures_no_update
+    BEFORE UPDATE ON decision_readiness_countersignatures BEGIN SELECT RAISE(ABORT, 'decision readiness countersignatures are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_readiness_countersignatures_no_delete
+    BEFORE DELETE ON decision_readiness_countersignatures BEGIN SELECT RAISE(ABORT, 'decision readiness countersignatures require governed retention'); END`).run();
   await ensureColumn(db, "decision_intents", "effective_not_before", "effective_not_before text NOT NULL DEFAULT '9999-12-31T23:59:59Z'");
   await ensureColumn(db, "decision_intents", "signer_policy_version", "signer_policy_version integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "decision_intents", "readiness_snapshot_sha256", "readiness_snapshot_sha256 text NOT NULL DEFAULT ''");
   await ensureColumn(db, "decision_intents", "decision_session_id", "decision_session_id text");
   await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS uq_decision_intents_session ON decision_intents (decision_session_id) WHERE decision_session_id IS NOT NULL").run();
   await ensureColumn(db, "decision_signer_policies", "ruling_sha256", "ruling_sha256 text NOT NULL DEFAULT ''");
@@ -1134,6 +1216,14 @@ async function bootstrap(db: Database, user: User) {
       cooling_hours, status, ruling_url, ruling_sha256, created_at
     FROM decision_signer_policies WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").first<Record<string, unknown>>();
+  const readinessPolicy = await db.prepare(`SELECT policy_version, policy_json, policy_sha256, status,
+      ruling_url, ruling_sha256, created_at
+    FROM decision_readiness_policies WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`)
+    .bind(currentMember?.pod_id ?? "steer-flight-team").first<Record<string, unknown>>();
+  const readinessRows = await db.prepare(`SELECT * FROM decision_readiness_snapshots
+    WHERE pod_id = ? ORDER BY created_at DESC LIMIT 80`)
+    .bind(currentMember?.pod_id ?? "steer-flight-team").all<Record<string, unknown>>();
+  const releaseReadiness = await Promise.all((readinessRows.results ?? []).map((row) => releaseReadinessView(db, row, generatedAt)));
   const decisionReceipts = await db.prepare(`SELECT i.intent_id, i.receipt_id, i.item_id, i.current_state,
       i.current_sequence, i.current_event_sha256, i.intent_json, i.created_at, i.updated_at,
       w.key AS item_key, w.title AS item_title
@@ -1154,6 +1244,8 @@ async function bootstrap(db: Database, user: User) {
     service_level_distributions: buildServiceLevelDistributions(authorizedItems),
     privacy_policy: privacyPolicy ?? null,
     decision_policy: decisionPolicy ?? null,
+    release_readiness_policy: readinessPolicy ? { ...readinessPolicy, policy: JSON.parse(String(readinessPolicy.policy_json)) } : null,
+    release_readiness: releaseReadiness,
     decision_receipts: (decisionReceipts.results ?? []).map((receipt) => {
       const intent = JSON.parse(String(receipt.intent_json)) as DecisionIntentPayload;
       return {
@@ -1163,6 +1255,7 @@ async function bootstrap(db: Database, user: User) {
         decision_kind: intent.decision_kind, decision: intent.decision,
         operating_mode: intent.operating_mode, signer_policy_version: intent.signer_policy_version,
         required_countersignatures: intent.required_countersignatures,
+        readiness_snapshot_sha256: intent.readiness_snapshot_sha256 ?? null,
         effective_not_before: intent.effective_not_before, submitted_at: intent.submitted_at,
         created_at: receipt.created_at, updated_at: receipt.updated_at,
       };
@@ -1528,7 +1621,23 @@ const telemetryContract: Record<string, { labelName: string; values: string[]; h
   steer_agent_handoff_outcome_total: { labelName: "outcome", values: ["queued", "delivered", "blocked", "duplicate_suppressed", "error"] },
   steer_stale_ui_recurrence_total: { labelName: "severity", values: ["critical", "noncritical"] },
   steer_duplicate_dispatch_total: { labelName: "", values: [] },
+  steer_release_risk_classification_total: { labelName: "tier", values: ["DEFAULT_OPEN", "ELEVATED", "DEFAULT_CLOSED"] },
+  steer_release_readiness_outcome_total: { labelName: "outcome", values: ["READY", "NOT_READY", "INVALIDATED"] },
+  steer_release_readiness_invalidation_total: { labelName: "reason", values: ["WORK_ITEM_REVISION_DRIFT", "CANDIDATE_OR_CRITIC_DRIFT", "SUPERSEDED"] },
+  steer_release_readiness_boundary_rejection_total: { labelName: "tier", values: ["DEFAULT_OPEN", "ELEVATED", "DEFAULT_CLOSED"] },
+  steer_release_countersignature_total: { labelName: "outcome", values: ["accepted", "rejected_authority", "rejected_role", "replay"] },
+  steer_release_finalization_total: { labelName: "outcome", values: ["effective", "blocked_readiness"] },
+  steer_release_readiness_latency_ms: { labelName: "", values: [], histogram: true },
 };
+
+async function recordSystemTelemetry(db: Database, metricName: string, labelName: string, labelValue: string, value: number) {
+  const contract = telemetryContract[metricName];
+  if (!contract || contract.labelName !== labelName || (contract.values.length ? !contract.values.includes(labelValue) : labelValue !== "")) return;
+  if (!Number.isInteger(value) || value < 0 || (contract.histogram ? value > 60_000 : value !== 1)) return;
+  await db.prepare(`INSERT INTO steer_telemetry
+    (metric_name, label_name, label_value, value, case_id, observed_at) VALUES (?, ?, ?, ?, NULL, ?)`)
+    .bind(metricName, labelName, labelValue, value, new Date().toISOString()).run();
+}
 
 async function recordBoundedTelemetry(request: Request, db: Database, env: Env) {
   const body = await request.json() as Record<string, unknown>;
@@ -2793,8 +2902,24 @@ async function createDecisionIntent(request: Request, db: Database, user: User, 
     WHERE pod_id = ? AND status = 'ACTIVE' ORDER BY policy_version DESC LIMIT 1`)
     .bind(String(current.pod_id)).first<Record<string, unknown>>();
   if (!signerPolicy) return json({ error: "Decision intent submission is default-closed until the Tech Lead activates an exact-revision signer policy." }, 409);
-  const coolingHours = Number(signerPolicy.cooling_hours);
-  const effectiveNotBefore = new Date(Date.parse(now) + coolingHours * 60 * 60 * 1000).toISOString();
+  let effectiveNotBefore = new Date(Date.parse(now) + Number(signerPolicy.cooling_hours) * 60 * 60 * 1000).toISOString();
+  let readinessSnapshotSha256 = "";
+  let requiredCountersignatures = Number(signerPolicy.required_countersignatures);
+  if (gate === "Gate 3 pending") {
+    const readinessRow = await db.prepare(`SELECT * FROM decision_readiness_snapshots
+      WHERE item_id = ? AND pod_id = ? AND current_state = 'ACTIVE' ORDER BY created_at DESC LIMIT 1`)
+      .bind(itemId, String(current.pod_id)).first<Record<string, unknown>>();
+    if (!readinessRow) return json({ error: "Gate 3 requires an authoritative release readiness snapshot before human intent can be recorded." }, 409);
+    const readiness = await releaseReadinessView(db, readinessRow, now);
+    if (readiness.status === "INVALIDATED") return json({ error: `Release readiness was invalidated: ${readiness.reason}. Create a replacement snapshot and work session.` }, 409);
+    const snapshot = readiness.snapshot as ReleaseReadinessSnapshot;
+    if (String(decisionSession.started_at) < snapshot.created_at) {
+      return json({ error: "Gate 3 requires a fresh human decision session started after the exact readiness snapshot." }, 409);
+    }
+    effectiveNotBefore = snapshot.effective_not_before;
+    readinessSnapshotSha256 = String(readinessRow.snapshot_sha256);
+    requiredCountersignatures = 0;
+  }
   const intent: DecisionIntentPayload = {
     schema: "steer-decision-intent/v1", intent_id: createUuidV7(), receipt_id: createUuidV7(), package_id: packageId,
     item_key: String(current.key), decision_kind: gate, decision, final_reasoning: finalReasoning,
@@ -2803,7 +2928,8 @@ async function createDecisionIntent(request: Request, db: Database, user: User, 
     effective_not_before: effectiveNotBefore,
     operating_mode: String(signerPolicy.operating_mode) as DecisionIntentPayload["operating_mode"],
     signer_policy_version: Number(signerPolicy.policy_version),
-    required_countersignatures: Number(signerPolicy.required_countersignatures),
+    required_countersignatures: requiredCountersignatures,
+    ...(readinessSnapshotSha256 ? { readiness_snapshot_sha256: readinessSnapshotSha256 } : {}),
     idempotency_key: idempotencyKey, sequence: 1,
   };
   const validationError = validateDecisionIntent(intent);
@@ -2815,17 +2941,18 @@ async function createDecisionIntent(request: Request, db: Database, user: User, 
       (intent_id, receipt_id, package_id, item_id, pod_id, idempotency_key, intent_json, intent_sha256,
        current_state, current_sequence, current_event_sha256, required_countersignatures,
        accepted_countersignatures, submitter_id, submitter_role, effective_not_before,
-       decision_session_id, signer_policy_version, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_PROOF', 1, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`).bind(
+       decision_session_id, signer_policy_version, readiness_snapshot_sha256, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_PROOF', 1, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
       intent.intent_id, intent.receipt_id, packageId, itemId, String(current.pod_id), idempotencyKey,
       JSON.stringify(intent), intentSha256, eventResult.event_sha256, intent.required_countersignatures,
-      user.id, member.role, intent.effective_not_before, intent.decision_session_id, intent.signer_policy_version, now, now,
+      user.id, member.role, intent.effective_not_before, intent.decision_session_id, intent.signer_policy_version,
+      intent.readiness_snapshot_sha256 ?? "", now, now,
     ),
     db.prepare(`INSERT INTO decision_proof_events
       (intent_id, sequence, event_type, resulting_state, previous_event_sha256, event_json, event_sha256, actor_id, created_at)
       VALUES (?, 1, 'INTENT_RECORDED', 'PENDING_PROOF', NULL, ?, ?, ?, ?)`).bind(intent.intent_id, JSON.stringify(eventResult.event), eventResult.event_sha256, user.id, now),
     db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'decision_intent', ?, ?)")
-      .bind(itemId, user.id, `${gate} intent recorded as PENDING_PROOF under ${intent.operating_mode} signer policy v${intent.signer_policy_version}; no gate effect before issuer proof, required countersignatures, and ${intent.effective_not_before}.`, now),
+      .bind(itemId, user.id, `${gate} intent recorded as PENDING_PROOF under ${intent.operating_mode}; no gate effect before issuer proof and authoritative readiness${intent.readiness_snapshot_sha256 ? ` snapshot ${intent.readiness_snapshot_sha256}` : ` at ${intent.effective_not_before}`}.`, now),
   ]);
   return json(safeDecisionExport(intent, "PENDING_PROOF", eventResult.event_sha256), 201);
 }
@@ -2905,10 +3032,261 @@ async function activateDecisionSignerPolicy(request: Request, db: Database, user
   return json({ ok: true, policy_version: version, operating_mode: operatingMode, required_countersignatures: required, cooling_hours: 24, replay: false }, 201);
 }
 
+async function activateDecisionReadinessPolicy(request: Request, db: Database, user: User) {
+  const member = await memberContext(db, user);
+  if (member?.kind !== "human" || member.status !== "available" || !member.role.includes("Tech Lead")) {
+    return json({ error: "Only the authenticated current Tech Lead may activate release readiness policy." }, 403);
+  }
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  if (!body || Object.keys(body).some((key) => !["ruling_url", "ruling_sha256", "reason"].includes(key)) ||
+      String(body.ruling_url ?? "") !== readinessPolicyRulingUrl || String(body.ruling_sha256 ?? "") !== readinessPolicyRulingSha256 || String(body.reason ?? "") !== readinessPolicyActivationReason) {
+    return json({ error: "The readiness policy must bind the exact approved issue #74 Gate 2 ruling." }, 400);
+  }
+  const evidence = await readEvidence(readinessPolicyRulingUrl);
+  if (evidence.sha256 !== readinessPolicyRulingSha256) return json({ error: "The approved readiness ruling bytes could not be verified." }, 409);
+  const policySha256 = await releaseReadinessDigest(RELEASE_READINESS_POLICY_V1);
+  const existing = await db.prepare("SELECT * FROM decision_readiness_policies WHERE pod_id = ? AND policy_version = 1")
+    .bind(String(member.pod_id)).first<Record<string, unknown>>();
+  if (existing) {
+    if (existing.policy_sha256 !== policySha256 || existing.ruling_url !== readinessPolicyRulingUrl || existing.ruling_sha256 !== readinessPolicyRulingSha256) {
+      return json({ error: "Policy version 1 is already bound to different immutable authority." }, 409);
+    }
+    return json({ ok: true, policy: RELEASE_READINESS_POLICY_V1, policy_sha256: policySha256, replay: true });
+  }
+  const now = new Date().toISOString();
+  await db.prepare(`INSERT INTO decision_readiness_policies
+    (pod_id, policy_version, policy_json, policy_sha256, status, activated_by, activation_reason, ruling_url, ruling_sha256, created_at)
+    VALUES (?, 1, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?)`).bind(
+    String(member.pod_id), canonicalJson(RELEASE_READINESS_POLICY_V1), policySha256, user.id,
+    readinessPolicyActivationReason, readinessPolicyRulingUrl, readinessPolicyRulingSha256, now,
+  ).run();
+  return json({ ok: true, policy: RELEASE_READINESS_POLICY_V1, policy_sha256: policySha256, replay: false }, 201);
+}
+
+const hex40 = (value: unknown) => /^[0-9a-f]{40}$/.test(String(value ?? ""));
+const hex64 = (value: unknown) => /^[0-9a-f]{64}$/.test(String(value ?? ""));
+const hasOnlyKeys = (value: Record<string, unknown>, allowed: readonly string[]) => Object.keys(value).every((key) => allowed.includes(key));
+
+async function releaseReadinessView(db: Database, row: Record<string, unknown>, now = new Date().toISOString()) {
+  const startedAt = performance.now();
+  const snapshot = JSON.parse(String(row.snapshot_json)) as ReleaseReadinessSnapshot;
+  const [item, review, signatures] = await Promise.all([
+    db.prepare("SELECT updated_at FROM work_items WHERE id = ? AND pod_id = ?").bind(snapshot.work_item_id, snapshot.pod_id).first<{ updated_at: string }>(),
+    db.prepare("SELECT id, evidence_sha256 FROM agent_reviews WHERE item_id = ? ORDER BY created_at DESC, id DESC LIMIT 1").bind(snapshot.work_item_id).first<{ id: number; evidence_sha256: string }>(),
+    db.prepare(`SELECT c.member_id, c.role,
+      CASE WHEN m.kind = 'human' AND m.status = 'available' AND m.pod_id = ?
+        AND instr(m.role, c.role) > 0 AND m.role NOT LIKE '%Builder%' THEN c.status ELSE 'STALE' END AS status
+      FROM decision_readiness_countersignatures c LEFT JOIN members m ON m.id = c.member_id
+      WHERE c.snapshot_id = ? ORDER BY c.created_at, c.member_id`)
+      .bind(snapshot.pod_id, snapshot.snapshot_id).all<{ member_id: string; role: string; status: string }>(),
+  ]);
+  if (!item || item.updated_at !== snapshot.work_item_updated_at) {
+    await recordSystemTelemetry(db, "steer_release_readiness_outcome_total", "outcome", "INVALIDATED", 1);
+    await recordSystemTelemetry(db, "steer_release_readiness_invalidation_total", "reason", "WORK_ITEM_REVISION_DRIFT", 1);
+    await recordSystemTelemetry(db, "steer_release_readiness_latency_ms", "", "", Math.min(60_000, Math.round(performance.now() - startedAt)));
+    return { snapshot, snapshot_sha256: String(row.snapshot_sha256), status: "INVALIDATED" as const, reason: "WORK_ITEM_REVISION_DRIFT", missing_roles: snapshot.required_roles, server_now: now };
+  }
+  const evaluated = readinessStatus({ snapshot, now, currentCandidateSha256: String(review?.evidence_sha256 ?? ""), currentCriticReviewId: Number(review?.id ?? 0), signatures: signatures.results ?? [] });
+  await recordSystemTelemetry(db, "steer_release_readiness_outcome_total", "outcome", evaluated.status, 1);
+  if (evaluated.status === "INVALIDATED") await recordSystemTelemetry(db, "steer_release_readiness_invalidation_total", "reason", "CANDIDATE_OR_CRITIC_DRIFT", 1);
+  await recordSystemTelemetry(db, "steer_release_readiness_latency_ms", "", "", Math.min(60_000, Math.round(performance.now() - startedAt)));
+  return { snapshot, snapshot_sha256: String(row.snapshot_sha256), ...evaluated, signatures: signatures.results ?? [], server_now: now };
+}
+
+async function createReleaseReadinessSnapshot(request: Request, db: Database, user: User, itemId: number) {
+  const member = await memberContext(db, user);
+  if (member?.kind !== "human" || member.status !== "available" || !member.role.includes("Product Lead")) return json({ error: "Only the authenticated current Product Lead may freeze release readiness." }, 403);
+  const item = await scopedItemOrDenied(db, user, itemId, "release readiness snapshot");
+  if (!item) return json({ error: "Work item not found in your POD." }, 404);
+  if (String(item.gate) !== "Gate 3 pending") return json({ error: "Release readiness may be frozen only for Gate 3 pending work." }, 409);
+  const policy = await db.prepare("SELECT * FROM decision_readiness_policies WHERE pod_id = ? AND status = 'ACTIVE' ORDER BY policy_version DESC LIMIT 1")
+    .bind(String(item.pod_id)).first<Record<string, unknown>>();
+  if (!policy || Number(policy.policy_version) !== 1 || String(policy.policy_sha256) !== await releaseReadinessDigest(RELEASE_READINESS_POLICY_V1)) return json({ error: "The exact approved release readiness policy is not active." }, 409);
+  const review = await db.prepare(`SELECT r.*, a.current_state AS assignment_state, a.pod_id AS assignment_pod_id
+      FROM agent_reviews r JOIN review_assignments a ON a.assignment_id = r.review_assignment_id
+      WHERE r.item_id = ? AND r.reviewed_item_updated_at = ? AND r.review_mode = 'signed_assignment_review'
+      ORDER BY r.created_at DESC, r.id DESC LIMIT 1`)
+    .bind(itemId, String(item.updated_at)).first<Record<string, unknown>>();
+  if (!review || review.assignment_state !== "COMPLETED" || review.assignment_pod_id !== item.pod_id ||
+      !["APPROVED", "PASS"].includes(String(review.recommendation).toUpperCase()) ||
+      !hex40(review.evidence_revision) || !hex64(review.evidence_sha256)) {
+    return json({ error: "A passing signed Critic result for the exact candidate is required." }, 409);
+  }
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  const allowedSnapshotKeys = ["brief_commit", "brief_sha256", "exam_commit", "exam_sha256", "implementation_commit", "build_sha256", "migration_set_sha256", "runtime_policy_sha256", "verification_receipt_id", "verification_receipt_sha256", "verification_receipt", "verification_signature", "declared_risk_codes", "operating_mode", "satisfaction_path"];
+  if (!body || !hasOnlyKeys(body, allowedSnapshotKeys)) return json({ error: "A bounded exact-candidate packet is required." }, 400);
+  const requiredHex40 = [body.brief_commit, body.exam_commit, body.implementation_commit];
+  const requiredHex64 = [body.brief_sha256, body.exam_sha256, body.build_sha256, body.migration_set_sha256, body.runtime_policy_sha256, body.verification_receipt_sha256];
+  if (!requiredHex40.every(hex40) || !requiredHex64.every(hex64) || String(body.implementation_commit) !== String(review.evidence_revision)) {
+    return json({ error: "The readiness packet must bind exact commits, digests, and the Critic target." }, 400);
+  }
+  const verificationReceiptId = String(body.verification_receipt_id ?? "");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,199}$/.test(verificationReceiptId)) return json({ error: "A bounded authoritative staging verification receipt identity is required." }, 400);
+  let verificationRow = await db.prepare("SELECT * FROM staging_verification_receipts WHERE receipt_id = ? AND item_id = ? AND pod_id = ?")
+    .bind(verificationReceiptId, itemId, String(item.pod_id)).first<Record<string, unknown>>();
+  if (!verificationRow && body.verification_receipt && typeof body.verification_receipt === "object" && !Array.isArray(body.verification_receipt)) {
+    const importedReceipt = body.verification_receipt as Record<string, unknown>;
+    const importedSha256 = await releaseReadinessDigest(importedReceipt);
+    const importedSignature = String(body.verification_signature ?? "");
+    const importedSigner = await db.prepare(`SELECT public_key FROM decision_issuer_signers
+      WHERE pod_id = ? AND key_id = ? AND key_version = ? AND status = 'ACTIVE'`)
+      .bind(String(item.pod_id), String(importedReceipt.key_id ?? ""), Number(importedReceipt.key_version ?? 0)).first<{ public_key: string }>();
+    if (importedSha256 === verificationReceiptId && importedSha256 === body.verification_receipt_sha256 &&
+        importedReceipt.schema === "steer.staging-verification-receipt/v1" && importedReceipt.environment === "staging" &&
+        Number(importedReceipt.item_id) === itemId && importedReceipt.pod_id === item.pod_id && importedReceipt.item_updated_at === item.updated_at &&
+        importedSigner && verifyAuthorityPayload("STEER_STAGING_VERIFICATION_V1", importedReceipt, importedSignature, importedSigner.public_key)) {
+      await db.prepare(`INSERT INTO staging_verification_receipts
+        (receipt_id, item_id, pod_id, receipt_json, receipt_sha256, source_revision, build_sha256,
+         migration_set_sha256, runtime_policy_sha256, completed_at, key_id, key_version, service_signature, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(importedSha256, itemId, String(item.pod_id), canonicalJson(importedReceipt), importedSha256,
+          String(importedReceipt.source_revision), String(importedReceipt.build_sha256), String(importedReceipt.migration_set_sha256),
+          String(importedReceipt.runtime_policy_sha256), String(importedReceipt.completed_at), String(importedReceipt.key_id),
+          Number(importedReceipt.key_version), importedSignature, new Date().toISOString()).run();
+      verificationRow = await db.prepare("SELECT * FROM staging_verification_receipts WHERE receipt_id = ?").bind(importedSha256).first<Record<string, unknown>>();
+    }
+  }
+  if (!verificationRow || verificationRow.receipt_sha256 !== body.verification_receipt_sha256) return json({ error: "The exact signed staging verification receipt was not found." }, 409);
+  const verificationReceipt = JSON.parse(String(verificationRow.receipt_json)) as Record<string, unknown>;
+  const verificationSigner = await db.prepare(`SELECT public_key FROM decision_issuer_signers
+    WHERE pod_id = ? AND key_id = ? AND key_version = ? AND status = 'ACTIVE'`)
+    .bind(String(item.pod_id), String(verificationRow.key_id), Number(verificationRow.key_version)).first<{ public_key: string }>();
+  if (!verificationSigner || !verifyAuthorityPayload("STEER_STAGING_VERIFICATION_V1", verificationReceipt, String(verificationRow.service_signature), verificationSigner.public_key) ||
+      await releaseReadinessDigest(verificationReceipt) !== verificationRow.receipt_sha256) {
+    return json({ error: "The staging verification receipt signature or canonical digest is invalid." }, 409);
+  }
+  if (verificationReceipt.environment !== "staging" || verificationReceipt.item_updated_at !== item.updated_at ||
+      verificationReceipt.source_revision !== body.implementation_commit || verificationReceipt.build_sha256 !== body.build_sha256 ||
+      verificationReceipt.migration_set_sha256 !== body.migration_set_sha256 || verificationReceipt.runtime_policy_sha256 !== body.runtime_policy_sha256) {
+    return json({ error: "The staging verification receipt does not bind this exact candidate packet." }, 409);
+  }
+  const verificationCompletedAt = String(verificationReceipt.completed_at ?? "");
+  if (!Number.isFinite(Date.parse(verificationCompletedAt)) || Date.parse(verificationCompletedAt) > Date.now() + 5 * 60 * 1000) return json({ error: "The authoritative verification time is invalid." }, 409);
+  const declared = body.declared_risk_codes;
+  let derived: unknown = [];
+  try { derived = JSON.parse(String(review.derived_tags_json ?? "[]")); } catch { derived = []; }
+  const classification = classifyRiskCodes(declared, derived);
+  const normalizedDeclared = parseRiskCodes(declared).codes;
+  const normalizedDerived = parseRiskCodes(derived).codes;
+  const operatingMode = String(body.operating_mode ?? "") as "SOLO_CALIBRATION" | "TEAM";
+  const satisfactionPath = String(body.satisfaction_path ?? "") as SatisfactionPath;
+  const pathError = validateSatisfactionPath(classification, operatingMode, satisfactionPath);
+  if (pathError) return json({ error: pathError }, 400);
+  const roles = requiredRolesFor(classification.codes, classification.tier);
+  const earliest = effectiveNotBefore(verificationCompletedAt, satisfactionPath === "TIME" ? classification.delay_hours : 0);
+  const identityInput = {
+    schema: "steer.gate-readiness-identity/v1", pod_id: String(item.pod_id), item_id: itemId,
+    item_updated_at: String(item.updated_at), review_id: Number(review.id), evidence_sha256: String(review.evidence_sha256),
+    policy_sha256: String(policy.policy_sha256),
+    candidate: {
+      brief_commit: body.brief_commit, brief_sha256: body.brief_sha256,
+      exam_commit: body.exam_commit, exam_sha256: body.exam_sha256,
+      implementation_commit: body.implementation_commit, build_sha256: body.build_sha256,
+      migration_set_sha256: body.migration_set_sha256, runtime_policy_sha256: body.runtime_policy_sha256,
+      verification_receipt_id: verificationReceiptId, verification_receipt_sha256: body.verification_receipt_sha256,
+      verification_completed_at: verificationCompletedAt, declared_risk_codes: normalizedDeclared,
+      derived_risk_codes: normalizedDerived, operating_mode: operatingMode, satisfaction_path: satisfactionPath,
+    },
+  };
+  const snapshotId = await releaseReadinessDigest(identityInput);
+  const existing = await db.prepare("SELECT * FROM decision_readiness_snapshots WHERE snapshot_id = ? AND pod_id = ?")
+    .bind(snapshotId, String(item.pod_id)).first<Record<string, unknown>>();
+  if (existing) return json({ ...(await releaseReadinessView(db, existing)), replay: true });
+  const predecessor = await db.prepare("SELECT snapshot_sha256 FROM decision_readiness_snapshots WHERE item_id = ? AND pod_id = ? AND current_state = 'ACTIVE' ORDER BY created_at DESC LIMIT 1")
+    .bind(itemId, String(item.pod_id)).first<{ snapshot_sha256: string }>();
+  const now = new Date().toISOString();
+  const snapshot: ReleaseReadinessSnapshot = {
+    schema: "steer.gate-readiness-snapshot/v1", snapshot_id: snapshotId, work_item_id: itemId,
+    work_item_key: String(item.key), work_item_updated_at: String(item.updated_at), pod_id: String(item.pod_id),
+    brief_commit: String(body.brief_commit), brief_sha256: String(body.brief_sha256),
+    exam_commit: String(body.exam_commit), exam_sha256: String(body.exam_sha256),
+    implementation_commit: String(body.implementation_commit), build_sha256: String(body.build_sha256),
+    migration_set_sha256: String(body.migration_set_sha256), runtime_policy_sha256: String(body.runtime_policy_sha256),
+    verification_receipt_id: verificationReceiptId,
+    verification_receipt_sha256: String(body.verification_receipt_sha256), verification_completed_at: verificationCompletedAt,
+    critic_review_id: Number(review.id), critic_target_revision: String(review.evidence_revision), critic_recommendation: String(review.recommendation),
+    evidence_set_sha256: String(review.evidence_sha256), declared_risk_codes: normalizedDeclared as RiskCode[],
+    derived_risk_codes: normalizedDerived as RiskCode[], resolved_risk_codes: classification.codes,
+    classification_errors: classification.errors, tier: classification.tier, risk_policy_version: 1,
+    operating_mode: operatingMode, satisfaction_path: satisfactionPath, delay_hours: classification.delay_hours,
+    required_roles: roles, effective_not_before: earliest, created_by: user.id, created_at: now,
+    predecessor_snapshot_sha256: predecessor?.snapshot_sha256 ?? null,
+  };
+  const snapshotSha256 = await releaseReadinessDigest(snapshot);
+  const event = { schema: "steer.gate-readiness-event/v1", snapshot_id: snapshotId, event_type: "SNAPSHOT_FROZEN", snapshot_sha256: snapshotSha256, actor_id: user.id, occurred_at: now };
+  const eventSha256 = await releaseReadinessDigest(event);
+  const statements = [] as Statement[];
+  if (predecessor) statements.push(db.prepare("UPDATE decision_readiness_snapshots SET current_state = 'INVALIDATED', invalidation_reason = 'SUPERSEDED_BY_NEW_EXACT_CANDIDATE' WHERE item_id = ? AND pod_id = ? AND current_state = 'ACTIVE'").bind(itemId, String(item.pod_id)));
+  statements.push(
+    db.prepare(`INSERT INTO decision_readiness_snapshots
+      (snapshot_id, item_id, pod_id, snapshot_json, snapshot_sha256, evidence_set_sha256, critic_review_id,
+       tier, satisfaction_path, effective_not_before, current_state, invalidation_reason,
+       predecessor_snapshot_sha256, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', NULL, ?, ?, ?)`).bind(
+      snapshotId, itemId, String(item.pod_id), canonicalJson(snapshot), snapshotSha256, snapshot.evidence_set_sha256,
+      snapshot.critic_review_id, snapshot.tier, snapshot.satisfaction_path, snapshot.effective_not_before,
+      snapshot.predecessor_snapshot_sha256, user.id, now,
+    ),
+    db.prepare("INSERT INTO decision_readiness_events (snapshot_id, event_type, event_json, event_sha256, actor_id, created_at) VALUES (?, 'SNAPSHOT_FROZEN', ?, ?, ?, ?)").bind(snapshotId, canonicalJson(event), eventSha256, user.id, now),
+  );
+  await db.batch(statements);
+  const stored = await db.prepare("SELECT * FROM decision_readiness_snapshots WHERE snapshot_id = ?").bind(snapshotId).first<Record<string, unknown>>();
+  await recordSystemTelemetry(db, "steer_release_risk_classification_total", "tier", snapshot.tier, 1);
+  return json({ ...(await releaseReadinessView(db, stored!)), replay: false }, 201);
+}
+
+async function getReleaseReadiness(db: Database, user: User, itemId: number) {
+  const item = await scopedItemOrDenied(db, user, itemId, "release readiness read");
+  if (!item) return json({ error: "Work item not found in your POD." }, 404);
+  const row = await db.prepare("SELECT * FROM decision_readiness_snapshots WHERE item_id = ? AND pod_id = ? ORDER BY created_at DESC LIMIT 1")
+    .bind(itemId, String(item.pod_id)).first<Record<string, unknown>>();
+  return row ? json(await releaseReadinessView(db, row)) : json({ status: "NOT_READY", reason: "READINESS_SNAPSHOT_REQUIRED", snapshot: null, missing_roles: [] });
+}
+
+async function countersignReleaseReadiness(request: Request, db: Database, user: User, snapshotId: string) {
+  const member = await memberContext(db, user);
+  const row = await db.prepare("SELECT * FROM decision_readiness_snapshots WHERE snapshot_id = ?").bind(snapshotId).first<Record<string, unknown>>();
+  if (!row) return json({ error: "Release readiness snapshot not found." }, 404);
+  const snapshot = JSON.parse(String(row.snapshot_json)) as ReleaseReadinessSnapshot;
+  if (!member || member.kind !== "human" || member.status !== "available" || member.pod_id !== snapshot.pod_id) {
+    await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "rejected_authority", 1);
+    return json({ error: "A current enrolled human in the same POD is required." }, 403);
+  }
+  if (snapshot.satisfaction_path === "TIME") return json({ error: "This snapshot uses the time-separation path." }, 409);
+  if (snapshot.created_by === user.id || member.role.includes("Builder")) {
+    await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "rejected_authority", 1);
+    return json({ error: "The submitter or Builder cannot satisfy an independent-human slot." }, 403);
+  }
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  if (!body || !hasOnlyKeys(body, ["role", "reason"])) return json({ error: "Countersignature input is outside the bounded contract." }, 400);
+  const role = String(body?.role ?? "");
+  const reason = String(body?.reason ?? "").trim();
+  if (!snapshot.required_roles.includes(role) || !member.role.includes(role) || reason.length < 12) {
+    await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "rejected_role", 1);
+    return json({ error: "Choose one currently held required role and record concise reasoning." }, 400);
+  }
+  const existingMember = await db.prepare("SELECT * FROM decision_readiness_countersignatures WHERE snapshot_id = ? AND member_id = ?").bind(snapshotId, user.id).first<Record<string, unknown>>();
+  if (existingMember) {
+    await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "replay", 1);
+    return json({ ...(await releaseReadinessView(db, row)), replay: true });
+  }
+  const now = new Date().toISOString();
+  const proof = { schema: "steer.gate-readiness-countersignature/v1", snapshot_id: snapshotId, snapshot_sha256: String(row.snapshot_sha256), member_id: user.id, role, reason_sha256: await sha256Hex(reason), signed_at: now };
+  const proofSha256 = await releaseReadinessDigest(proof);
+  const event = { schema: "steer.gate-readiness-event/v1", snapshot_id: snapshotId, event_type: "COUNTERSIGNATURE_ACCEPTED", proof_sha256: proofSha256, actor_id: user.id, occurred_at: now };
+  await db.batch([
+    db.prepare("INSERT INTO decision_readiness_countersignatures (snapshot_id, member_id, role, proof_json, proof_sha256, status, created_at) VALUES (?, ?, ?, ?, ?, 'ACCEPTED', ?)").bind(snapshotId, user.id, role, canonicalJson(proof), proofSha256, now),
+    db.prepare("INSERT INTO decision_readiness_events (snapshot_id, event_type, event_json, event_sha256, actor_id, created_at) VALUES (?, 'COUNTERSIGNATURE_ACCEPTED', ?, ?, ?, ?)").bind(snapshotId, canonicalJson(event), await releaseReadinessDigest(event), user.id, now),
+  ]);
+  await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "accepted", 1);
+  return json({ ...(await releaseReadinessView(db, row)), replay: false }, 201);
+}
+
 async function activateDecisionIssuer(request: Request, db: Database, user: User) {
   const member = await memberContext(db, user);
   if (member?.kind !== "human" || !member.role.includes("Tech Lead")) return json({ error: "Only the authenticated Tech Lead may activate a decision issuer public key." }, 403);
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  if (!body || !hasOnlyKeys(body, ["key_id", "key_version", "public_key", "reason"])) return json({ error: "The issuer activation input is outside the bounded contract." }, 400);
   const keyId = String(body?.key_id ?? "");
   const keyVersion = Number(body?.key_version ?? 0);
   const publicKey = String(body?.public_key ?? "");
@@ -2995,8 +3373,32 @@ async function finalizeDecisionIntent(request: Request, db: Database, env: Env, 
     .bind(intentId).first<{ count: number }>();
   if (Number(row.required_countersignatures) !== intent.required_countersignatures ||
       row.effective_not_before !== intent.effective_not_before ||
-      Number(row.signer_policy_version) !== intent.signer_policy_version) {
+      Number(row.signer_policy_version) !== intent.signer_policy_version ||
+      String(row.readiness_snapshot_sha256 ?? "") !== (intent.readiness_snapshot_sha256 ?? "")) {
     return json({ error: "The immutable signer-policy projection does not match the signed decision intent." }, 409);
+  }
+  let readinessAtFinalization: Awaited<ReturnType<typeof releaseReadinessView>> | null = null;
+  if (intent.readiness_snapshot_sha256) {
+    const readinessRow = await db.prepare(`SELECT * FROM decision_readiness_snapshots
+      WHERE snapshot_sha256 = ? AND item_id = ? AND pod_id = ? AND current_state = 'ACTIVE'`)
+      .bind(intent.readiness_snapshot_sha256, Number(row.item_id), String(row.pod_id)).first<Record<string, unknown>>();
+    if (!readinessRow) return json({ error: "The intent-bound release readiness snapshot is no longer active; create a replacement snapshot, session, and intent." }, 409);
+    readinessAtFinalization = await releaseReadinessView(db, readinessRow, now);
+    if (readinessAtFinalization.status !== "READY") {
+      const blockedSnapshot = readinessAtFinalization.snapshot as ReleaseReadinessSnapshot;
+      await recordSystemTelemetry(db, "steer_release_finalization_total", "outcome", "blocked_readiness", 1);
+      if (blockedSnapshot.satisfaction_path === "TIME" && readinessAtFinalization.status === "NOT_READY") {
+        await recordSystemTelemetry(db, "steer_release_readiness_boundary_rejection_total", "tier", blockedSnapshot.tier, 1);
+      }
+      return json({ error: `Release readiness is ${readinessAtFinalization.status}: ${readinessAtFinalization.reason}. No Gate effect was created.`, readiness: readinessAtFinalization }, 409);
+    }
+    const boundSnapshot = readinessAtFinalization.snapshot as ReleaseReadinessSnapshot;
+    if (boundSnapshot.operating_mode !== intent.operating_mode || boundSnapshot.effective_not_before !== intent.effective_not_before) {
+      return json({ error: "The signed intent does not match the canonical readiness operating mode and boundary." }, 409);
+    }
+    const session = await db.prepare("SELECT started_at FROM decision_sessions WHERE session_id = ?")
+      .bind(intent.decision_session_id).first<{ started_at: string }>();
+    if (!session || session.started_at < boundSnapshot.created_at) return json({ error: "The Gate 3 session predates the exact readiness snapshot." }, 409);
   }
   const finalizationError = decisionFinalizationError({
     state: String(row.current_state) as "PENDING_COUNTERSIGNATURE",
@@ -3021,18 +3423,29 @@ async function finalizeDecisionIntent(request: Request, db: Database, env: Env, 
     envelope.payload.submitted_at === intent.submitted_at && envelope.payload.effective_not_before === intent.effective_not_before &&
     envelope.payload.operating_mode === intent.operating_mode && envelope.payload.signer_policy_version === intent.signer_policy_version &&
     envelope.payload.required_countersignatures === intent.required_countersignatures &&
+    envelope.payload.readiness_snapshot_sha256 === (intent.readiness_snapshot_sha256 ?? "") &&
     canonicalJson(envelope.payload.target) === canonicalJson(intent.target) &&
     envelope.payload.final_reasoning_sha256 === await sha256Hex(intent.final_reasoning);
   if (!await verifyDecisionIssuerEnvelope(envelope, String(envelopeRow.public_key)) || !envelopeMatchesIntent) {
     return json({ error: "The issuer proof does not verify against this exact decision intent." }, 409);
   }
-  const latestPolicy = await db.prepare(`SELECT * FROM decision_signer_policies
-    WHERE pod_id = ? AND status = 'ACTIVE' ORDER BY policy_version DESC LIMIT 1`)
-    .bind(String(row.pod_id)).first<Record<string, unknown>>();
-  if (!latestPolicy || Number(latestPolicy.policy_version) !== intent.signer_policy_version ||
-      latestPolicy.operating_mode !== intent.operating_mode ||
-      Number(latestPolicy.required_countersignatures) !== intent.required_countersignatures) {
-    return json({ error: "Signer policy changed after submission; this pending intent must be superseded and resubmitted." }, 409);
+  if (intent.readiness_snapshot_sha256) {
+    const readinessPolicy = await db.prepare(`SELECT * FROM decision_readiness_policies
+      WHERE pod_id = ? AND status = 'ACTIVE' ORDER BY policy_version DESC LIMIT 1`)
+      .bind(String(row.pod_id)).first<Record<string, unknown>>();
+    if (!readinessPolicy || Number(readinessPolicy.policy_version) !== 1 ||
+        String(readinessPolicy.policy_sha256) !== await releaseReadinessDigest(RELEASE_READINESS_POLICY_V1)) {
+      return json({ error: "The exact intent-bound release readiness policy is no longer active." }, 409);
+    }
+  } else {
+    const latestPolicy = await db.prepare(`SELECT * FROM decision_signer_policies
+      WHERE pod_id = ? AND status = 'ACTIVE' ORDER BY policy_version DESC LIMIT 1`)
+      .bind(String(row.pod_id)).first<Record<string, unknown>>();
+    if (!latestPolicy || Number(latestPolicy.policy_version) !== intent.signer_policy_version ||
+        latestPolicy.operating_mode !== intent.operating_mode ||
+        Number(latestPolicy.required_countersignatures) !== intent.required_countersignatures) {
+      return json({ error: "Signer policy changed after submission; this pending intent must be superseded and resubmitted." }, 409);
+    }
   }
   const exactEvidenceUrl = `${intent.target.repository_uri}/blob/${intent.target.commit}/${intent.target.path}`;
   if (row.item_key !== intent.item_key || row.gate !== intent.decision_kind || row.item_evidence_url !== exactEvidenceUrl) {
@@ -3100,6 +3513,7 @@ async function finalizeDecisionIntent(request: Request, db: Database, env: Env, 
   const persisted = await db.prepare("SELECT current_state, current_event_sha256 FROM decision_intents WHERE intent_id = ?").bind(intentId).first<Record<string, unknown>>();
   if (persisted?.current_state !== "EFFECTIVE") return json({ error: "The work item changed during finalization; no effective decision was recorded." }, 409);
   await requireMaterialReforecast(db, row, Number(row.item_id), { id: intent.submitter_principal, email: submitter?.email ?? null, name: intent.submitter_principal }, `Gate decision ${intent.decision.toLowerCase()} changed execution expectations.`, now, transition.state === "blocked");
+  if (intent.readiness_snapshot_sha256) await recordSystemTelemetry(db, "steer_release_finalization_total", "outcome", "effective", 1);
   if (intent.decision === "CHANGES_REQUESTED") {
     const recipient = transition.assigneeId
       ? await db.prepare("SELECT role FROM members WHERE id = ?").bind(transition.assigneeId).first<{ role: string }>()
@@ -3113,9 +3527,63 @@ async function finalizeDecisionIntent(request: Request, db: Database, env: Env, 
   return json(safeDecisionExport(intent, "EFFECTIVE", eventResult.event_sha256), 201);
 }
 
+async function createStagingVerificationReceipt(request: Request, db: Database, env: Env) {
+  if (env.STEER_DEPLOYMENT_ENV !== "staging") return json({ error: "Signed staging verification receipts may be issued only by the staging deployment." }, 409);
+  const token = String(env.DECISION_SERVICE_TOKEN ?? "");
+  if (token.length < 32 || request.headers.get("authorization") !== `Bearer ${token}`) return json({ error: "Staging verification service authentication failed." }, 401);
+  const privateKey = String(env.DECISION_SERVICE_PRIVATE_KEY ?? "");
+  const keyId = String(env.DECISION_SERVICE_KEY_ID ?? "");
+  const keyVersion = Number(env.DECISION_SERVICE_KEY_VERSION ?? 0);
+  if (!hex64(privateKey) || !keyId || !Number.isInteger(keyVersion) || keyVersion < 1) return json({ error: "Staging verification signing configuration is incomplete." }, 503);
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  if (!body || !hasOnlyKeys(body, ["item_id", "environment", "source_revision", "build_sha256", "migration_set_sha256", "runtime_policy_sha256", "case_ledger_sha256", "completed_at"])) {
+    return json({ error: "The verification receipt input is outside the bounded contract." }, 400);
+  }
+  const itemId = Number(body?.item_id ?? 0);
+  const sourceRevision = String(body?.source_revision ?? "");
+  const buildSha256 = String(body?.build_sha256 ?? "");
+  const migrationSetSha256 = String(body?.migration_set_sha256 ?? "");
+  const runtimePolicySha256 = String(body?.runtime_policy_sha256 ?? "");
+  const caseLedgerSha256 = String(body?.case_ledger_sha256 ?? "");
+  const completedAt = String(body?.completed_at ?? "");
+  if (!Number.isInteger(itemId) || itemId < 1 || !hex40(sourceRevision) ||
+      ![buildSha256, migrationSetSha256, runtimePolicySha256, caseLedgerSha256].every(hex64) ||
+      !Number.isFinite(Date.parse(completedAt)) || Date.parse(completedAt) > Date.now() + 5 * 60 * 1000 || body?.environment !== "staging") {
+    return json({ error: "The verification receipt must bind one exact staging candidate, ledger, and authoritative completion time." }, 400);
+  }
+  const item = await db.prepare("SELECT id, key, pod_id, gate, updated_at FROM work_items WHERE id = ?").bind(itemId).first<Record<string, unknown>>();
+  if (!item || item.gate !== "Gate 3 pending") return json({ error: "A Gate 3 pending work item is required." }, 409);
+  const publicKey = decisionIssuerPublicKey(privateKey);
+  const signer = await db.prepare(`SELECT * FROM decision_issuer_signers
+    WHERE pod_id = ? AND key_id = ? AND key_version = ? AND status = 'ACTIVE'`)
+    .bind(String(item.pod_id), keyId, keyVersion).first<Record<string, unknown>>();
+  if (!signer || signer.public_key !== publicKey) return json({ error: "The verification signer is not activated for this POD." }, 409);
+  const receipt = {
+    schema: "steer.staging-verification-receipt/v1", environment: "staging", item_id: itemId,
+    item_key: String(item.key), item_updated_at: String(item.updated_at), pod_id: String(item.pod_id),
+    source_revision: sourceRevision, build_sha256: buildSha256, migration_set_sha256: migrationSetSha256,
+    runtime_policy_sha256: runtimePolicySha256, case_ledger_sha256: caseLedgerSha256,
+    completed_at: new Date(Date.parse(completedAt)).toISOString(), key_id: keyId, key_version: keyVersion,
+  };
+  const receiptSha256 = await releaseReadinessDigest(receipt);
+  const receiptId = receiptSha256;
+  const existing = await db.prepare("SELECT * FROM staging_verification_receipts WHERE receipt_id = ?").bind(receiptId).first<Record<string, unknown>>();
+  if (existing) return json({ receipt_id: receiptId, receipt_sha256: receiptSha256, receipt, replay: true });
+  const signature = signAuthorityPayload("STEER_STAGING_VERIFICATION_V1", receipt, privateKey);
+  const now = new Date().toISOString();
+  await db.prepare(`INSERT INTO staging_verification_receipts
+    (receipt_id, item_id, pod_id, receipt_json, receipt_sha256, source_revision, build_sha256,
+     migration_set_sha256, runtime_policy_sha256, completed_at, key_id, key_version, service_signature, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(receiptId, itemId, String(item.pod_id), canonicalJson(receipt), receiptSha256, sourceRevision,
+      buildSha256, migrationSetSha256, runtimePolicySha256, receipt.completed_at, keyId, keyVersion, signature, now).run();
+  return json({ receipt_id: receiptId, receipt_sha256: receiptSha256, receipt, service_signature: signature, replay: false }, 201);
+}
+
 async function handleDecisionProofService(request: Request, db: Database, env: Env) {
   if (request.method !== "POST") return null;
   const pathname = new URL(request.url).pathname;
+  if (pathname === "/api/staging-verification-receipts") return createStagingVerificationReceipt(request, db, env);
   const proofMatch = pathname.match(/^\/api\/decision-intents\/([0-9a-f-]{36})\/issuer-proof$/);
   if (proofMatch) return proveDecisionIntent(request, db, env, proofMatch[1]);
   const finalizeMatch = pathname.match(/^\/api\/decision-intents\/([0-9a-f-]{36})\/finalize$/);
@@ -3603,6 +4071,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "POST" && url.pathname === "/api/privacy-policy/activate") return activatePrivacyPolicy(request, env.DB, user);
     if (request.method === "POST" && url.pathname === "/api/decision-signers/activate") return activateDecisionIssuer(request, env.DB, user);
     if (request.method === "POST" && url.pathname === "/api/decision-signer-policies/activate") return activateDecisionSignerPolicy(request, env.DB, user);
+    if (request.method === "POST" && url.pathname === "/api/decision-readiness-policies/activate") return activateDecisionReadinessPolicy(request, env.DB, user);
     if (request.method === "POST" && url.pathname === "/api/items") return createItem(request, env.DB, user);
     const itemMatch = url.pathname.match(/^\/api\/items\/(\d+)$/);
     if (request.method === "PATCH" && itemMatch) return updateItem(request, env.DB, user, Number(itemMatch[1]));
@@ -3627,6 +4096,11 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "POST" && decisionPackageMatch) return prepareDecisionPackage(env.DB, user, Number(decisionPackageMatch[1]));
     const decisionSessionMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decision-sessions$/);
     if (request.method === "POST" && decisionSessionMatch) return startDecisionSession(request, env.DB, user, Number(decisionSessionMatch[1]));
+    const readinessMatch = url.pathname.match(/^\/api\/items\/(\d+)\/release-readiness$/);
+    if (request.method === "GET" && readinessMatch) return getReleaseReadiness(env.DB, user, Number(readinessMatch[1]));
+    if (request.method === "POST" && readinessMatch) return createReleaseReadinessSnapshot(request, env.DB, user, Number(readinessMatch[1]));
+    const readinessSignatureMatch = url.pathname.match(/^\/api\/release-readiness\/([0-9a-f]{64})\/countersignatures$/);
+    if (request.method === "POST" && readinessSignatureMatch) return countersignReleaseReadiness(request, env.DB, user, readinessSignatureMatch[1]);
     const decisionIntentMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decision-intents$/);
     if (request.method === "POST" && decisionIntentMatch) return createDecisionIntent(request, env.DB, user, Number(decisionIntentMatch[1]));
     const decisionExportMatch = url.pathname.match(/^\/api\/decision-intents\/([0-9a-f-]{36})\/export$/);

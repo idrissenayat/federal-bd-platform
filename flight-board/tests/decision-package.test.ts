@@ -45,7 +45,7 @@ test("proof and countersignature events stay ineffective until explicit finaliza
 
 test("solo finalization still requires issuer proof and the full cooling period", () => {
   assert.match(decisionFinalizationError({ state: "PENDING_PROOF", requiredCountersignatures: 0, acceptedCountersignatures: 0, effectiveNotBefore: "2026-08-19T23:00:00Z", now: "2026-08-20T00:00:00Z" }) ?? "", /not awaiting/);
-  assert.match(decisionFinalizationError({ state: "PENDING_COUNTERSIGNATURE", requiredCountersignatures: 0, acceptedCountersignatures: 0, effectiveNotBefore: "2026-08-19T23:00:00Z", now: "2026-08-19T22:59:59Z" }) ?? "", /cooling period/);
+  assert.match(decisionFinalizationError({ state: "PENDING_COUNTERSIGNATURE", requiredCountersignatures: 0, acceptedCountersignatures: 0, effectiveNotBefore: "2026-08-19T23:00:00Z", now: "2026-08-19T22:59:59Z" }) ?? "", /decision-separation boundary/);
   assert.equal(decisionFinalizationError({ state: "PENDING_COUNTERSIGNATURE", requiredCountersignatures: 0, acceptedCountersignatures: 0, effectiveNotBefore: "2026-08-19T23:00:00Z", now: "2026-08-19T23:00:00Z" }), null);
   assert.match(decisionFinalizationError({ state: "PENDING_COUNTERSIGNATURE", requiredCountersignatures: 2, acceptedCountersignatures: 1, effectiveNotBefore: "2026-08-19T23:00:00Z", now: "2026-08-20T00:00:00Z" }) ?? "", /incomplete/);
 });
@@ -56,6 +56,22 @@ test("solo and team signer-count policies are validated independently", () => {
   assert.match(validateDecisionIntent({ ...solo, required_countersignatures: 1 }) ?? "", /zero additional/);
   assert.match(validateDecisionIntent({ ...solo, operating_mode: "TEAM", required_countersignatures: 1 }) ?? "", /at least two/);
   assert.match(validateDecisionIntent({ ...solo, effective_not_before: "2026-08-19T22:59:59Z" }) ?? "", /24 hours/);
+});
+
+test("risk-based Gate 3 intents bind a readiness snapshot without weakening legacy receipts", async () => {
+  const readinessIntent = {
+    ...intent(),
+    decision_kind: "Gate 3 pending",
+    effective_not_before: "2026-08-18T23:00:00Z",
+    readiness_snapshot_sha256: "9".repeat(64),
+  };
+  assert.equal(validateDecisionIntent(readinessIntent), null);
+  assert.match(validateDecisionIntent({ ...readinessIntent, readiness_snapshot_sha256: "bad" }) ?? "", /snapshot digest/);
+  const privateKey = "1".repeat(64);
+  const envelope = await createDecisionIssuerEnvelope({ intent: readinessIntent, privateKeyHex: privateKey, keyId: "steer-decision-issuer", issuerPrincipal: "decision-proof-service", issuedAt: "2026-08-18T23:10:00Z" });
+  assert.equal(envelope.payload.readiness_snapshot_sha256, readinessIntent.readiness_snapshot_sha256);
+  assert.equal(await verifyDecisionIssuerEnvelope(envelope, decisionIssuerPublicKey(privateKey)), true);
+  assert.equal(await verifyDecisionIssuerEnvelope({ ...envelope, payload: { ...envelope.payload, readiness_snapshot_sha256: "8".repeat(64) } }, decisionIssuerPublicKey(privateKey)), false);
 });
 
 test("pending exports cannot be mistaken for approval and events are chained", async () => {

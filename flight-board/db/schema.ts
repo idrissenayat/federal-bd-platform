@@ -196,6 +196,7 @@ export const decisionIntents = sqliteTable(
     requiredCountersignatures: integer("required_countersignatures").notNull().default(1), acceptedCountersignatures: integer("accepted_countersignatures").notNull().default(0),
     submitterId: text("submitter_id").notNull(), submitterRole: text("submitter_role").notNull(), decisionSessionId: text("decision_session_id").notNull().unique(), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
     effectiveNotBefore: text("effective_not_before").notNull(), signerPolicyVersion: integer("signer_policy_version").notNull(),
+    readinessSnapshotSha256: text("readiness_snapshot_sha256").notNull().default(""),
   },
   (table) => [index("idx_decision_intents_item_created").on(table.itemId, table.createdAt), uniqueIndex("uq_decision_intents_pod_idempotency").on(table.podId, table.idempotencyKey)],
 );
@@ -219,6 +220,62 @@ export const decisionSignerPolicies = sqliteTable(
     activationReason: text("activation_reason").notNull(), rulingUrl: text("ruling_url").notNull(), rulingSha256: text("ruling_sha256").notNull(), createdAt: text("created_at").notNull(),
   },
   (table) => [uniqueIndex("uq_decision_signer_policy").on(table.podId, table.policyVersion), index("idx_decision_signer_policies_active").on(table.podId, table.status, table.policyVersion)],
+);
+
+export const decisionReadinessPolicies = sqliteTable(
+  "decision_readiness_policies",
+  {
+    podId: text("pod_id").notNull(), policyVersion: integer("policy_version").notNull(),
+    policyJson: text("policy_json").notNull(), policySha256: text("policy_sha256").notNull(), status: text("status").notNull(),
+    activatedBy: text("activated_by").notNull(), activationReason: text("activation_reason").notNull(),
+    rulingUrl: text("ruling_url").notNull(), rulingSha256: text("ruling_sha256").notNull(), createdAt: text("created_at").notNull(),
+  },
+  (table) => [uniqueIndex("uq_decision_readiness_policy").on(table.podId, table.policyVersion), index("idx_decision_readiness_policy_active").on(table.podId, table.status, table.policyVersion)],
+);
+
+export const stagingVerificationReceipts = sqliteTable(
+  "staging_verification_receipts",
+  {
+    receiptId: text("receipt_id").primaryKey(), itemId: integer("item_id").notNull(), podId: text("pod_id").notNull(),
+    receiptJson: text("receipt_json").notNull(), receiptSha256: text("receipt_sha256").notNull().unique(),
+    sourceRevision: text("source_revision").notNull(), buildSha256: text("build_sha256").notNull(),
+    migrationSetSha256: text("migration_set_sha256").notNull(), runtimePolicySha256: text("runtime_policy_sha256").notNull(),
+    completedAt: text("completed_at").notNull(), keyId: text("key_id").notNull(), keyVersion: integer("key_version").notNull(),
+    serviceSignature: text("service_signature").notNull(), createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_staging_verification_receipts_item_created").on(table.itemId, table.createdAt)],
+);
+
+export const decisionReadinessSnapshots = sqliteTable(
+  "decision_readiness_snapshots",
+  {
+    snapshotId: text("snapshot_id").primaryKey(), itemId: integer("item_id").notNull(), podId: text("pod_id").notNull(),
+    snapshotJson: text("snapshot_json").notNull(), snapshotSha256: text("snapshot_sha256").notNull().unique(),
+    evidenceSetSha256: text("evidence_set_sha256").notNull(), criticReviewId: integer("critic_review_id").notNull(),
+    tier: text("tier").notNull(), satisfactionPath: text("satisfaction_path").notNull(), effectiveNotBefore: text("effective_not_before").notNull(),
+    currentState: text("current_state").notNull(), invalidationReason: text("invalidation_reason"), predecessorSnapshotSha256: text("predecessor_snapshot_sha256"),
+    createdBy: text("created_by").notNull(), createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_decision_readiness_snapshots_item_created").on(table.itemId, table.createdAt), index("idx_decision_readiness_snapshots_pod_state").on(table.podId, table.currentState)],
+);
+
+export const decisionReadinessEvents = sqliteTable(
+  "decision_readiness_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }), snapshotId: text("snapshot_id").notNull(),
+    eventType: text("event_type").notNull(), eventJson: text("event_json").notNull(), eventSha256: text("event_sha256").notNull().unique(),
+    actorId: text("actor_id").notNull(), createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_decision_readiness_events_snapshot_created").on(table.snapshotId, table.createdAt)],
+);
+
+export const decisionReadinessCountersignatures = sqliteTable(
+  "decision_readiness_countersignatures",
+  {
+    snapshotId: text("snapshot_id").notNull(), memberId: text("member_id").notNull(), role: text("role").notNull(),
+    proofJson: text("proof_json").notNull(), proofSha256: text("proof_sha256").notNull(), status: text("status").notNull(), createdAt: text("created_at").notNull(),
+  },
+  (table) => [uniqueIndex("uq_decision_readiness_countersignature").on(table.snapshotId, table.memberId), index("idx_decision_readiness_countersignatures_snapshot").on(table.snapshotId, table.status)],
 );
 
 export const decisionProofEvents = sqliteTable(

@@ -47,6 +47,16 @@ test("governed decisions bind the exact solo policy and recover from terminal pr
   assert.match(page, /setDecisionSession\(null\)/);
 });
 
+test("Gate 3 renders server-authoritative risk readiness without automatic ripening", () => {
+  assert.match(page, /selectedReleaseReadiness\?\.status === "READY"/);
+  assert.match(page, /Authoritative snapshot required/);
+  assert.match(page, /Time or a new countersignature never makes it effective automatically/);
+  assert.match(page, /snapshot\.implementation_commit\.slice\(0, 12\)/);
+  assert.match(page, /snapshot\.verification_completed_at/);
+  assert.match(page, /selectedReleaseReadiness\.missing_roles/);
+  assert.match(page, /load\(\{ quiet: true \}\)/);
+});
+
 test("governed decision dialog contains focus, closes on Escape, and restores its opener", () => {
   assert.match(page, /<dialog ref=\{decisionDialogRef\} open[^>]*aria-modal="true"/);
   assert.match(page, /ref=\{decisionCloseRef\}/);

@@ -28,6 +28,8 @@ const buzzRelayUrl = "wss://blockbuzzmain-production-5bcb.up.railway.app";
 const buzzDownloadUrl = "https://buzz.xyz";
 const approvedSoloPolicyRulingUrl = "https://github.com/idrissenayat/federal-bd-platform/blob/b7e8c9a8d2a5c0abe3e76a037f053043178ce02b/steer/evidence/0027-solo-calibration-signer-ruling.md";
 const approvedSoloPolicyRulingSha256 = "4f18e737f943b34ddeb9c50b6f679675211b0d84c4d2a86758e33cb22e7e7388";
+const approvedReadinessRulingUrl = "https://github.com/idrissenayat/federal-bd-platform/blob/1b8ad059a8ee2a4a94c7828bc617d4909a52813c/steer/exams/0074-risk-based-gate3-readiness.md";
+const approvedReadinessRulingSha256 = "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6";
 
 type View = "my-work" | "overview" | "board" | "backlog" | "decisions" | "team";
 type RoleContext = "product" | "tech" | "design" | "platform" | "security" | "contributor";
@@ -158,10 +160,31 @@ type DecisionReceipt = {
   operating_mode: string;
   signer_policy_version: number;
   required_countersignatures: number;
+  readiness_snapshot_sha256: string | null;
   effective_not_before: string;
   submitted_at: string;
   created_at: string;
   updated_at: string;
+};
+
+type ReleaseReadiness = {
+  snapshot: {
+    snapshot_id: string;
+    work_item_id: number;
+    implementation_commit: string;
+    verification_completed_at: string;
+    tier: "DEFAULT_OPEN" | "ELEVATED" | "DEFAULT_CLOSED";
+    satisfaction_path: "TIME" | "QUALIFIED_HUMAN" | "QUALIFIED_TEAM";
+    delay_hours: number;
+    effective_not_before: string;
+    required_roles: string[];
+    classification_errors: string[];
+  };
+  snapshot_sha256: string;
+  status: "NOT_READY" | "READY" | "INVALIDATED";
+  reason: string;
+  missing_roles: string[];
+  server_now: string;
 };
 
 type PreparedDecisionPackageResponse = {
@@ -197,6 +220,7 @@ type DecisionIntentResponse = {
     operating_mode: string;
     signer_policy_version: number;
     required_countersignatures: number;
+    readiness_snapshot_sha256?: string;
     effective_not_before: string;
     submitted_at: string;
   };
@@ -266,6 +290,8 @@ type Bootstrap = {
   service_level_distributions: ServiceLevelDistribution[];
   privacy_policy: { policy_version: number; status: string; inventory_url: string; inventory_sha256: string; ruling_url: string | null; ruling_sha256: string | null; authorization_event_id: string | null; activation_receipt_sha256: string | null } | null;
   decision_policy: DecisionPolicy | null;
+  release_readiness_policy: { policy_version: number; policy_sha256: string; status: string; ruling_url: string; ruling_sha256: string; created_at: string } | null;
+  release_readiness: ReleaseReadiness[];
   decision_receipts: DecisionReceipt[];
 };
 
@@ -1022,6 +1048,17 @@ export default function Home() {
     data.decision_policy.ruling_url === approvedSoloPolicyRulingUrl &&
     data.decision_policy.ruling_sha256 === approvedSoloPolicyRulingSha256,
   );
+  const isGateThreeDecision = selected?.gate === "Gate 3 pending";
+  const releaseReadinessPolicyActive = Boolean(
+    data?.release_readiness_policy?.status === "ACTIVE" &&
+    data.release_readiness_policy.policy_version === 1 &&
+    data.release_readiness_policy.ruling_url === approvedReadinessRulingUrl &&
+    data.release_readiness_policy.ruling_sha256 === approvedReadinessRulingSha256,
+  );
+  const selectedReleaseReadiness = data?.release_readiness.find((entry) => entry.snapshot.work_item_id === selectedId) ?? null;
+  const gatePolicyReady = isGateThreeDecision
+    ? Boolean(releaseReadinessPolicyActive && selectedReleaseReadiness && selectedReleaseReadiness.status !== "INVALIDATED")
+    : decisionPolicyActive;
   const selectedDecisionReceipt = data?.decision_receipts.find((receipt) => receipt.item_id === selectedId) ?? null;
   const visibleDecisionReceipt = submittedDecision ? {
     intent_id: submittedDecision.intent.intent_id,
@@ -1033,7 +1070,7 @@ export default function Home() {
   const decisionProofFailed = visibleDecisionReceipt?.state === "PROOF_FAILED";
   const decisionSubmissionLocked = Boolean(visibleDecisionReceipt && visibleDecisionReceipt.state !== "EFFECTIVE");
   const decisionSessionCurrent = Boolean(decisionSession && !decisionSessionExpired);
-  const decisionControlsReady = Boolean(decisionPolicyActive && decisionPackage && decisionSessionCurrent && !decisionSubmissionLocked);
+  const decisionControlsReady = Boolean(gatePolicyReady && decisionPackage && decisionSessionCurrent && !decisionSubmissionLocked);
   const blockedItems = data?.items.filter((item) => item.state === "blocked") ?? [];
   const activeItems = data?.items.filter((item) => item.state === "active") ?? [];
   const activeDrawerId = selected?.id ?? null;
@@ -1057,6 +1094,14 @@ export default function Home() {
     const timeout = window.setTimeout(() => setDecisionSessionExpired(true), remaining + 25);
     return () => window.clearTimeout(timeout);
   }, [decisionSession]);
+
+  useEffect(() => {
+    if (!decisionOpen || selectedReleaseReadiness?.status !== "NOT_READY" || selectedReleaseReadiness.snapshot.satisfaction_path !== "TIME") return;
+    const remaining = Date.parse(selectedReleaseReadiness.snapshot.effective_not_before) - Date.now();
+    const interval = remaining <= 60_000 ? 1_000 : 60_000;
+    const timeout = window.setTimeout(() => void load({ quiet: true }), Math.max(250, Math.min(interval, remaining + 25)));
+    return () => window.clearTimeout(timeout);
+  }, [decisionOpen, selectedReleaseReadiness?.snapshot.effective_not_before, selectedReleaseReadiness?.snapshot.satisfaction_path, selectedReleaseReadiness?.status]);
 
   function beginItemAction(id: number, scope: ActionScope, message: string) {
     const actionId = ++mutationSequence.current;
@@ -1172,6 +1217,27 @@ export default function Home() {
       setNotice(`Solo signer policy v${result.policy_version} is active with the required ${result.cooling_hours}-hour cooling period.`);
     } catch (caught) {
       setDecisionStepError(caught instanceof Error ? caught.message : "The approved signer policy could not be activated.");
+    } finally {
+      setPolicyActivating(false);
+    }
+  }
+
+  async function activateApprovedReadinessPolicy() {
+    setPolicyActivating(true);
+    setDecisionStepError(null);
+    try {
+      await api("/api/decision-readiness-policies/activate", {
+        method: "POST",
+        body: JSON.stringify({
+          reason: "ISSUE_74_GATE_2_POLICY_APPROVED",
+          ruling_url: approvedReadinessRulingUrl,
+          ruling_sha256: approvedReadinessRulingSha256,
+        }),
+      });
+      await load({ quiet: true });
+      setNotice("Risk-based Gate 3 readiness policy v1 is active. Finalization remains server-authoritative.");
+    } catch (caught) {
+      setDecisionStepError(caught instanceof Error ? caught.message : "The approved release readiness policy could not be activated.");
     } finally {
       setPolicyActivating(false);
     }
@@ -1764,17 +1830,25 @@ export default function Home() {
             {visibleDecisionReceipt && <section className={`decision-receipt-status ${visibleDecisionReceipt.state === "EFFECTIVE" ? "effective" : decisionProofFailed ? "failed" : "pending"}`} role={decisionProofFailed ? "alert" : "status"} aria-live={decisionProofFailed ? "assertive" : "polite"}>
               <span>{visibleDecisionReceipt.state === "EFFECTIVE" ? "✓ Effective ruling" : decisionProofFailed ? "! Proof failed · no Gate effect" : "◷ Pending receipt · no Gate effect"}</span>
               <strong>{visibleDecisionReceipt.state.replaceAll("_", " ")}</strong>
-              <p>{visibleDecisionReceipt.state === "EFFECTIVE" ? "The verified ruling is effective." : decisionProofFailed ? "This attempt is terminal and remains ineffective. Start a replacement with a fresh exact package and a new human session." : `The receipt stays pending until issuer proof, the cooling period ending ${formatDate(visibleDecisionReceipt.effective_not_before)}, and final verification pass.`}</p>
+              <p>{visibleDecisionReceipt.state === "EFFECTIVE" ? "The verified ruling is effective." : decisionProofFailed ? "This attempt is terminal and remains ineffective. Start a replacement with a fresh exact package and a new human session." : isGateThreeDecision ? "The receipt stays pending until issuer proof and a fresh server readiness check pass. Time or a new countersignature never makes it effective automatically." : `The receipt stays pending until issuer proof, the cooling period ending ${formatDate(visibleDecisionReceipt.effective_not_before)}, and final verification pass.`}</p>
               <dl><div><dt>Receipt</dt><dd>{visibleDecisionReceipt.receipt_id.slice(0, 12)}</dd></div><div><dt>Policy</dt><dd>v{visibleDecisionReceipt.signer_policy_version}</dd></div></dl>
               {decisionProofFailed && <button type="button" onClick={replaceFailedDecision}>Start governed replacement</button>}
             </section>}
             {!decisionSubmissionLocked && <>
+            {isGateThreeDecision && <section className={`decision-receipt-status ${selectedReleaseReadiness?.status === "READY" ? "effective" : selectedReleaseReadiness?.status === "INVALIDATED" ? "failed" : "pending"}`} role={selectedReleaseReadiness?.status === "INVALIDATED" ? "alert" : "status"} aria-live="polite">
+              <span>{selectedReleaseReadiness?.status === "READY" ? "✓ Ready for explicit finalization" : selectedReleaseReadiness?.status === "INVALIDATED" ? "! Readiness invalidated" : "◷ Not ready"}</span>
+              <strong>{selectedReleaseReadiness ? `${selectedReleaseReadiness.snapshot.tier.replaceAll("_", " ")} · ${selectedReleaseReadiness.reason.replaceAll("_", " ")}` : "Authoritative snapshot required"}</strong>
+              {selectedReleaseReadiness ? <>
+                <p>{selectedReleaseReadiness.status === "READY" ? "Every frozen control is currently satisfied. Recording intent still does not create a Gate effect; finalization rechecks the server state." : selectedReleaseReadiness.status === "INVALIDATED" ? "A candidate or authority input changed. The platform must verify and freeze a replacement before a new session and intent." : selectedReleaseReadiness.snapshot.satisfaction_path === "TIME" ? `The selected ${selectedReleaseReadiness.snapshot.delay_hours}-hour separation ends ${formatDate(selectedReleaseReadiness.snapshot.effective_not_before)}. The server must be refreshed at that boundary.` : `Qualified human controls are incomplete: ${selectedReleaseReadiness.missing_roles.join(", ") || "current-role verification required"}.`}</p>
+                <dl><div><dt>Candidate</dt><dd>{selectedReleaseReadiness.snapshot.implementation_commit.slice(0, 12)}</dd></div><div><dt>Verified</dt><dd>{formatDate(selectedReleaseReadiness.snapshot.verification_completed_at)}</dd></div><div><dt>Path</dt><dd>{selectedReleaseReadiness.snapshot.satisfaction_path.replaceAll("_", " ")}</dd></div><div><dt>Snapshot</dt><dd>{selectedReleaseReadiness.snapshot_sha256.slice(0, 12)}</dd></div></dl>
+              </> : <p>The platform creates this after exact staging verification and a passing signed Critic result. Missing evidence never becomes low risk.</p>}
+            </section>}
             <section className="decision-governance" aria-label="Governed decision readiness">
-              <article className={decisionPolicyActive ? "ready" : "blocked"}>
-                <span>{decisionPolicyActive ? "1 · Ready" : "1 · Required"}</span>
-                <strong>Approved solo signer policy</strong>
-                <p>{decisionPolicyActive ? `Policy v${data.decision_policy?.policy_version} is active: zero extra signers, ${data.decision_policy?.cooling_hours}-hour cooling.` : "Activate the exact approved STR-027 solo-calibration ruling before recording intent."}</p>
-                {!decisionPolicyActive && <button type="button" disabled={policyActivating} onClick={() => void activateApprovedSoloPolicy()}>{policyActivating ? "Activating…" : "Activate approved solo policy"}</button>}
+              <article className={gatePolicyReady ? "ready" : "blocked"}>
+                <span>{gatePolicyReady ? "1 · Ready" : "1 · Required"}</span>
+                <strong>{isGateThreeDecision ? "Risk-based release readiness" : "Approved solo signer policy"}</strong>
+                <p>{isGateThreeDecision ? gatePolicyReady ? `Policy v1 and snapshot ${selectedReleaseReadiness!.snapshot_sha256.slice(0, 12)} are active; status is ${selectedReleaseReadiness!.status.replaceAll("_", " ")}.` : releaseReadinessPolicyActive ? "The policy is active; the platform still needs an exact staging-verification and Critic-bound snapshot." : "Activate the exact approved issue #74 policy before the platform freezes readiness." : decisionPolicyActive ? `Policy v${data.decision_policy?.policy_version} is active: zero extra signers, ${data.decision_policy?.cooling_hours}-hour cooling.` : "Activate the exact approved STR-027 solo-calibration ruling before recording intent."}</p>
+                {isGateThreeDecision ? !releaseReadinessPolicyActive && <button type="button" disabled={policyActivating} onClick={() => void activateApprovedReadinessPolicy()}>{policyActivating ? "Activating…" : "Activate approved readiness policy"}</button> : !decisionPolicyActive && <button type="button" disabled={policyActivating} onClick={() => void activateApprovedSoloPolicy()}>{policyActivating ? "Activating…" : "Activate approved solo policy"}</button>}
               </article>
               <article className={decisionPackage ? "ready" : decisionPackageLoading ? "pending" : "blocked"}>
                 <span>{decisionPackage ? "2 · Ready" : decisionPackageLoading ? "2 · Preparing" : "2 · Required"}</span>
@@ -1786,7 +1860,7 @@ export default function Home() {
                 <span>{decisionSessionCurrent ? "3 · Ready" : "3 · Human action"}</span>
                 <strong>Fresh decision session</strong>
                 <p>{decisionSessionCurrent ? `One-intent session expires ${formatDate(decisionSession!.expires_at)}.` : decisionSession ? "The previous session expired. Start a new session after rereading the evidence." : "Confirm you reread this exact evidence in a fresh session."}</p>
-                {!decisionSessionCurrent && <button type="button" disabled={saving || !decisionPolicyActive || !decisionPackage} onClick={() => void startGovernedDecisionSession()}>{saving ? "Starting…" : decisionSession ? "Start replacement session" : "Start fresh decision session"}</button>}
+                {!decisionSessionCurrent && <button type="button" disabled={saving || !gatePolicyReady || !decisionPackage} onClick={() => void startGovernedDecisionSession()}>{saving ? "Starting…" : decisionSession ? "Start replacement session" : "Start fresh decision session"}</button>}
               </article>
             </section>
             {decisionStepError && <div className="decision-step-error" role="alert"><strong>Decision step not completed</strong><p>{decisionStepError}</p></div>}
@@ -1800,7 +1874,7 @@ export default function Home() {
             {decisionChoice === "CHANGES_REQUESTED" && changeRequestDraft && <section className="ai-reasoning-draft"><header><div><span>◇ Critic-drafted instructions</span><strong>Ready for your reasoning</strong></div><button type="button" disabled={decisionReasoning === changeRequestDraft} onClick={() => setDecisionReasoning(changeRequestDraft)}>{decisionReasoning === changeRequestDraft ? "Draft applied" : decisionReasoning.trim() ? "Restore AI draft" : "Use AI draft"}</button></header><p>Editable advice from the current review. You remain the author and decision authority.</p><pre>{changeRequestDraft}</pre></section>}
             {decisionChoice === "CHANGES_REQUESTED" && !changeRequestDraft && reviewingIds.includes(selected.id) && <div className="draft-waiting"><span>◇</span><p><strong>Critic is preparing proposed instructions.</strong> You can write now or apply the draft when the review finishes.</p></div>}
             <label><span className="reasoning-label-row"><span>Reasoning</span>{activeDecisionDraft && decisionReasoning === activeDecisionDraft && <em>AI draft applied · editable</em>}</span><textarea name="reasoning" required minLength={12} disabled={!decisionControlsReady} value={decisionReasoning} onChange={(event) => setDecisionReasoning(event.target.value)} placeholder="State why this evidence is or is not sufficient. This becomes part of the audit trail." /></label>
-            <p className="decision-effect-note">This records your intent. It does not move the Gate yet. Issuer proof, the 24-hour cooling period, and final verification remain required.</p>
+            <p className="decision-effect-note">{isGateThreeDecision ? "This records your intent only. It never moves the Gate automatically. The finalization service rechecks the exact risk tier, selected separation path, current human authority, candidate drift, and issuer proof." : "This records your intent. It does not move the Gate yet. Issuer proof, the 24-hour cooling period, and final verification remain required."}</p>
             </>}
             <footer><button type="button" className="secondary-button" onClick={closeDecisionWorkspace}>{decisionSubmissionLocked ? "Close" : "Cancel"}</button>{!decisionSubmissionLocked && <button className="decision-button" disabled={saving || !decisionControlsReady || !freshSelectedReview?.evidence_sha256 || approvalPrerequisiteMissing || decisionReasoning.trim().length < 12}>{saving ? "Recording…" : approvalPrerequisiteMissing ? "Complete prerequisite first" : !decisionControlsReady ? "Complete readiness steps" : "Record governed intent"}</button>}</footer>
           </form>
