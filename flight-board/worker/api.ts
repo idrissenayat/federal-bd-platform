@@ -67,6 +67,7 @@ type Env = {
   OPENAI_API_KEY?: string;
   SIGNAL_AI_MODEL?: string;
   SIGNAL_IMPLEMENTATION_REVISION?: string;
+  SIGNAL_RETENTION_SERVICE_TOKEN?: string;
 } & DispatchServiceEnv;
 
 type User = { id: string; email: string | null; name: string };
@@ -726,6 +727,21 @@ async function ensureSchema(db: Database) {
       reason_code text NOT NULL, created_at text NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_signal_rejections_pod_created ON signal_rejections (pod_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS signal_retention_holds (
+      hold_event_id text PRIMARY KEY NOT NULL, signal_id text NOT NULL,
+      action text NOT NULL, reason_code text NOT NULL, expires_at text NOT NULL,
+      actor_id text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_signal_retention_holds_signal_created ON signal_retention_holds (signal_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS signal_retention_authorizations (
+      signal_id text PRIMARY KEY NOT NULL, authorization_nonce text NOT NULL, expires_at text NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS signal_retention_runs (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, cutoff_at text NOT NULL,
+      eligible_count integer NOT NULL, deleted_count integer NOT NULL,
+      policy_bindings_sha256 text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_signal_retention_runs_created ON signal_retention_runs (created_at)"),
   ]);
   await ensureColumn(db, "work_items", "rework_instructions", "rework_instructions text");
   await ensureColumn(db, "signal_proposals", "supersedes_proposal_id", "supersedes_proposal_id text");
@@ -900,12 +916,16 @@ async function ensureSchema(db: Database) {
       NEW.idempotency_key != OLD.idempotency_key OR NEW.retention_delete_after != OLD.retention_delete_after OR
       NEW.created_at != OLD.created_at
     BEGIN SELECT RAISE(ABORT, 'signal original and authority are immutable'); END`).run();
-  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signals_no_delete
-    BEFORE DELETE ON signals BEGIN SELECT RAISE(ABORT, 'signals require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signals_no_delete BEFORE DELETE ON signals WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signals require the governed retention path'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_events_no_update
     BEFORE UPDATE ON signal_events BEGIN SELECT RAISE(ABORT, 'signal events are append-only'); END`).run();
-  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_events_no_delete
-    BEFORE DELETE ON signal_events BEGIN SELECT RAISE(ABORT, 'signal events require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_events_no_delete BEFORE DELETE ON signal_events WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal events require the governed retention path'); END`).run();
   await db.prepare("DROP TRIGGER IF EXISTS signal_proposals_no_update").run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_proposals_governed_state
     BEFORE UPDATE ON signal_proposals WHEN
@@ -918,12 +938,30 @@ async function ensureSchema(db: Database) {
       NEW.supersedes_proposal_id IS NOT OLD.supersedes_proposal_id OR NEW.created_at != OLD.created_at OR
       OLD.state != 'CURRENT' OR NEW.state != 'STALE'
     BEGIN SELECT RAISE(ABORT, 'signal proposal content is immutable and only CURRENT to STALE is allowed'); END`).run();
-  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_proposals_no_delete
-    BEFORE DELETE ON signal_proposals BEGIN SELECT RAISE(ABORT, 'signal proposals require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_proposals_no_delete BEFORE DELETE ON signal_proposals WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal proposals require the governed retention path'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_sources_no_update
     BEFORE UPDATE ON signal_sources BEGIN SELECT RAISE(ABORT, 'signal sources are immutable'); END`).run();
-  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_sources_no_delete
-    BEFORE DELETE ON signal_sources BEGIN SELECT RAISE(ABORT, 'signal sources require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_sources_no_delete BEFORE DELETE ON signal_sources WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal sources require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_generation_attempts_no_delete BEFORE DELETE ON signal_generation_attempts WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal attempts require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_retention_holds_no_update
+    BEFORE UPDATE ON signal_retention_holds BEGIN SELECT RAISE(ABORT, 'signal retention hold events are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_retention_holds_no_delete BEFORE DELETE ON signal_retention_holds WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal holds require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_retention_runs_no_update
+    BEFORE UPDATE ON signal_retention_runs BEGIN SELECT RAISE(ABORT, 'signal retention runs are append-only'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_retention_runs_no_delete
+    BEFORE DELETE ON signal_retention_runs BEGIN SELECT RAISE(ABORT, 'signal retention runs are append-only'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS buzz_channel_registry_no_update
     BEFORE UPDATE ON buzz_channel_registry BEGIN SELECT RAISE(ABORT, 'Buzz channel registry versions are immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS buzz_channel_registry_no_delete
@@ -2039,6 +2077,112 @@ async function reconcileSignalSources(db: Database, user: User, signalId: string
 async function getSignal(db: Database, user: User, signalId: string) {
   const snapshot = await signalSnapshot(db, user, signalId);
   return snapshot ? json(snapshot) : json({ error: "Signal not found in your POD." }, 404);
+}
+
+async function manageSignalRetentionHold(request: Request, db: Database, user: User, signalId: string) {
+  const member = await memberContext(db, user);
+  if (!member || member.kind !== "human" || !["available", "enrolled"].includes(member.status)
+    || !/(Tech Lead|Platform|Ops Lead|Security|Privacy)/.test(member.role)) {
+    return json({ error: "A named Tech, Platform / Ops, Security, or Privacy authority must manage signal retention holds." }, 403);
+  }
+  const signal = await db.prepare(`SELECT s.signal_id FROM signals s
+    JOIN members actor ON actor.id = ? AND actor.pod_id = s.pod_id
+    WHERE s.signal_id = ?`).bind(user.id, signalId).first<{ signal_id: string }>();
+  if (!signal) return json({ error: "Signal not found in your POD." }, 404);
+  const body = await request.json() as Record<string, unknown>;
+  if (Object.keys(body).some((key) => !["action", "reason_code", "expires_at"].includes(key))) {
+    return json({ error: "Signal retention holds accept only action, reason code, and expiry." }, 400);
+  }
+  const action = String(body.action ?? "");
+  const reasonCode = String(body.reason_code ?? "");
+  if (!["HOLD", "RELEASE"].includes(action) || !/^[A-Z0-9_:-]{3,64}$/.test(reasonCode)) {
+    return json({ error: "Use HOLD or RELEASE with a bounded no-PII reason code." }, 400);
+  }
+  const now = new Date();
+  const expiry = action === "HOLD" ? Date.parse(String(body.expires_at ?? "")) : now.getTime() + 1000;
+  if (!Number.isFinite(expiry) || expiry <= now.getTime() || expiry > now.getTime() + 365 * 24 * 60 * 60 * 1000) {
+    return json({ error: "A hold must have an explicit future expiry no more than 365 days away." }, 400);
+  }
+  const holdEventId = crypto.randomUUID();
+  await db.prepare(`INSERT INTO signal_retention_holds
+    (hold_event_id, signal_id, action, reason_code, expires_at, actor_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(holdEventId, signalId, action, reasonCode, new Date(expiry).toISOString(), user.id, now.toISOString()).run();
+  return json({ ok: true, hold_event_id: holdEventId, action, expires_at: new Date(expiry).toISOString() }, 201);
+}
+
+async function runSignalRetention(request: Request, db: Database, env: Env) {
+  const expected = String(env.SIGNAL_RETENTION_SERVICE_TOKEN ?? "");
+  const provided = request.headers.get("authorization") ?? "";
+  if (expected.length < 32 || provided !== `Bearer ${expected}`) {
+    return json({ error: "Signal retention service authentication failed." }, 401);
+  }
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  if (Object.keys(body).some((key) => key !== "cutoff_at")) return json({ error: "Only a bounded retention cutoff is accepted." }, 400);
+  const now = new Date();
+  const cutoff = body.cutoff_at ? new Date(String(body.cutoff_at)) : now;
+  if (!Number.isFinite(cutoff.getTime()) || cutoff.getTime() > now.getTime() + 60_000) {
+    return json({ error: "The retention cutoff is invalid." }, 400);
+  }
+  const candidates = await db.prepare(`SELECT s.signal_id, s.pod_id, policy.policy_version,
+      policy.ruling_sha256, policy.activation_receipt_sha256
+    FROM signals s
+    JOIN dispatch_privacy_policies policy ON policy.pod_id = s.pod_id
+      AND policy.policy_version = (
+        SELECT MAX(latest.policy_version) FROM dispatch_privacy_policies latest WHERE latest.pod_id = s.pod_id
+      )
+    WHERE s.lifecycle_state IN ('READY', 'SAFE_FAILURE', 'STALE')
+      AND unixepoch(s.retention_delete_after) <= unixepoch(?)
+      AND policy.status = 'ACTIVE'
+      AND policy.terminal_retention_days = 90
+      AND policy.provider_recovery_days = 30
+      AND policy.inventory_url = ? AND policy.inventory_sha256 = ?
+      AND policy.ruling_url = ? AND policy.ruling_sha256 = ?
+      AND policy.change_reason = ?
+      AND length(policy.authorization_event_id) = 64
+      AND length(policy.activation_receipt_sha256) = 64
+      AND NOT EXISTS (
+        SELECT 1 FROM signal_retention_holds hold
+        WHERE hold.signal_id = s.signal_id AND hold.action = 'HOLD'
+          AND unixepoch(hold.expires_at) > unixepoch(?)
+          AND NOT EXISTS (
+            SELECT 1 FROM signal_retention_holds release
+            WHERE release.signal_id = hold.signal_id AND release.action = 'RELEASE'
+              AND unixepoch(release.created_at) >= unixepoch(hold.created_at)
+          )
+      )
+    ORDER BY s.retention_delete_after, s.signal_id LIMIT 100`)
+    .bind(cutoff.toISOString(), dispatchPrivacyInventoryUrl, dispatchPrivacyInventorySha256,
+      dispatchPrivacyRulingUrl, dispatchPrivacyRulingSha256, dispatchPrivacyActivationReason,
+      cutoff.toISOString()).all<{ signal_id: string; pod_id: string; policy_version: number; ruling_sha256: string; activation_receipt_sha256: string }>();
+  const rows = candidates.results ?? [];
+  const policyBindings = [...new Map(rows.map((candidate) => [candidate.pod_id, {
+    podId: candidate.pod_id,
+    policyVersion: Number(candidate.policy_version),
+    rulingSha256: candidate.ruling_sha256,
+    activationReceiptSha256: candidate.activation_receipt_sha256,
+  }])).values()].sort((left, right) => left.podId.localeCompare(right.podId));
+  const policyBindingsSha256 = await sha256Hex(canonicalJson(policyBindings));
+  let deleted = 0;
+  for (const candidate of rows) {
+    const nonce = crypto.randomUUID();
+    const authorizationExpiry = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
+    await db.batch([
+      db.prepare(`INSERT OR REPLACE INTO signal_retention_authorizations
+        (signal_id, authorization_nonce, expires_at) VALUES (?, ?, ?)`).bind(candidate.signal_id, nonce, authorizationExpiry),
+      db.prepare("DELETE FROM signal_sources WHERE signal_id = ?").bind(candidate.signal_id),
+      db.prepare("DELETE FROM signal_proposals WHERE signal_id = ?").bind(candidate.signal_id),
+      db.prepare("DELETE FROM signal_generation_attempts WHERE signal_id = ?").bind(candidate.signal_id),
+      db.prepare("DELETE FROM signal_events WHERE signal_id = ?").bind(candidate.signal_id),
+      db.prepare("DELETE FROM signal_retention_holds WHERE signal_id = ?").bind(candidate.signal_id),
+      db.prepare("DELETE FROM signals WHERE signal_id = ?").bind(candidate.signal_id),
+      db.prepare("DELETE FROM signal_retention_authorizations WHERE signal_id = ? AND authorization_nonce = ?").bind(candidate.signal_id, nonce),
+    ]);
+    deleted += 1;
+  }
+  await db.prepare(`INSERT INTO signal_retention_runs
+    (cutoff_at, eligible_count, deleted_count, policy_bindings_sha256, created_at)
+    VALUES (?, ?, ?, ?, ?)`).bind(cutoff.toISOString(), rows.length, deleted, policyBindingsSha256, now.toISOString()).run();
+  return json({ ok: true, eligible_count: rows.length, deleted_count: deleted, policy_bindings_sha256: policyBindingsSha256 });
 }
 
 async function createItem(request: Request, db: Database, user: User) {
@@ -4060,6 +4204,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     const decisionProofServiceResponse = await handleDecisionProofService(request, env.DB, env);
     if (decisionProofServiceResponse) return decisionProofServiceResponse;
     if (request.method === "POST" && url.pathname === "/api/review-retention/run") return runReviewRetention(request, env.DB, env);
+    if (request.method === "POST" && url.pathname === "/api/signal-retention/run") return runSignalRetention(request, env.DB, env);
     const signedReviewServiceResponse = await handleSignedReviewService(request, env.DB, env);
     if (signedReviewServiceResponse) return signedReviewServiceResponse;
     const user = userFrom(request);
@@ -4080,6 +4225,8 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "POST" && signalRetryMatch) return generateSignalProposal(env.DB, env, user, signalRetryMatch[1], true);
     const signalReconcileMatch = url.pathname.match(/^\/api\/signals\/([0-9a-f-]{36})\/reconcile$/);
     if (request.method === "POST" && signalReconcileMatch) return reconcileSignalSources(env.DB, user, signalReconcileMatch[1]);
+    const signalRetentionHoldMatch = url.pathname.match(/^\/api\/signals\/([0-9a-f-]{36})\/retention-holds$/);
+    if (request.method === "POST" && signalRetentionHoldMatch) return manageSignalRetentionHold(request, env.DB, user, signalRetentionHoldMatch[1]);
     if (request.method === "POST" && url.pathname === "/api/items") return createItem(request, env.DB, user);
     const itemMatch = url.pathname.match(/^\/api\/items\/(\d+)$/);
     if (request.method === "PATCH" && itemMatch) return updateItem(request, env.DB, user, Number(itemMatch[1]));

@@ -180,6 +180,39 @@ export const signalRejections = sqliteTable(
   (table) => [index("idx_signal_rejections_pod_created").on(table.podId, table.createdAt)],
 );
 
+export const signalRetentionHolds = sqliteTable(
+  "signal_retention_holds",
+  {
+    holdEventId: text("hold_event_id").primaryKey(),
+    signalId: text("signal_id").notNull(),
+    action: text("action").notNull(),
+    reasonCode: text("reason_code").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    actorId: text("actor_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_signal_retention_holds_signal_created").on(table.signalId, table.createdAt)],
+);
+
+export const signalRetentionAuthorizations = sqliteTable("signal_retention_authorizations", {
+  signalId: text("signal_id").primaryKey(),
+  authorizationNonce: text("authorization_nonce").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});
+
+export const signalRetentionRuns = sqliteTable(
+  "signal_retention_runs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    cutoffAt: text("cutoff_at").notNull(),
+    eligibleCount: integer("eligible_count").notNull(),
+    deletedCount: integer("deleted_count").notNull(),
+    policyBindingsSha256: text("policy_bindings_sha256").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_signal_retention_runs_created").on(table.createdAt)],
+);
+
 export const workEconomicsEvents = sqliteTable(
   "work_economics_events",
   {

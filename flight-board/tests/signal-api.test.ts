@@ -31,6 +31,60 @@ function request(path: string, method = "GET", body?: unknown, actor = "signal-h
   });
 }
 
+function signalRetentionRequest(body: unknown, token = "signal-retention-service-token-0001") {
+  return new Request("https://steer.test/api/signal-retention/run", {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function seedActiveSignalPrivacyPolicy(db: D1Database, podId = "pod-signal") {
+  db.sqlite.prepare(`INSERT INTO dispatch_privacy_policies
+    (pod_id, policy_version, inventory_url, inventory_sha256, terminal_retention_days,
+     provider_recovery_days, status, changed_by, change_reason, created_at, ruling_url,
+     ruling_sha256, authority_role, authorization_event_id, idempotency_key, activation_receipt_sha256)
+    VALUES (?, 2, ?, ?, 90, 30, 'ACTIVE', 'signal-human',
+      'STR-028_PROVIDER_RECOVERY_RULING_APPROVED', '2026-08-19T00:00:00.000Z', ?, ?,
+      'Platform / Ops Lead', ?, 'signal-retention-policy-v2', ?)`)
+    .run(
+      podId,
+      "https://github.com/idrissenayat/federal-bd-platform/blob/4dd787ca1eb9b9d8a841bb48cffca9502eaa8c14/steer/evidence/0028-dispatch-data-inventory.md",
+      "c97bab72124018569f7be917a36b98cce9a064f8795c83d4ae2790bd0844919d",
+      "https://github.com/idrissenayat/federal-bd-platform/blob/d9dbe0b70e812f680ae23fad2ce4ffafc6e65229/steer/evidence/0028-gate-3-case-evidence.md",
+      "12522b22dca4ade812288a2bf47cb6c71405e89275a0db234d20ed8decafe83d",
+      "a".repeat(64),
+      "b".repeat(64),
+    );
+}
+
+function insertTerminalSignal(db: D1Database, signalId: string, podId: string, retentionDeleteAfter: string) {
+  const createdAt = "2026-01-01T00:00:00.000Z";
+  db.sqlite.prepare(`INSERT INTO signals
+    (signal_id,pod_id,submitter_id,original_text,original_sha256,idempotency_key,lifecycle_state,
+     current_proposal_version,retention_delete_after,created_at,updated_at)
+    VALUES (?,?,'signal-human','Synthetic public retention fixture',?,?,'READY',1,?,?,?)`)
+    .run(signalId, podId, "c".repeat(64), signalId.slice(-16), retentionDeleteAfter, createdAt, createdAt);
+  db.sqlite.prepare(`INSERT INTO signal_events
+    (signal_id,event_version,event_type,actor_id,detail_json,event_sha256,created_at)
+    VALUES (?,0,'SIGNAL_CAPTURED','signal-human','{}',?,?)`).run(signalId, "d".repeat(64), createdAt);
+  db.sqlite.prepare(`INSERT INTO signal_generation_attempts
+    (attempt_id,signal_id,attempt_number,target_proposal_version,provider,model,prompt_version,state,
+     started_at,completed_at,input_sha256,output_sha256)
+    VALUES (?,?,1,1,'OpenAI','gpt-5.6-luna','signal-proposal-v1','SUCCEEDED',?,?,?,?)`)
+    .run(`${signalId}:attempt`, signalId, createdAt, createdAt, "e".repeat(64), "f".repeat(64));
+  db.sqlite.prepare(`INSERT INTO signal_proposals
+    (proposal_id,signal_id,version,proposal_json,schema_version,input_sha256,output_sha256,state,
+     confidence,readiness_status,provider,model,prompt_version,implementation_revision,created_at)
+    VALUES (?,?,1,'{}','signal-proposal-v1',?,?,'CURRENT','medium','CLARIFICATION_REQUIRED',
+      'OpenAI','gpt-5.6-luna','signal-proposal-v1',?,?)`)
+    .run(`${signalId}:proposal`, signalId, "e".repeat(64), "f".repeat(64), "1".repeat(40), createdAt);
+  db.sqlite.prepare(`INSERT INTO signal_sources
+    (source_id,signal_id,proposal_id,source_type,source_reference,revision,sha256,verification_state,retrieved_at)
+    VALUES (?,?,?,'contributor_signal',?,?,?,'unverified',?)`)
+    .run(`${signalId}:source`, signalId, `${signalId}:proposal`, `signal:${signalId}`, "c".repeat(64), "c".repeat(64), createdAt);
+}
+
 async function initialize(db: D1Database) {
   const response = await handleApi(request("/api/bootstrap"), { DB: db });
   assert.equal(response?.status, 200);
@@ -144,4 +198,52 @@ test("unsafe input persists only content-free rejection metadata and missing cre
   assert.equal(exhausted?.status, 409);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) count FROM signal_generation_attempts WHERE signal_id = ?").get(signalId)?.count, 2);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) count FROM work_items").get()?.count, existingWorkCount);
+});
+
+test("signal retention honors policy-bound legal holds and deletes only eligible same-POD records", async () => {
+  const db = new D1Database();
+  await initialize(db);
+  db.sqlite.prepare("UPDATE members SET role = 'Platform / Ops Lead' WHERE id = 'signal-human'").run();
+  await handleApi(request("/api/bootstrap", "GET", undefined, "other-human"), { DB: db });
+  db.sqlite.prepare("UPDATE members SET pod_id = 'other-pod', role = 'Platform / Ops Lead' WHERE id = 'other-human'").run();
+  seedActiveSignalPrivacyPolicy(db);
+  const eligibleSignalId = "01989abc-def0-7000-8000-000000000001";
+  const youngSignalId = "01989abc-def0-7000-8000-000000000002";
+  insertTerminalSignal(db, eligibleSignalId, "pod-signal", "2026-08-18T00:00:00.000Z");
+  insertTerminalSignal(db, youngSignalId, "pod-signal", "2026-08-20T00:00:00.000Z");
+  const env = { DB: db, SIGNAL_RETENTION_SERVICE_TOKEN: "signal-retention-service-token-0001" };
+
+  const crossPod = await handleApi(request(`/api/signals/${eligibleSignalId}/retention-holds`, "POST", {
+    action: "HOLD", reason_code: "SECURITY_REVIEW", expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+  }, "other-human"), env);
+  assert.equal(crossPod?.status, 404);
+
+  const hold = await handleApi(request(`/api/signals/${eligibleSignalId}/retention-holds`, "POST", {
+    action: "HOLD", reason_code: "SECURITY_REVIEW", expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+  }), env);
+  assert.equal(hold?.status, 201, await hold?.clone().text());
+  const heldRun = await handleApi(signalRetentionRequest({ cutoff_at: "2026-08-19T12:00:00.000Z" }), env);
+  assert.equal(heldRun?.status, 200, await heldRun?.clone().text());
+  assert.equal((await heldRun?.json() as { deleted_count: number }).deleted_count, 0);
+
+  const release = await handleApi(request(`/api/signals/${eligibleSignalId}/retention-holds`, "POST", {
+    action: "RELEASE", reason_code: "SECURITY_REVIEW_COMPLETE",
+  }), env);
+  assert.equal(release?.status, 201, await release?.clone().text());
+  const deletion = await handleApi(signalRetentionRequest({ cutoff_at: "2026-08-19T12:00:00.000Z" }), env);
+  assert.equal(deletion?.status, 200, await deletion?.clone().text());
+  const deletionBody = await deletion?.json() as { deleted_count: number; policy_bindings_sha256: string };
+  assert.equal(deletionBody.deleted_count, 1);
+  assert.match(deletionBody.policy_bindings_sha256, /^[0-9a-f]{64}$/);
+  for (const table of ["signals", "signal_events", "signal_generation_attempts", "signal_proposals", "signal_sources", "signal_retention_holds"]) {
+    assert.equal(db.sqlite.prepare(`SELECT COUNT(*) AS total FROM ${table} WHERE signal_id = ?`).get(eligibleSignalId)?.total, 0, table);
+  }
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM signals WHERE signal_id = ?").get(youngSignalId)?.total, 1);
+  const run = db.sqlite.prepare("SELECT * FROM signal_retention_runs ORDER BY id DESC LIMIT 1").get() as Record<string, unknown>;
+  assert.equal(run.deleted_count, 1);
+  assert.equal(run.policy_bindings_sha256, deletionBody.policy_bindings_sha256);
+  assert.equal(Object.values(run).some((value) => String(value).includes("Synthetic public retention fixture")), false);
+
+  const unauthorized = await handleApi(signalRetentionRequest({}, "wrong-signal-retention-token-0000"), env);
+  assert.equal(unauthorized?.status, 401);
 });
