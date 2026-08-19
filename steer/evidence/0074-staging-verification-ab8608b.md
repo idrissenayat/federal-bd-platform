@@ -1,6 +1,6 @@
 # Issue 74 staging verification — risk-based Gate 3 readiness
 
-**Status:** implementation and canonical staging verification complete except for the true-browser 200% zoom observation, which requires the local Mac session to be unlocked. This packet does not authorize merge, production deployment, Release, closure, or Gate 3.
+**Status:** implementation and canonical staging verification complete. This packet does not authorize merge, production deployment, Release, closure, or Gate 3.
 
 ## Frozen authority and target
 
@@ -10,7 +10,7 @@
 - Build SHA-256: `c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c`.
 - Migration-set SHA-256: `925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68`.
 - Runtime-policy SHA-256: `8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f`.
-- Hosted ledger: `steer/evidence/0074-hosted-case-ledger-ab8608b.json`; SHA-256 `dff51a7e922d653d09feb38734acccdcbcf0fcd7638865cc39c7e33495202953`.
+- Hosted ledger: `steer/evidence/0074-hosted-case-ledger-ab8608b.json`; SHA-256 `d9bc97e9cc6a8e00a828425d2127e3ec2d9b48394890083880d9a66e2b6da1c7`.
 
 ## Canonical staging
 
@@ -85,7 +85,8 @@ The rollback deployed pre-feature staging version 28 as deployment `appgdep_6a86
 - Policy/issuer readiness region: named and understandable; exact policy shown active.
 - Keyboard traversal: PASS across workspace navigation, connected records, Block Buzz, and search; focus order remained predictable.
 - 320 px viewport: PASS; content reflowed, release-authority text remained readable, and the navigation used its intentional horizontal scroller.
-- 200% true browser zoom: PENDING because the local Mac was locked when the browser-chrome zoom observation was attempted. This is the only manual-environment dependency; the Test Agent will perform it after unlock.
+- 200% true Chrome zoom: PASS. Chrome visibly reported exactly 200%. The release-authority heading, Ready status, issuer, risk policy, tier delays, and no-automatic-release explanation remained readable without clipping. The responsive workspace navigation remained usable through its intentional horizontal scroller.
+- 200% keyboard trace: PASS in the order My Work, Overview, Flight Board, Backlog, Human Decisions, Team & Agents, Search work, and Create work item. Focus remained visible and predictable.
 
 The automated suite also checks named status semantics, adjacent blocked-action explanations, focus-contained governed dialogs, Escape close, opener-focus restoration, server-owned readiness status, and the prohibition on automatic ripening. A fresh independent Critic must still review the exact target and completed evidence before any Gate 3 request.
 

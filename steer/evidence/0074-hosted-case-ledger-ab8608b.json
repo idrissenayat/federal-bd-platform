@@ -1889,5 +1889,29 @@
     "environment_revision": 20,
     "source_wrapper_revision": "44d256c2a9cf55fb59d5eab69baad7bab6241b22",
     "canonical_access": "owner-only"
+  },
+  "accessibility": {
+    "true_browser_zoom": {
+      "browser": "Google Chrome",
+      "zoom_percent": 200,
+      "url": "https://steer-flight-board-staging.idriss-enayat.chatgpt.site/?issue74_zoom=200",
+      "observed_at": "2026-08-19T23:36:53Z",
+      "result": "PASS",
+      "observations": [
+        "Release-authority heading, status, issuer, risk policy, and no-automatic-release explanation remained readable without clipping.",
+        "Responsive workspace navigation remained available through its intentional horizontal scroller.",
+        "No readiness action was enabled by the client or by elapsed display time."
+      ],
+      "keyboard_focus_trace": [
+        "My Work",
+        "Overview",
+        "Flight Board",
+        "Backlog",
+        "Human Decisions",
+        "Team & Agents",
+        "Search work",
+        "Create work item"
+      ]
+    }
   }
 }
