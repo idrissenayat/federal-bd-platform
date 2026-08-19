@@ -930,6 +930,21 @@ async function ensureSchema(db: Database) {
   await db.prepare("PRAGMA optimize").run();
 }
 
+const schemaReadyByDatabase = new WeakMap<object, Promise<void>>();
+
+async function ensureSchemaReady(db: Database) {
+  const databaseIdentity = db as object;
+  let pending = schemaReadyByDatabase.get(databaseIdentity);
+  if (!pending) {
+    pending = ensureSchema(db).catch((error) => {
+      schemaReadyByDatabase.delete(databaseIdentity);
+      throw error;
+    });
+    schemaReadyByDatabase.set(databaseIdentity, pending);
+  }
+  await pending;
+}
+
 async function ensureCurrentUser(db: Database, user: User) {
   await db.prepare(
     `INSERT INTO members (id, display_name, email, kind, role, authority, status, accent)
@@ -1147,7 +1162,7 @@ async function ensureSeedData(db: Database, user: User) {
 }
 
 async function bootstrap(db: Database, user: User, env: Env) {
-  await ensureSchema(db);
+  await ensureSchemaReady(db);
   await ensureCurrentUser(db, user);
   await ensureHumanSeats(db);
   await ensureSeedData(db, user);
@@ -4188,7 +4203,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
   if (!env.DB) return json({ error: "Persistent database binding is unavailable." }, 503);
 
   try {
-    await ensureSchema(env.DB);
+    await ensureSchemaReady(env.DB);
     const dispatchServiceResponse = await handleDispatchServiceApi(request, env.DB, env);
     if (dispatchServiceResponse) return dispatchServiceResponse;
     const decisionProofServiceResponse = await handleDecisionProofService(request, env.DB, env);
