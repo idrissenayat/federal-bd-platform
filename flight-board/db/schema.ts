@@ -71,6 +71,7 @@ export const signals = sqliteTable(
     idempotencyKey: text("idempotency_key").notNull(),
     lifecycleState: text("lifecycle_state").notNull(),
     currentProposalVersion: integer("current_proposal_version").notNull().default(0),
+    terminalDispositionAt: text("terminal_disposition_at"),
     retentionDeleteAfter: text("retention_delete_after").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -152,6 +153,7 @@ export const signalGenerationAttempts = sqliteTable(
     provider: text("provider").notNull(),
     model: text("model").notNull(),
     promptVersion: text("prompt_version").notNull(),
+    implementationRevision: text("implementation_revision").notNull(),
     state: text("state").notNull(),
     startedAt: text("started_at").notNull(),
     completedAt: text("completed_at"),
@@ -198,6 +200,10 @@ export const signalRetentionAuthorizations = sqliteTable("signal_retention_autho
   signalId: text("signal_id").primaryKey(),
   authorizationNonce: text("authorization_nonce").notNull(),
   expiresAt: text("expires_at").notNull(),
+  cutoffAt: text("cutoff_at").notNull(),
+  policyVersion: integer("policy_version").notNull(),
+  rulingSha256: text("ruling_sha256").notNull(),
+  activationReceiptSha256: text("activation_receipt_sha256").notNull(),
 });
 
 export const signalRetentionRuns = sqliteTable(

@@ -259,6 +259,7 @@ type SignalSummary = {
   original_sha256: string;
   lifecycle_state: "CAPTURED" | "PROCESSING" | "READY" | "STALE" | "SAFE_FAILURE";
   current_proposal_version: number;
+  terminal_disposition_at: string | null;
   retention_delete_after: string;
   created_at: string;
   updated_at: string;
@@ -311,7 +312,7 @@ type SignalWorkspace = {
     value: SignalProposalValue;
   };
   sources: Array<{ source_id: string; source_type: string; source_reference: string; revision: string | null; sha256: string; verification_state: string; retrieved_at: string }>;
-  attempts: Array<{ attempt_id: string; attempt_number: number; target_proposal_version: number; provider: string; model: string; prompt_version: string; state: string; started_at: string; completed_at: string | null; input_tokens: number | null; output_tokens: number | null; estimated_cost_micros: number | null; error_code: string | null; input_sha256: string; output_sha256: string | null }>;
+  attempts: Array<{ attempt_id: string; attempt_number: number; target_proposal_version: number; provider: string; model: string; prompt_version: string; implementation_revision: string; state: string; started_at: string; completed_at: string | null; input_tokens: number | null; output_tokens: number | null; estimated_cost_micros: number | null; error_code: string | null; input_sha256: string; output_sha256: string | null }>;
   events: Array<{ id: number; event_version: number; event_type: string; event_sha256: string; created_at: string; detail: Record<string, unknown> }>;
 };
 
@@ -1016,6 +1017,7 @@ export default function Home() {
   const decisionReturnFocus = useRef<HTMLElement | null>(null);
   const signalDialogRef = useRef<HTMLDialogElement>(null);
   const signalCloseRef = useRef<HTMLButtonElement>(null);
+  const signalHeadingRef = useRef<HTMLHeadingElement>(null);
   const signalReturnFocus = useRef<HTMLElement | null>(null);
   const signalInputRef = useRef<HTMLTextAreaElement>(null);
   const signalIntakeRef = useRef<HTMLDialogElement>(null);
@@ -1128,7 +1130,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!selectedSignalId) return;
-    const frame = requestAnimationFrame(() => signalCloseRef.current?.focus());
+    const frame = requestAnimationFrame(() => signalHeadingRef.current?.focus());
     return () => cancelAnimationFrame(frame);
   }, [selectedSignalId]);
 
@@ -1830,16 +1832,18 @@ export default function Home() {
               <button ref={signalCloseRef} aria-label="Close signal workspace" onClick={closeSignal}>×</button>
             </header>
             <div className="drawer-body">
-              <h2 id="signal-workspace-title">Platform AI decision preparation</h2>
+              <h2 ref={signalHeadingRef} id="signal-workspace-title" tabIndex={-1}>Platform AI decision preparation</h2>
               {signalLoading && <div className="signal-processing" role="status" aria-live="polite"><span>◇</span><div><strong>Loading the authoritative signal…</strong><p>No local or template content is substituted.</p></div></div>}
               {!signalLoading && signalWorkspace && <>
                 <section className="signal-original" aria-labelledby="signal-original-title">
                   <div><span>Original signal · preserved exactly</span><code>{signalWorkspace.signal.original_sha256.slice(0, 12)}</code></div>
                   <p id="signal-original-title">{signalWorkspace.signal.original_text}</p>
-                  <small>Submitted {formatDate(signalWorkspace.signal.created_at)} · retained until {formatDate(signalWorkspace.signal.retention_delete_after)} unless a governed hold applies</small>
+                  <small>Submitted {formatDate(signalWorkspace.signal.created_at)} · {signalWorkspace.signal.terminal_disposition_at ? `retained until ${formatDate(signalWorkspace.signal.retention_delete_after)}` : "the 90-day retention period starts at terminal disposition"} unless a governed hold applies</small>
                 </section>
 
                 {(signalGenerating || ["CAPTURED", "PROCESSING"].includes(signalWorkspace.signal.lifecycle_state)) && <div className="signal-processing" role="status" aria-live="polite"><span>◇</span><div><strong>Platform AI is preparing the proposal</strong><p>Checking structure, uncertainty, risks, evidence needs, and readiness. No STR key or backlog item has been created.</p></div></div>}
+
+                {!signalGenerating && signalWorkspace.signal.lifecycle_state === "READY" && <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">Proposal ready for human review. No work item has been created.</div>}
 
                 {signalWorkspace.signal.lifecycle_state === "SAFE_FAILURE" && <div className="signal-safe-failure" role="alert"><span>!</span><div><strong>AI analysis stopped safely</strong><p>No proposal was fabricated and no work item was created. Cause: {signalWorkspace.attempts[0]?.error_code?.replaceAll("_", " ").toLowerCase() ?? "provider failure"}.</p><button disabled={signalGenerating || signalWorkspace.attempts.filter((attempt) => attempt.target_proposal_version === signalWorkspace.signal.current_proposal_version + 1).length >= 2} onClick={() => void retrySignal()}>{signalGenerating ? "Retrying…" : signalWorkspace.attempts.filter((attempt) => attempt.target_proposal_version === signalWorkspace.signal.current_proposal_version + 1).length >= 2 ? "Retry limit reached" : "Use the one bounded retry"}</button></div></div>}
 

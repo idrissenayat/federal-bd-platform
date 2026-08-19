@@ -141,6 +141,13 @@
       "when": 1787159143693,
       "tag": "0022_signal_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1787165783974,
+      "tag": "0023_signal_terminal_provenance",
+      "breakpoints": true
     }
   ]
 }

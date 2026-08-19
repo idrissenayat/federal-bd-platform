@@ -15,8 +15,12 @@ class D1Statement {
 
 class D1Database {
   readonly sqlite = new DatabaseSync(":memory:");
+  beforeNextBatch: (() => void) | null = null;
   prepare(sql: string) { return new D1Statement(this.sqlite, sql); }
   async batch(statements: D1Statement[]) {
+    const beforeBatch = this.beforeNextBatch;
+    this.beforeNextBatch = null;
+    beforeBatch?.();
     this.sqlite.exec("BEGIN IMMEDIATE");
     try { const results = statements.map((statement) => statement.runSync()); this.sqlite.exec("COMMIT"); return results; }
     catch (error) { this.sqlite.exec("ROLLBACK"); throw error; }
@@ -62,17 +66,17 @@ function insertTerminalSignal(db: D1Database, signalId: string, podId: string, r
   const createdAt = "2026-01-01T00:00:00.000Z";
   db.sqlite.prepare(`INSERT INTO signals
     (signal_id,pod_id,submitter_id,original_text,original_sha256,idempotency_key,lifecycle_state,
-     current_proposal_version,retention_delete_after,created_at,updated_at)
-    VALUES (?,?,'signal-human','Synthetic public retention fixture',?,?,'READY',1,?,?,?)`)
-    .run(signalId, podId, "c".repeat(64), signalId.slice(-16), retentionDeleteAfter, createdAt, createdAt);
+     current_proposal_version,terminal_disposition_at,retention_delete_after,created_at,updated_at)
+    VALUES (?,?,'signal-human','Synthetic public retention fixture',?,?,'READY',1,?,?,?,?)`)
+    .run(signalId, podId, "c".repeat(64), signalId.slice(-16), createdAt, retentionDeleteAfter, createdAt, createdAt);
   db.sqlite.prepare(`INSERT INTO signal_events
     (signal_id,event_version,event_type,actor_id,detail_json,event_sha256,created_at)
     VALUES (?,0,'SIGNAL_CAPTURED','signal-human','{}',?,?)`).run(signalId, "d".repeat(64), createdAt);
   db.sqlite.prepare(`INSERT INTO signal_generation_attempts
     (attempt_id,signal_id,attempt_number,target_proposal_version,provider,model,prompt_version,state,
-     started_at,completed_at,input_sha256,output_sha256)
-    VALUES (?,?,1,1,'OpenAI','gpt-5.6-luna','signal-proposal-v1','SUCCEEDED',?,?,?,?)`)
-    .run(`${signalId}:attempt`, signalId, createdAt, createdAt, "e".repeat(64), "f".repeat(64));
+     implementation_revision,started_at,completed_at,input_sha256,output_sha256)
+    VALUES (?,?,1,1,'OpenAI','gpt-5.6-luna','signal-proposal-v1','SUCCEEDED',?,?,?,?,?)`)
+    .run(`${signalId}:attempt`, signalId, "1".repeat(40), createdAt, createdAt, "e".repeat(64), "f".repeat(64));
   db.sqlite.prepare(`INSERT INTO signal_proposals
     (proposal_id,signal_id,version,proposal_json,schema_version,input_sha256,output_sha256,state,
      confidence,readiness_status,provider,model,prompt_version,implementation_revision,created_at)
@@ -99,10 +103,12 @@ test("capture preserves exact bytes, is idempotent, remains POD-scoped, and neve
   const body = { original, idempotencyKey: "aaaaaaaaaaaaaaaa" };
   const first = await handleApi(request("/api/signals", "POST", body), { DB: db });
   assert.equal(first?.status, 201, await first?.clone().text());
-  const captured = await first?.json() as { signal: { signal_id: string; original_text: string; original_sha256: string; pod_id: string; retention_delete_after: string }; events: unknown[] };
+  const captured = await first?.json() as { signal: { signal_id: string; original_text: string; original_sha256: string; pod_id: string; terminal_disposition_at: string | null; retention_delete_after: string }; events: unknown[] };
   assert.equal(captured.signal.original_text, original);
   assert.equal(captured.signal.pod_id, "pod-signal");
   assert.match(captured.signal.original_sha256, /^[a-f0-9]{64}$/);
+  assert.equal(captured.signal.terminal_disposition_at, null);
+  assert.equal(captured.signal.retention_delete_after, "9999-12-31T23:59:59.999Z");
   assert.equal(captured.events.length, 1);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) count FROM work_items").get()?.count, existingWorkCount);
 
@@ -136,13 +142,15 @@ test("generation stores validated provenance and usage without changing existing
   context.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ output_text: JSON.stringify(proposal), usage: { input_tokens: 900, output_tokens: 1200 } }), { status: 200, headers: { "content-type": "application/json" } }));
   const generated = await handleApi(request(`/api/signals/${signalId}/generate`, "POST", {}), { DB: db, OPENAI_API_KEY: "test-only", SIGNAL_IMPLEMENTATION_REVISION: "a".repeat(40) });
   assert.equal(generated?.status, 200, await generated?.clone().text());
-  const workspace = await generated?.json() as { signal: { lifecycle_state: string; current_proposal_version: number }; proposal: { proposal_id: string; value: typeof proposal; model: string; implementation_revision: string }; sources: Array<{ proposal_id: string; revision: string; sha256: string }>; attempts: Array<{ state: string; input_tokens: number; output_tokens: number; estimated_cost_micros: number }> };
+  const workspace = await generated?.json() as { signal: { lifecycle_state: string; current_proposal_version: number; terminal_disposition_at: string; retention_delete_after: string }; proposal: { proposal_id: string; value: typeof proposal; model: string; implementation_revision: string }; sources: Array<{ proposal_id: string; revision: string; sha256: string }>; attempts: Array<{ state: string; implementation_revision: string; input_tokens: number; output_tokens: number; estimated_cost_micros: number }> };
   assert.equal(workspace.signal.lifecycle_state, "READY");
   assert.equal(workspace.signal.current_proposal_version, 1);
   assert.equal(workspace.proposal.value.schemaVersion, "signal-proposal-v1");
   assert.equal(workspace.proposal.value.facts.length, 0);
   assert.equal(workspace.proposal.model, "gpt-5.6-luna");
   assert.equal(workspace.proposal.implementation_revision, "a".repeat(40));
+  assert.equal(workspace.attempts[0].implementation_revision, "a".repeat(40));
+  assert.equal(Date.parse(workspace.signal.retention_delete_after) - Date.parse(workspace.signal.terminal_disposition_at), 90 * 24 * 60 * 60 * 1000);
   assert.equal(workspace.sources.length, 1);
   assert.equal(workspace.sources[0].revision, workspace.sources[0].sha256);
   assert.deepEqual(workspace.attempts[0], { ...workspace.attempts[0], state: "SUCCEEDED", input_tokens: 900, output_tokens: 1200, estimated_cost_micros: 1620 });
@@ -168,6 +176,7 @@ test("generation stores validated provenance and usage without changing existing
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) count FROM steer_telemetry WHERE metric_name = 'steer_signal_generation_total' AND label_value = 'success'").get()?.count, 2);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) count FROM steer_telemetry WHERE metric_name = 'steer_signal_provider_tokens_total'").get()?.count, 4);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) count FROM steer_telemetry WHERE metric_name = 'steer_signal_work_item_side_effect_total'").get()?.count, 0);
+  assert.throws(() => db.sqlite.prepare("UPDATE signal_generation_attempts SET implementation_revision = 'changed' WHERE signal_id = ?").run(signalId), /provenance is immutable/);
 });
 
 test("unsafe input persists only content-free rejection metadata and missing credentials fail safely with one retry", async (context) => {
@@ -197,6 +206,12 @@ test("unsafe input persists only content-free rejection metadata and missing cre
   const exhausted = await handleApi(request(`/api/signals/${signalId}/retry`, "POST", {}), { DB: db });
   assert.equal(exhausted?.status, 409);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) count FROM signal_generation_attempts WHERE signal_id = ?").get(signalId)?.count, 2);
+  assert.deepEqual(db.sqlite.prepare("SELECT implementation_revision FROM signal_generation_attempts WHERE signal_id = ? ORDER BY attempt_number").all(signalId).map((row) => ({ ...row })), [
+    { implementation_revision: "local-unversioned" },
+    { implementation_revision: "local-unversioned" },
+  ]);
+  const terminal = db.sqlite.prepare("SELECT terminal_disposition_at, retention_delete_after FROM signals WHERE signal_id = ?").get(signalId) as { terminal_disposition_at: string; retention_delete_after: string };
+  assert.equal(Date.parse(terminal.retention_delete_after) - Date.parse(terminal.terminal_disposition_at), 90 * 24 * 60 * 60 * 1000);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) count FROM work_items").get()?.count, existingWorkCount);
 });
 
@@ -237,6 +252,21 @@ test("signal retention honors policy-bound legal holds and deletes only eligible
     action: "RELEASE", reason_code: "SECURITY_REVIEW_COMPLETE",
   }), env);
   assert.equal(release?.status, 201, await release?.clone().text());
+  db.beforeNextBatch = () => {
+    const holdCreatedAt = new Date(Date.now() + 1_000).toISOString();
+    db.sqlite.prepare(`INSERT INTO signal_retention_holds
+      (hold_event_id,signal_id,action,reason_code,expires_at,actor_id,created_at)
+      VALUES ('racing-hold',?,'HOLD','LATE_SECURITY_REVIEW',?,'signal-human',?)`)
+      .run(eligibleSignalId, new Date(Date.now() + 86_400_000).toISOString(), holdCreatedAt);
+  };
+  const racedDeletion = await handleApi(signalRetentionRequest({ cutoff_at: "2026-08-19T12:00:00.000Z" }), env);
+  assert.equal(racedDeletion?.status, 200, await racedDeletion?.clone().text());
+  assert.equal((await racedDeletion?.json() as { deleted_count: number }).deleted_count, 0);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS total FROM signals WHERE signal_id = ?").get(eligibleSignalId)?.total, 1);
+  db.sqlite.prepare(`INSERT INTO signal_retention_holds
+    (hold_event_id,signal_id,action,reason_code,expires_at,actor_id,created_at)
+    VALUES ('racing-release',?,'RELEASE','LATE_SECURITY_REVIEW_COMPLETE',?,'signal-human',?)`)
+    .run(eligibleSignalId, new Date(Date.now() + 3_000).toISOString(), new Date(Date.now() + 2_000).toISOString());
   const deletion = await handleApi(signalRetentionRequest({ cutoff_at: "2026-08-19T12:00:00.000Z" }), env);
   assert.equal(deletion?.status, 200, await deletion?.clone().text());
   const deletionBody = await deletion?.json() as { deleted_count: number; policy_bindings_sha256: string };

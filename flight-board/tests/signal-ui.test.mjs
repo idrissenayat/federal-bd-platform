@@ -31,6 +31,9 @@ test("signal intake and workspace contain focus, restore focus, and adapt to a n
   assert.match(page, /handleSignalKeyDown/);
   assert.match(page, /cycleDrawerFocus/);
   assert.match(page, /signalReturnFocus\.current\?\.focus/);
+  assert.match(page, /ref=\{signalHeadingRef\} id="signal-workspace-title" tabIndex=\{-1\}/);
+  assert.match(page, /signalHeadingRef\.current\?\.focus\(\)/);
+  assert.match(page, /Proposal ready for human review\. No work item has been created\./);
   assert.match(css, /@media \(max-width: 680px\)[\s\S]*\.signal-recommendation-grid[^}]*grid-template-columns: 1fr/);
   assert.match(css, /\.signal-primary-input textarea[^}]*width: 100%/);
 });

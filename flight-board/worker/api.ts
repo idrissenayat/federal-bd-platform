@@ -301,13 +301,37 @@ async function ensureColumn(db: Database, table: string, column: string, definit
 async function upgradeSignalRetentionDeleteTriggers(db: Database) {
   const current = await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'signals_no_delete'")
     .first<{ sql: string | null }>();
-  if (!current?.sql || current.sql.includes("signal_retention_authorizations")) return;
+  if (current?.sql?.includes("signal retention eligibility changed")) return;
   await db.batch([
     db.prepare("DROP TRIGGER IF EXISTS signals_no_delete"),
     db.prepare(`CREATE TRIGGER signals_no_delete BEFORE DELETE ON signals WHEN NOT EXISTS (
       SELECT 1 FROM signal_retention_authorizations a
-      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
-    ) BEGIN SELECT RAISE(ABORT, 'signals require the governed retention path'); END`),
+      JOIN dispatch_privacy_policies policy ON policy.pod_id = OLD.pod_id
+        AND policy.policy_version = a.policy_version
+        AND policy.policy_version = (
+          SELECT MAX(latest.policy_version) FROM dispatch_privacy_policies latest WHERE latest.pod_id = OLD.pod_id
+        )
+      WHERE a.signal_id = OLD.signal_id
+        AND unixepoch(a.expires_at) > unixepoch('now')
+        AND OLD.lifecycle_state IN ('READY', 'SAFE_FAILURE', 'STALE')
+        AND OLD.terminal_disposition_at IS NOT NULL
+        AND unixepoch(OLD.retention_delete_after) <= unixepoch(a.cutoff_at)
+        AND policy.status = 'ACTIVE'
+        AND policy.terminal_retention_days = 90
+        AND policy.provider_recovery_days <= 30
+        AND policy.ruling_sha256 = a.ruling_sha256
+        AND policy.activation_receipt_sha256 = a.activation_receipt_sha256
+        AND NOT EXISTS (
+          SELECT 1 FROM signal_retention_holds hold
+          WHERE hold.signal_id = OLD.signal_id AND hold.action = 'HOLD'
+            AND unixepoch(hold.expires_at) > unixepoch('now')
+            AND NOT EXISTS (
+              SELECT 1 FROM signal_retention_holds release
+              WHERE release.signal_id = hold.signal_id AND release.action = 'RELEASE'
+                AND unixepoch(release.created_at) >= unixepoch(hold.created_at)
+            )
+        )
+    ) BEGIN SELECT RAISE(ABORT, 'signal retention eligibility changed'); END`),
     db.prepare("DROP TRIGGER IF EXISTS signal_events_no_delete"),
     db.prepare(`CREATE TRIGGER signal_events_no_delete BEFORE DELETE ON signal_events WHEN NOT EXISTS (
       SELECT 1 FROM signal_retention_authorizations a
@@ -714,7 +738,8 @@ async function ensureSchema(db: Database) {
       signal_id text PRIMARY KEY NOT NULL, pod_id text NOT NULL, submitter_id text NOT NULL,
       original_text text NOT NULL, original_sha256 text NOT NULL, idempotency_key text NOT NULL,
       lifecycle_state text NOT NULL, current_proposal_version integer NOT NULL DEFAULT 0,
-      retention_delete_after text NOT NULL, created_at text NOT NULL, updated_at text NOT NULL,
+      terminal_disposition_at text, retention_delete_after text NOT NULL,
+      created_at text NOT NULL, updated_at text NOT NULL,
       UNIQUE(pod_id, idempotency_key)
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_signals_pod_created ON signals (pod_id, created_at)"),
@@ -744,6 +769,7 @@ async function ensureSchema(db: Database) {
     db.prepare(`CREATE TABLE IF NOT EXISTS signal_generation_attempts (
       attempt_id text PRIMARY KEY NOT NULL, signal_id text NOT NULL, attempt_number integer NOT NULL,
       provider text NOT NULL, model text NOT NULL, prompt_version text NOT NULL, state text NOT NULL,
+      implementation_revision text NOT NULL,
       target_proposal_version integer NOT NULL DEFAULT 1, started_at text NOT NULL,
       completed_at text, input_tokens integer, output_tokens integer,
       estimated_cost_micros integer, error_code text, input_sha256 text NOT NULL, output_sha256 text,
@@ -762,7 +788,9 @@ async function ensureSchema(db: Database) {
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_signal_retention_holds_signal_created ON signal_retention_holds (signal_id, created_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS signal_retention_authorizations (
-      signal_id text PRIMARY KEY NOT NULL, authorization_nonce text NOT NULL, expires_at text NOT NULL
+      signal_id text PRIMARY KEY NOT NULL, authorization_nonce text NOT NULL, expires_at text NOT NULL,
+      cutoff_at text NOT NULL, policy_version integer NOT NULL, ruling_sha256 text NOT NULL,
+      activation_receipt_sha256 text NOT NULL
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS signal_retention_runs (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL, cutoff_at text NOT NULL,
@@ -771,10 +799,42 @@ async function ensureSchema(db: Database) {
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_signal_retention_runs_created ON signal_retention_runs (created_at)"),
   ]);
-  await upgradeSignalRetentionDeleteTriggers(db);
   await ensureColumn(db, "work_items", "rework_instructions", "rework_instructions text");
   await ensureColumn(db, "signal_proposals", "supersedes_proposal_id", "supersedes_proposal_id text");
   await ensureColumn(db, "signal_generation_attempts", "target_proposal_version", "target_proposal_version integer NOT NULL DEFAULT 1");
+  await ensureColumn(db, "signal_generation_attempts", "implementation_revision", "implementation_revision text NOT NULL DEFAULT 'legacy-unbound'");
+  await ensureColumn(db, "signals", "terminal_disposition_at", "terminal_disposition_at text");
+  await ensureColumn(db, "signal_retention_authorizations", "cutoff_at", "cutoff_at text NOT NULL DEFAULT '1970-01-01T00:00:00.000Z'");
+  await ensureColumn(db, "signal_retention_authorizations", "policy_version", "policy_version integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "signal_retention_authorizations", "ruling_sha256", "ruling_sha256 text NOT NULL DEFAULT ''");
+  await ensureColumn(db, "signal_retention_authorizations", "activation_receipt_sha256", "activation_receipt_sha256 text NOT NULL DEFAULT ''");
+  await db.batch([
+    db.prepare("DROP TRIGGER IF EXISTS signals_immutable_original"),
+    db.prepare(`UPDATE signals SET
+      terminal_disposition_at = updated_at,
+      retention_delete_after = strftime('%Y-%m-%dT%H:%M:%fZ', updated_at, '+90 days')
+      WHERE terminal_disposition_at IS NULL AND lifecycle_state IN ('READY', 'SAFE_FAILURE', 'STALE')`),
+    db.prepare(`UPDATE signals SET retention_delete_after = '9999-12-31T23:59:59.999Z'
+      WHERE terminal_disposition_at IS NULL AND lifecycle_state NOT IN ('READY', 'SAFE_FAILURE', 'STALE')`),
+    db.prepare(`CREATE TRIGGER signals_immutable_original
+      BEFORE UPDATE ON signals WHEN
+        NEW.signal_id != OLD.signal_id OR NEW.pod_id != OLD.pod_id OR NEW.submitter_id != OLD.submitter_id OR
+        NEW.original_text != OLD.original_text OR NEW.original_sha256 != OLD.original_sha256 OR
+        NEW.idempotency_key != OLD.idempotency_key OR
+        ((NEW.terminal_disposition_at IS NOT OLD.terminal_disposition_at OR NEW.retention_delete_after != OLD.retention_delete_after) AND NOT (
+          OLD.terminal_disposition_at IS NULL AND NEW.terminal_disposition_at IS NOT NULL AND
+          NEW.lifecycle_state IN ('READY', 'SAFE_FAILURE', 'STALE') AND
+          unixepoch(NEW.retention_delete_after) = unixepoch(NEW.terminal_disposition_at, '+90 days')
+        )) OR NEW.created_at != OLD.created_at
+      BEGIN SELECT RAISE(ABORT, 'signal original and authority are immutable'); END`),
+    db.prepare(`CREATE TRIGGER IF NOT EXISTS signals_terminal_transition_guard
+      BEFORE UPDATE ON signals WHEN
+        OLD.terminal_disposition_at IS NULL AND NEW.lifecycle_state IN ('READY', 'SAFE_FAILURE', 'STALE') AND
+        (NEW.terminal_disposition_at IS NULL OR
+          unixepoch(NEW.retention_delete_after) != unixepoch(NEW.terminal_disposition_at, '+90 days'))
+      BEGIN SELECT RAISE(ABORT, 'signal terminal retention boundary is required'); END`),
+  ]);
+  await upgradeSignalRetentionDeleteTriggers(db);
   await ensureColumn(db, "work_items", "blocked_since", "blocked_since text");
   await ensureColumn(db, "work_items", "value_hypothesis_json", "value_hypothesis_json text");
   await ensureColumn(db, "work_items", "delivery_forecast_json", "delivery_forecast_json text");
@@ -942,13 +1002,20 @@ async function ensureSchema(db: Database) {
     BEFORE UPDATE ON signals WHEN
       NEW.signal_id != OLD.signal_id OR NEW.pod_id != OLD.pod_id OR NEW.submitter_id != OLD.submitter_id OR
       NEW.original_text != OLD.original_text OR NEW.original_sha256 != OLD.original_sha256 OR
-      NEW.idempotency_key != OLD.idempotency_key OR NEW.retention_delete_after != OLD.retention_delete_after OR
+      NEW.idempotency_key != OLD.idempotency_key OR
+      ((NEW.terminal_disposition_at IS NOT OLD.terminal_disposition_at OR NEW.retention_delete_after != OLD.retention_delete_after) AND NOT (
+        OLD.terminal_disposition_at IS NULL AND NEW.terminal_disposition_at IS NOT NULL AND
+        NEW.lifecycle_state IN ('READY', 'SAFE_FAILURE', 'STALE') AND
+        unixepoch(NEW.retention_delete_after) = unixepoch(NEW.terminal_disposition_at, '+90 days')
+      )) OR
       NEW.created_at != OLD.created_at
     BEGIN SELECT RAISE(ABORT, 'signal original and authority are immutable'); END`).run();
-  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signals_no_delete BEFORE DELETE ON signals WHEN NOT EXISTS (
-      SELECT 1 FROM signal_retention_authorizations a
-      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
-    ) BEGIN SELECT RAISE(ABORT, 'signals require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signals_terminal_transition_guard
+    BEFORE UPDATE ON signals WHEN
+      OLD.terminal_disposition_at IS NULL AND NEW.lifecycle_state IN ('READY', 'SAFE_FAILURE', 'STALE') AND
+      (NEW.terminal_disposition_at IS NULL OR
+        unixepoch(NEW.retention_delete_after) != unixepoch(NEW.terminal_disposition_at, '+90 days'))
+    BEGIN SELECT RAISE(ABORT, 'signal terminal retention boundary is required'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_events_no_update
     BEFORE UPDATE ON signal_events BEGIN SELECT RAISE(ABORT, 'signal events are append-only'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_events_no_delete BEFORE DELETE ON signal_events WHEN NOT EXISTS (
@@ -981,6 +1048,14 @@ async function ensureSchema(db: Database) {
       SELECT 1 FROM signal_retention_authorizations a
       WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
     ) BEGIN SELECT RAISE(ABORT, 'signal attempts require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_generation_attempts_immutable_provenance
+    BEFORE UPDATE ON signal_generation_attempts WHEN
+      NEW.attempt_id != OLD.attempt_id OR NEW.signal_id != OLD.signal_id OR
+      NEW.attempt_number != OLD.attempt_number OR NEW.target_proposal_version != OLD.target_proposal_version OR
+      NEW.provider != OLD.provider OR NEW.model != OLD.model OR NEW.prompt_version != OLD.prompt_version OR
+      NEW.implementation_revision != OLD.implementation_revision OR NEW.started_at != OLD.started_at OR
+      NEW.input_sha256 != OLD.input_sha256
+    BEGIN SELECT RAISE(ABORT, 'signal attempt provenance is immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_retention_holds_no_update
     BEFORE UPDATE ON signal_retention_holds BEGIN SELECT RAISE(ABORT, 'signal retention hold events are immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_retention_holds_no_delete BEFORE DELETE ON signal_retention_holds WHEN NOT EXISTS (
@@ -1307,7 +1382,7 @@ async function bootstrap(db: Database, user: User) {
     WHERE i.pod_id = ? ORDER BY i.created_at DESC LIMIT 80`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").all<Record<string, unknown>>();
   const recentSignals = await db.prepare(`SELECT signal_id, submitter_id, original_text, original_sha256,
-      lifecycle_state, current_proposal_version, retention_delete_after, created_at, updated_at
+      lifecycle_state, current_proposal_version, terminal_disposition_at, retention_delete_after, created_at, updated_at
     FROM signals WHERE pod_id = ? ORDER BY created_at DESC LIMIT 20`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").all<Record<string, unknown>>();
   return {
@@ -1764,6 +1839,7 @@ type SignalRow = {
   idempotency_key: string;
   lifecycle_state: string;
   current_proposal_version: number;
+  terminal_disposition_at: string | null;
   retention_delete_after: string;
   created_at: string;
   updated_at: string;
@@ -1783,6 +1859,8 @@ function signalRetentionDate(now: Date) {
   return new Date(now.getTime() + 90 * 24 * 60 * 60 * 1_000).toISOString();
 }
 
+const signalPendingRetentionDate = "9999-12-31T23:59:59.999Z";
+
 async function scopedSignal(db: Database, user: User, signalId: string) {
   return db.prepare(`SELECT s.* FROM signals s
     JOIN members actor ON actor.id = ? AND actor.pod_id = s.pod_id AND actor.status IN ('available', 'enrolled')
@@ -1799,7 +1877,7 @@ async function signalSnapshot(db: Database, user: User, signalId: string) {
       JOIN signal_proposals proposal ON proposal.proposal_id = source.proposal_id
       WHERE source.signal_id = ? AND proposal.state = 'CURRENT'
       ORDER BY source.retrieved_at DESC, source.source_id`).bind(signalId).all<Record<string, unknown>>(),
-    db.prepare(`SELECT attempt_id, signal_id, attempt_number, provider, model, prompt_version, state,
+    db.prepare(`SELECT attempt_id, signal_id, attempt_number, provider, model, prompt_version, implementation_revision, state,
       target_proposal_version, started_at, completed_at, input_tokens, output_tokens, estimated_cost_micros, error_code,
       input_sha256, output_sha256 FROM signal_generation_attempts WHERE signal_id = ?
       ORDER BY attempt_number DESC`).bind(signalId).all<Record<string, unknown>>(),
@@ -1877,9 +1955,9 @@ async function createSignal(request: Request, db: Database, user: User) {
     await db.batch([
       db.prepare(`INSERT INTO signals
         (signal_id, pod_id, submitter_id, original_text, original_sha256, idempotency_key,
-         lifecycle_state, current_proposal_version, retention_delete_after, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'CAPTURED', 0, ?, ?, ?)`)
-        .bind(signalId, podId, user.id, original, originalSha256, idempotencyKey, signalRetentionDate(new Date(now)), now, now),
+         lifecycle_state, current_proposal_version, terminal_disposition_at, retention_delete_after, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'CAPTURED', 0, NULL, ?, ?, ?)`)
+        .bind(signalId, podId, user.id, original, originalSha256, idempotencyKey, signalPendingRetentionDate, now, now),
       db.prepare(`INSERT INTO signal_events
         (signal_id, event_version, event_type, actor_id, detail_json, previous_event_sha256, event_sha256, created_at)
         VALUES (?, ?, 'SIGNAL_CAPTURED', ?, ?, ?, ?, ?)`)
@@ -1975,7 +2053,10 @@ async function failSignalAttempt(db: Database, user: User, signal: SignalRow, at
   const event = await nextSignalEvent(db, signal.signal_id, "SIGNAL_GENERATION_FAILED", user.id, { attemptId, code, lifecycleState: "SAFE_FAILURE" }, now);
   await db.batch([
     db.prepare(`UPDATE signal_generation_attempts SET state = 'FAILED', completed_at = ?, error_code = ? WHERE attempt_id = ?`).bind(now, code, attemptId),
-    db.prepare(`UPDATE signals SET lifecycle_state = 'SAFE_FAILURE', updated_at = ? WHERE signal_id = ?`).bind(now, signal.signal_id),
+    db.prepare(`UPDATE signals SET lifecycle_state = 'SAFE_FAILURE',
+      terminal_disposition_at = COALESCE(terminal_disposition_at, ?),
+      retention_delete_after = CASE WHEN terminal_disposition_at IS NULL THEN ? ELSE retention_delete_after END,
+      updated_at = ? WHERE signal_id = ?`).bind(now, signalRetentionDate(new Date(now)), now, signal.signal_id),
     db.prepare(`INSERT INTO signal_events
       (signal_id, event_version, event_type, actor_id, detail_json, previous_event_sha256, event_sha256, created_at)
       VALUES (?, ?, 'SIGNAL_GENERATION_FAILED', ?, ?, ?, ?, ?)`)
@@ -2004,14 +2085,16 @@ async function generateSignalProposal(db: Database, env: Env, user: User, signal
   }
   const attemptId = createUuidV7();
   const startedAt = new Date().toISOString();
+  const implementationRevision = String(env.SIGNAL_IMPLEMENTATION_REVISION ?? "local-unversioned");
   const inputSha256 = await sha256Hex(canonicalJson({ signalId, originalSha256: signal.original_sha256, promptVersion: SIGNAL_PROMPT_VERSION, schemaVersion: SIGNAL_PROPOSAL_SCHEMA_VERSION, model: SIGNAL_MODEL }));
   const startedEvent = await nextSignalEvent(db, signalId, "SIGNAL_GENERATION_STARTED", user.id, { attemptId, attemptNumber, lifecycleState: "PROCESSING", inputSha256 }, startedAt);
   try {
     await db.batch([
       db.prepare(`INSERT INTO signal_generation_attempts
-        (attempt_id, signal_id, attempt_number, target_proposal_version, provider, model, prompt_version, state, started_at, input_sha256)
-        VALUES (?, ?, ?, ?, 'OpenAI', ?, ?, 'PROCESSING', ?, ?)`)
-        .bind(attemptId, signalId, attemptNumber, targetProposalVersion, SIGNAL_MODEL, SIGNAL_PROMPT_VERSION, startedAt, inputSha256),
+        (attempt_id, signal_id, attempt_number, target_proposal_version, provider, model, prompt_version,
+         implementation_revision, state, started_at, input_sha256)
+        VALUES (?, ?, ?, ?, 'OpenAI', ?, ?, ?, 'PROCESSING', ?, ?)`)
+        .bind(attemptId, signalId, attemptNumber, targetProposalVersion, SIGNAL_MODEL, SIGNAL_PROMPT_VERSION, implementationRevision, startedAt, inputSha256),
       db.prepare(`UPDATE signals SET lifecycle_state = 'PROCESSING', updated_at = ?
         WHERE signal_id = ? AND lifecycle_state = ?`).bind(startedAt, signalId, signal.lifecycle_state),
       db.prepare(`INSERT INTO signal_events
@@ -2041,7 +2124,7 @@ async function generateSignalProposal(db: Database, env: Env, user: User, signal
          state, confidence, readiness_status, provider, model, prompt_version, implementation_revision,
          supersedes_proposal_id, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, 'CURRENT', ?, ?, 'OpenAI', ?, ?, ?, ?, ?)`)
-        .bind(proposalId, signalId, proposalVersion, proposalJson, SIGNAL_PROPOSAL_SCHEMA_VERSION, inputSha256, outputSha256, result.proposal.confidence, result.proposal.readiness.status, SIGNAL_MODEL, SIGNAL_PROMPT_VERSION, env.SIGNAL_IMPLEMENTATION_REVISION ?? "local-unversioned", superseded?.proposal_id ?? null, completedAt),
+        .bind(proposalId, signalId, proposalVersion, proposalJson, SIGNAL_PROPOSAL_SCHEMA_VERSION, inputSha256, outputSha256, result.proposal.confidence, result.proposal.readiness.status, SIGNAL_MODEL, SIGNAL_PROMPT_VERSION, implementationRevision, superseded?.proposal_id ?? null, completedAt),
       db.prepare(`INSERT INTO signal_sources
         (source_id, signal_id, proposal_id, source_type, source_reference, revision, sha256, verification_state, retrieved_at)
         VALUES (?, ?, ?, 'contributor_signal', ?, ?, ?, 'unverified', ?)`)
@@ -2049,8 +2132,11 @@ async function generateSignalProposal(db: Database, env: Env, user: User, signal
       db.prepare(`UPDATE signal_generation_attempts SET state = 'SUCCEEDED', completed_at = ?, input_tokens = ?,
         output_tokens = ?, estimated_cost_micros = ?, output_sha256 = ? WHERE attempt_id = ?`)
         .bind(completedAt, result.inputTokens, result.outputTokens, result.estimatedCostMicros, outputSha256, attemptId),
-      db.prepare(`UPDATE signals SET lifecycle_state = 'READY', current_proposal_version = ?, updated_at = ? WHERE signal_id = ?`)
-        .bind(proposalVersion, completedAt, signalId),
+      db.prepare(`UPDATE signals SET lifecycle_state = 'READY', current_proposal_version = ?,
+        terminal_disposition_at = COALESCE(terminal_disposition_at, ?),
+        retention_delete_after = CASE WHEN terminal_disposition_at IS NULL THEN ? ELSE retention_delete_after END,
+        updated_at = ? WHERE signal_id = ?`)
+        .bind(proposalVersion, completedAt, signalRetentionDate(new Date(completedAt)), completedAt, signalId),
       db.prepare(`INSERT INTO signal_events
         (signal_id, event_version, event_type, actor_id, detail_json, previous_event_sha256, event_sha256, created_at)
         VALUES (?, ?, 'SIGNAL_PROPOSAL_READY', ?, ?, ?, ?, ?)`)
@@ -2094,7 +2180,11 @@ async function reconcileSignalSources(db: Database, user: User, signalId: string
   const event = await nextSignalEvent(db, signalId, "SIGNAL_SOURCE_CHANGED", user.id, { proposalId: proposal.proposal_id, proposalVersion: proposal.version, lifecycleState: "STALE" }, now);
   await db.batch([
     db.prepare("UPDATE signal_proposals SET state = 'STALE' WHERE proposal_id = ? AND state = 'CURRENT'").bind(proposal.proposal_id),
-    db.prepare("UPDATE signals SET lifecycle_state = 'STALE', updated_at = ? WHERE signal_id = ? AND lifecycle_state = 'READY'").bind(now, signalId),
+    db.prepare(`UPDATE signals SET lifecycle_state = 'STALE',
+      terminal_disposition_at = COALESCE(terminal_disposition_at, ?),
+      retention_delete_after = CASE WHEN terminal_disposition_at IS NULL THEN ? ELSE retention_delete_after END,
+      updated_at = ? WHERE signal_id = ? AND lifecycle_state = 'READY'`)
+      .bind(now, signalRetentionDate(new Date(now)), now, signalId),
     db.prepare(`INSERT INTO signal_events
       (signal_id, event_version, event_type, actor_id, detail_json, previous_event_sha256, event_sha256, created_at)
       VALUES (?, ?, 'SIGNAL_SOURCE_CHANGED', ?, ?, ?, ?, ?)`)
@@ -2195,18 +2285,25 @@ async function runSignalRetention(request: Request, db: Database, env: Env) {
   for (const candidate of rows) {
     const nonce = crypto.randomUUID();
     const authorizationExpiry = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
-    await db.batch([
-      db.prepare(`INSERT OR REPLACE INTO signal_retention_authorizations
-        (signal_id, authorization_nonce, expires_at) VALUES (?, ?, ?)`).bind(candidate.signal_id, nonce, authorizationExpiry),
-      db.prepare("DELETE FROM signal_sources WHERE signal_id = ?").bind(candidate.signal_id),
-      db.prepare("DELETE FROM signal_proposals WHERE signal_id = ?").bind(candidate.signal_id),
-      db.prepare("DELETE FROM signal_generation_attempts WHERE signal_id = ?").bind(candidate.signal_id),
-      db.prepare("DELETE FROM signal_events WHERE signal_id = ?").bind(candidate.signal_id),
-      db.prepare("DELETE FROM signal_retention_holds WHERE signal_id = ?").bind(candidate.signal_id),
-      db.prepare("DELETE FROM signals WHERE signal_id = ?").bind(candidate.signal_id),
-      db.prepare("DELETE FROM signal_retention_authorizations WHERE signal_id = ? AND authorization_nonce = ?").bind(candidate.signal_id, nonce),
-    ]);
-    deleted += 1;
+    try {
+      await db.batch([
+        db.prepare(`INSERT OR REPLACE INTO signal_retention_authorizations
+          (signal_id, authorization_nonce, expires_at, cutoff_at, policy_version, ruling_sha256, activation_receipt_sha256)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`)
+          .bind(candidate.signal_id, nonce, authorizationExpiry, cutoff.toISOString(), candidate.policy_version,
+            candidate.ruling_sha256, candidate.activation_receipt_sha256),
+        db.prepare("DELETE FROM signals WHERE signal_id = ?").bind(candidate.signal_id),
+        db.prepare("DELETE FROM signal_sources WHERE signal_id = ?").bind(candidate.signal_id),
+        db.prepare("DELETE FROM signal_proposals WHERE signal_id = ?").bind(candidate.signal_id),
+        db.prepare("DELETE FROM signal_generation_attempts WHERE signal_id = ?").bind(candidate.signal_id),
+        db.prepare("DELETE FROM signal_events WHERE signal_id = ?").bind(candidate.signal_id),
+        db.prepare("DELETE FROM signal_retention_holds WHERE signal_id = ?").bind(candidate.signal_id),
+        db.prepare("DELETE FROM signal_retention_authorizations WHERE signal_id = ? AND authorization_nonce = ?").bind(candidate.signal_id, nonce),
+      ]);
+      deleted += 1;
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("signal retention eligibility changed")) throw error;
+    }
   }
   await db.prepare(`INSERT INTO signal_retention_runs
     (cutoff_at, eligible_count, deleted_count, policy_bindings_sha256, created_at)
