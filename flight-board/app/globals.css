@@ -696,6 +696,10 @@ body { font-size: 14px; }
 .signal-intake-dialog-shell { background: transparent; border: 0; margin: 0; max-height: none; max-width: none; padding: 0; position: static; }
 .signal-intake-modal .signal-primary-input { color: #24312a; font-size: 13px; font-weight: 780; }
 .signal-primary-input textarea { box-sizing: border-box; min-height: 190px; resize: vertical; width: 100%; }
+.signal-intake-error { align-items: flex-start; background: #fff0f0; border: 1px solid #c74b4b; border-radius: 12px; color: #45534c; display: flex; gap: 14px; justify-content: space-between; outline: none; padding: 12px 14px; }
+.signal-intake-error > div { display: grid; gap: 4px; min-width: 0; }
+.signal-intake-error span { overflow-wrap: anywhere; }
+.signal-intake-error button { flex: 0 0 auto; }
 .signal-data-boundary { background: #fff7df; border: 1px solid #c8a85b; border-left: 5px solid #7b5910; border-radius: 9px; color: #49380f; padding: 12px 14px; }
 .signal-data-boundary strong { display: block; font-size: 12px; line-height: 1.45; }
 .signal-data-boundary p { font-size: 11px; line-height: 1.55; margin: 4px 0 0; }

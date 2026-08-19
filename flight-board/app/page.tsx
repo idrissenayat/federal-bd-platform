@@ -970,6 +970,7 @@ export default function Home() {
   const [signalWorkspace, setSignalWorkspace] = useState<SignalWorkspace | null>(null);
   const [signalLoading, setSignalLoading] = useState(false);
   const [signalGenerating, setSignalGenerating] = useState(false);
+  const [signalIntakeError, setSignalIntakeError] = useState<string | null>(null);
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1018,6 +1019,7 @@ export default function Home() {
   const signalReturnFocus = useRef<HTMLElement | null>(null);
   const signalInputRef = useRef<HTMLTextAreaElement>(null);
   const signalIntakeRef = useRef<HTMLDialogElement>(null);
+  const signalIntakeErrorRef = useRef<HTMLDivElement>(null);
 
   async function load(options: { quiet?: boolean } = {}) {
     const sequence = ++loadSequence.current;
@@ -1137,6 +1139,12 @@ export default function Home() {
   }, [createOpen]);
 
   useEffect(() => {
+    if (!signalIntakeError) return;
+    const frame = requestAnimationFrame(() => signalIntakeErrorRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [signalIntakeError]);
+
+  useEffect(() => {
     if (!decisionSession) return;
     const now = Date.now();
     const remaining = Math.max(0, Date.parse(decisionSession.expires_at) - now);
@@ -1231,6 +1239,7 @@ export default function Home() {
     const form = new FormData(event.currentTarget);
     setSaving(true);
     setError(null);
+    setSignalIntakeError(null);
     try {
       const captured = await api("/api/signals", {
         method: "POST",
@@ -1251,7 +1260,7 @@ export default function Home() {
         void load({ quiet: true });
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The signal could not be captured.");
+      setSignalIntakeError(caught instanceof Error ? caught.message : "The signal could not be captured.");
     } finally {
       setSaving(false);
     }
@@ -1259,10 +1268,12 @@ export default function Home() {
 
   function openSignalIntake() {
     signalReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSignalIntakeError(null);
     setCreateOpen(true);
   }
 
   function closeSignalIntake() {
+    setSignalIntakeError(null);
     setCreateOpen(false);
     requestAnimationFrame(() => signalReturnFocus.current?.focus());
   }
@@ -2001,6 +2012,7 @@ export default function Home() {
             <form className="modal-card create-modal signal-intake-modal" onSubmit={createSignal}>
               <header><div><span>New signal</span><h2 id="signal-intake-title">Tell Platform AI what you noticed</h2></div><button type="button" aria-label="Close signal intake" onClick={closeSignalIntake}>×</button></header>
               <p className="modal-intro">Write naturally. Spelling, grammar, incomplete context, and uncertainty are acceptable. Platform AI prepares the product analysis; it does not create or approve a work item.</p>
+              {signalIntakeError && <div ref={signalIntakeErrorRef} className="signal-intake-error" role="alert" aria-live="assertive" tabIndex={-1}><div><strong>Signal not submitted</strong><span>{signalIntakeError}</span></div><button type="button" onClick={() => { setSignalIntakeError(null); signalInputRef.current?.focus(); }}>Dismiss</button></div>}
               <label className="signal-primary-input">What did you notice, need, or want to improve?<textarea ref={signalInputRef} name="original" required minLength={10} maxLength={4000} placeholder="For example: We should be able to assign human contributors to different roles through the application because right now I cannot manage the team without leaving the platform." /></label>
               <div className="signal-data-boundary" role="note"><strong>Public, unclassified information only</strong><p>Do not include passwords, credentials, personal records, CUI/FCI, classified, export-controlled, or proprietary proposal information. Unsafe input is rejected before any AI request.</p></div>
               <footer><button type="button" className="secondary-button" onClick={closeSignalIntake}>Cancel</button><button className="primary-button" disabled={saving}>{saving ? "Preserving signal…" : "Submit signal"}</button></footer>
