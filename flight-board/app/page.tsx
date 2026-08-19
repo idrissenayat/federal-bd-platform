@@ -291,6 +291,8 @@ type Bootstrap = {
   privacy_policy: { policy_version: number; status: string; inventory_url: string; inventory_sha256: string; ruling_url: string | null; ruling_sha256: string | null; authorization_event_id: string | null; activation_receipt_sha256: string | null } | null;
   decision_policy: DecisionPolicy | null;
   release_readiness_policy: { policy_version: number; policy_sha256: string; status: string; ruling_url: string; ruling_sha256: string; created_at: string } | null;
+  decision_issuer: { configured: boolean; key_id: string | null; key_version: number | null; public_key: string | null; status: "ACTIVE" | "INACTIVE" | "UNAVAILABLE" };
+  deployment_environment: string;
   release_readiness: ReleaseReadiness[];
   decision_receipts: DecisionReceipt[];
 };
@@ -1243,6 +1245,29 @@ export default function Home() {
     }
   }
 
+  async function activateConfiguredDecisionIssuer() {
+    if (!data?.decision_issuer.configured || !data.decision_issuer.key_id || !data.decision_issuer.key_version || !data.decision_issuer.public_key) return;
+    setPolicyActivating(true);
+    setDecisionStepError(null);
+    try {
+      await api("/api/decision-signers/activate", {
+        method: "POST",
+        body: JSON.stringify({
+          key_id: data.decision_issuer.key_id,
+          key_version: data.decision_issuer.key_version,
+          public_key: data.decision_issuer.public_key,
+          reason: "Activate the configured decision issuer after authenticated Tech Lead review.",
+        }),
+      });
+      await load({ quiet: true });
+      setNotice("The configured decision issuer public key is active for this environment.");
+    } catch (caught) {
+      setDecisionStepError(caught instanceof Error ? caught.message : "The configured decision issuer could not be activated.");
+    } finally {
+      setPolicyActivating(false);
+    }
+  }
+
   async function startGovernedDecisionSession() {
     if (!selected) return;
     setSaving(true);
@@ -1673,7 +1698,18 @@ export default function Home() {
           {view === "board" && <FlightBoard items={filteredItems} onOpen={openItem} onMove={updateItem} saving={saving} />}
           {view === "backlog" && <Backlog items={filteredItems} onOpen={openItem} onCreate={() => setCreateOpen(true)} />}
           {view === "decisions" && <DecisionInbox items={decisionItems} decisions={data.decisions} reviews={data.reviews} reviewingIds={reviewingIds} onOpen={openDecisionWorkspace} />}
-          {view === "team" && <Team members={data.members} items={data.items} onOpenBuzz={() => void openBuzzWorkspace()} />}
+          {view === "team" && <Team
+            members={data.members}
+            items={data.items}
+            userRole={data.user.role}
+            environment={data.deployment_environment}
+            decisionIssuer={data.decision_issuer}
+            readinessPolicyActive={data.release_readiness_policy?.status === "ACTIVE"}
+            policyActivating={policyActivating}
+            onActivateIssuer={() => void activateConfiguredDecisionIssuer()}
+            onActivateReadiness={() => void activateApprovedReadinessPolicy()}
+            onOpenBuzz={() => void openBuzzWorkspace()}
+          />}
         </div>
       </main>
 
@@ -2157,7 +2193,18 @@ function DecisionInbox({ items, decisions, reviews, reviewingIds, onOpen }: { it
   </>;
 }
 
-function Team({ members, items, onOpenBuzz }: { members: Member[]; items: WorkItem[]; onOpenBuzz: () => void }) {
+function Team({ members, items, userRole, environment, decisionIssuer, readinessPolicyActive, policyActivating, onActivateIssuer, onActivateReadiness, onOpenBuzz }: {
+  members: Member[];
+  items: WorkItem[];
+  userRole: string;
+  environment: string;
+  decisionIssuer: Bootstrap["decision_issuer"];
+  readinessPolicyActive: boolean;
+  policyActivating: boolean;
+  onActivateIssuer: () => void;
+  onActivateReadiness: () => void;
+  onOpenBuzz: () => void;
+}) {
   const humans = members.filter((member) => member.kind === "human");
   const agents = members.filter((member) => member.kind === "agent");
   return <>
@@ -2170,6 +2217,14 @@ function Team({ members, items, onOpenBuzz }: { members: Member[]; items: WorkIt
         <article><span>03</span><strong>GitHub</strong><p>Preserves code, pull requests, tests, reviews, versioned documents, and exact evidence.</p><em>Proves what happened</em></article>
       </div>
       <footer><b>Buzz mention ≠ assignment</b><span>Agents must refuse execution unless the Flight Board shows an authorized assignment.</span></footer>
+    </section>
+    <section className="team-section" aria-labelledby="release-authority-heading">
+      <header><div><span className="panel-eyebrow">Release authority · {environment}</span><h2 id="release-authority-heading">System-enforced Gate 3 readiness</h2></div><StatusPill value={decisionIssuer.status === "ACTIVE" && readinessPolicyActive ? "Ready" : "Setup required"} kind={decisionIssuer.status === "ACTIVE" && readinessPolicyActive ? "ready" : "blocked"} /></header>
+      <div className="contract-grid">
+        <article><span>01</span><strong>Decision issuer</strong><p>{decisionIssuer.status === "ACTIVE" ? `Active · ${decisionIssuer.key_id} v${decisionIssuer.key_version}` : decisionIssuer.configured ? `Configured · ${decisionIssuer.key_id} v${decisionIssuer.key_version}; authenticated activation required.` : "No signing authority is configured for this environment."}</p><em>{decisionIssuer.public_key ? `Public key ${decisionIssuer.public_key.slice(0, 12)}…${decisionIssuer.public_key.slice(-8)}` : "No public key available"}</em>{decisionIssuer.status !== "ACTIVE" && decisionIssuer.configured && userRole.includes("Tech Lead") && <button type="button" disabled={policyActivating} onClick={onActivateIssuer}>{policyActivating ? "Activating…" : "Activate configured issuer"}</button>}</article>
+        <article><span>02</span><strong>Risk policy v1</strong><p>{readinessPolicyActive ? "Active · exact issue #74 Gate 2 ruling verified." : "Not active. The exact approved ruling must be verified by the server."}</p><em>0h default-open · 4h elevated · 24h default-closed</em>{!readinessPolicyActive && userRole.includes("Tech Lead") && <button type="button" disabled={policyActivating} onClick={onActivateReadiness}>{policyActivating ? "Activating…" : "Activate approved readiness policy"}</button>}</article>
+        <article><span>03</span><strong>No automatic release</strong><p>Readiness can become READY, but time or signatures never create an effective Gate ruling.</p><em>An authenticated human must explicitly finalize after a fresh server check.</em></article>
+      </div>
     </section>
     <section className="team-section"><header><div><span className="panel-eyebrow">Human contributors</span><h2>Decision and product authority</h2></div><StatusPill value={`${humans.length} people / seats`} kind="human" /></header><div className="member-grid">{humans.map((member) => <article className="member-card" key={member.id}><div className="member-card-top"><Avatar name={member.display_name} kind={member.kind} accent={member.accent} /><StatusPill value={member.status} /></div><h3>{member.display_name}</h3><span>{member.role}</span><p>{member.authority}</p><footer><b>{items.filter((item) => item.assignee_id === member.id && item.state !== "complete").length}</b><span>open items</span></footer></article>)}</div></section>
     <section className="team-section agent-section"><header><div><span className="panel-eyebrow">Agent fleet</span><h2>Specialized delivery roles</h2></div><StatusPill value={`${agents.length} enrolled`} kind="agent" /></header><div className="member-grid">{agents.map((member) => <article className="member-card agent-card" key={member.id}><div className="member-card-top"><Avatar name={member.display_name} kind={member.kind} accent={member.accent} /><StatusPill value={member.status} /></div><h3>{member.display_name}</h3><span>{member.role}</span><p>{member.authority}</p><footer><b>{items.filter((item) => item.assignee_id === member.id && item.state !== "complete").length}</b><span>assigned items</span><em>Cannot approve gates</em></footer></article>)}</div></section>

@@ -117,3 +117,46 @@ test("Gate 3 readiness snapshot is canonical, idempotent, immutable, and drift-s
   assert.equal(drifted?.status, 200);
   assert.equal((await drifted?.json() as { status: string; reason: string }).status, "INVALIDATED");
 });
+
+test("hosted readiness cases are staging-only, signed, immutable, and replay-safe", async () => {
+  const db = new D1Database();
+  await handleApi(humanRequest("/api/bootstrap"), { DB: db });
+  const privateKey = "2".repeat(64);
+  const serviceToken = "hosted-readiness-service-token-000000000000000";
+  db.sqlite.prepare(`INSERT INTO decision_issuer_signers
+    (pod_id, key_id, key_version, public_key, status, activated_by, activation_reason, created_at)
+    VALUES ('steer-flight-team', 'hosted-readiness-key', 1, ?, 'ACTIVE', 'human-1', 'Exact hosted case signer', '2026-08-19T20:00:00.000Z')`)
+    .run(decisionIssuerPublicKey(privateKey));
+  const input = {
+    run_id: "rr74-local-run",
+    case_id: "RR74-CLASS-OPEN",
+    declared_risk_codes: ["NONE"],
+    derived_risk_codes: ["NONE"],
+    operating_mode: "SOLO_CALIBRATION",
+    satisfaction_path: "TIME",
+    verification_completed_at: "2026-08-19T20:00:00.000Z",
+    server_now: "2026-08-19T20:00:00.000Z",
+    signatures: [],
+    drift_field: "NONE",
+  };
+  const request = () => new Request("https://steer.test/api/staging-release-readiness-cases", {
+    method: "POST",
+    headers: { authorization: `Bearer ${serviceToken}`, "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const env = { DB: db, DECISION_SERVICE_TOKEN: serviceToken, DECISION_SERVICE_PRIVATE_KEY: privateKey, DECISION_SERVICE_KEY_ID: "hosted-readiness-key", DECISION_SERVICE_KEY_VERSION: "1", STEER_DEPLOYMENT_ENV: "staging" };
+  const created = await handleApi(request(), env);
+  assert.equal(created?.status, 201, await created?.clone().text());
+  const result = await created?.json() as { response: { result: { status: string }; classification: { tier: string } }; response_sha256: string; service_signature: string; replay: boolean };
+  assert.equal(result.response.classification.tier, "DEFAULT_OPEN");
+  assert.equal(result.response.result.status, "READY");
+  assert.match(result.response_sha256, /^[0-9a-f]{64}$/);
+  assert.match(result.service_signature, /^[0-9a-f]{128}$/);
+  assert.equal(result.replay, false);
+  const replay = await handleApi(request(), env);
+  assert.equal(replay?.status, 200);
+  assert.equal((await replay?.json() as { replay: boolean }).replay, true);
+  assert.throws(() => db.sqlite.prepare("UPDATE staging_readiness_case_results SET response_sha256 = ? WHERE run_id = ?").run("f".repeat(64), input.run_id), /case results are immutable/);
+  const production = await handleApi(request(), { ...env, STEER_DEPLOYMENT_ENV: "production" });
+  assert.equal(production?.status, 409);
+});

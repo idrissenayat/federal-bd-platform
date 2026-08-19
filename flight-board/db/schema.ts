@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const members = sqliteTable(
   "members",
@@ -244,6 +244,17 @@ export const stagingVerificationReceipts = sqliteTable(
     serviceSignature: text("service_signature").notNull(), createdAt: text("created_at").notNull(),
   },
   (table) => [index("idx_staging_verification_receipts_item_created").on(table.itemId, table.createdAt)],
+);
+
+export const stagingReadinessCaseResults = sqliteTable(
+  "staging_readiness_case_results",
+  {
+    runId: text("run_id").notNull(), caseId: text("case_id").notNull(),
+    requestJson: text("request_json").notNull(), requestSha256: text("request_sha256").notNull(),
+    responseJson: text("response_json").notNull(), responseSha256: text("response_sha256").notNull(),
+    serviceSignature: text("service_signature").notNull(), createdAt: text("created_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.runId, table.caseId] }), index("idx_staging_readiness_case_results_created").on(table.runId, table.createdAt)],
 );
 
 export const decisionReadinessSnapshots = sqliteTable(

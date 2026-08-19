@@ -455,6 +455,13 @@ async function ensureSchema(db: Database) {
       key_id text NOT NULL, key_version integer NOT NULL, service_signature text NOT NULL, created_at text NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_staging_verification_receipts_item_created ON staging_verification_receipts (item_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS staging_readiness_case_results (
+      run_id text NOT NULL, case_id text NOT NULL, request_json text NOT NULL,
+      request_sha256 text NOT NULL, response_json text NOT NULL, response_sha256 text NOT NULL,
+      service_signature text NOT NULL, created_at text NOT NULL,
+      PRIMARY KEY(run_id, case_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_staging_readiness_case_results_created ON staging_readiness_case_results (run_id, created_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS decision_readiness_snapshots (
       snapshot_id text PRIMARY KEY NOT NULL, item_id integer NOT NULL, pod_id text NOT NULL,
       snapshot_json text NOT NULL, snapshot_sha256 text NOT NULL UNIQUE, evidence_set_sha256 text NOT NULL,
@@ -778,6 +785,10 @@ async function ensureSchema(db: Database) {
     BEFORE UPDATE ON staging_verification_receipts BEGIN SELECT RAISE(ABORT, 'staging verification receipts are immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS staging_verification_receipts_no_delete
     BEFORE DELETE ON staging_verification_receipts BEGIN SELECT RAISE(ABORT, 'staging verification receipts require governed retention'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS staging_readiness_case_results_no_update
+    BEFORE UPDATE ON staging_readiness_case_results BEGIN SELECT RAISE(ABORT, 'staging readiness case results are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS staging_readiness_case_results_no_delete
+    BEFORE DELETE ON staging_readiness_case_results BEGIN SELECT RAISE(ABORT, 'staging readiness case results require governed retention'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS decision_readiness_snapshots_authority_immutable
     BEFORE UPDATE ON decision_readiness_snapshots WHEN
       NEW.snapshot_id != OLD.snapshot_id OR NEW.item_id != OLD.item_id OR NEW.pod_id != OLD.pod_id OR
@@ -1131,7 +1142,7 @@ async function ensureSeedData(db: Database, user: User) {
   if (activityStatements.length) await db.batch(activityStatements);
 }
 
-async function bootstrap(db: Database, user: User) {
+async function bootstrap(db: Database, user: User, env: Env) {
   await ensureSchema(db);
   await ensureCurrentUser(db, user);
   await ensureHumanSeats(db);
@@ -1224,6 +1235,17 @@ async function bootstrap(db: Database, user: User) {
     WHERE pod_id = ? ORDER BY created_at DESC LIMIT 80`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").all<Record<string, unknown>>();
   const releaseReadiness = await Promise.all((readinessRows.results ?? []).map((row) => releaseReadinessView(db, row, generatedAt)));
+  const configuredDecisionKeyId = String(env.DECISION_SERVICE_KEY_ID ?? "");
+  const configuredDecisionKeyVersion = Number(env.DECISION_SERVICE_KEY_VERSION ?? 0);
+  const configuredDecisionPrivateKey = String(env.DECISION_SERVICE_PRIVATE_KEY ?? "");
+  const configuredDecisionPublicKey = /^[0-9a-f]{64}$/.test(configuredDecisionPrivateKey)
+    ? decisionIssuerPublicKey(configuredDecisionPrivateKey)
+    : null;
+  const activeDecisionIssuer = configuredDecisionPublicKey && configuredDecisionKeyId && Number.isInteger(configuredDecisionKeyVersion) && configuredDecisionKeyVersion > 0
+    ? await db.prepare(`SELECT key_id, key_version, public_key, status, created_at FROM decision_issuer_signers
+      WHERE pod_id = ? AND key_id = ? AND key_version = ? ORDER BY created_at DESC LIMIT 1`)
+      .bind(currentMember?.pod_id ?? "steer-flight-team", configuredDecisionKeyId, configuredDecisionKeyVersion).first<Record<string, unknown>>()
+    : null;
   const decisionReceipts = await db.prepare(`SELECT i.intent_id, i.receipt_id, i.item_id, i.current_state,
       i.current_sequence, i.current_event_sha256, i.intent_json, i.created_at, i.updated_at,
       w.key AS item_key, w.title AS item_title
@@ -1245,6 +1267,14 @@ async function bootstrap(db: Database, user: User) {
     privacy_policy: privacyPolicy ?? null,
     decision_policy: decisionPolicy ?? null,
     release_readiness_policy: readinessPolicy ? { ...readinessPolicy, policy: JSON.parse(String(readinessPolicy.policy_json)) } : null,
+    decision_issuer: configuredDecisionPublicKey ? {
+      configured: true,
+      key_id: configuredDecisionKeyId,
+      key_version: configuredDecisionKeyVersion,
+      public_key: configuredDecisionPublicKey,
+      status: activeDecisionIssuer?.status === "ACTIVE" && activeDecisionIssuer.public_key === configuredDecisionPublicKey ? "ACTIVE" : "INACTIVE",
+    } : { configured: false, key_id: null, key_version: null, public_key: null, status: "UNAVAILABLE" },
+    deployment_environment: String(env.STEER_DEPLOYMENT_ENV ?? "production"),
     release_readiness: releaseReadiness,
     decision_receipts: (decisionReceipts.results ?? []).map((receipt) => {
       const intent = JSON.parse(String(receipt.intent_json)) as DecisionIntentPayload;
@@ -1627,6 +1657,7 @@ const telemetryContract: Record<string, { labelName: string; values: string[]; h
   steer_release_readiness_boundary_rejection_total: { labelName: "tier", values: ["DEFAULT_OPEN", "ELEVATED", "DEFAULT_CLOSED"] },
   steer_release_countersignature_total: { labelName: "outcome", values: ["accepted", "rejected_authority", "rejected_role", "replay"] },
   steer_release_finalization_total: { labelName: "outcome", values: ["effective", "blocked_readiness"] },
+  steer_release_hosted_case_total: { labelName: "outcome", values: ["READY", "NOT_READY", "INVALIDATED"] },
   steer_release_readiness_latency_ms: { labelName: "", values: [], histogram: true },
 };
 
@@ -3580,9 +3611,99 @@ async function createStagingVerificationReceipt(request: Request, db: Database, 
   return json({ receipt_id: receiptId, receipt_sha256: receiptSha256, receipt, service_signature: signature, replay: false }, 201);
 }
 
+async function runStagingReadinessCase(request: Request, db: Database, env: Env) {
+  if (env.STEER_DEPLOYMENT_ENV !== "staging") return json({ error: "Hosted readiness cases are available only in the staging deployment." }, 409);
+  const token = String(env.DECISION_SERVICE_TOKEN ?? "");
+  if (token.length < 32 || request.headers.get("authorization") !== `Bearer ${token}`) return json({ error: "Hosted readiness case authentication failed." }, 401);
+  const privateKey = String(env.DECISION_SERVICE_PRIVATE_KEY ?? "");
+  const keyId = String(env.DECISION_SERVICE_KEY_ID ?? "");
+  const keyVersion = Number(env.DECISION_SERVICE_KEY_VERSION ?? 0);
+  if (!hex64(privateKey) || !keyId || !Number.isInteger(keyVersion) || keyVersion < 1) return json({ error: "Hosted readiness signing configuration is incomplete." }, 503);
+  const publicKey = decisionIssuerPublicKey(privateKey);
+  const signer = await db.prepare(`SELECT public_key FROM decision_issuer_signers
+    WHERE key_id = ? AND key_version = ? AND status = 'ACTIVE' ORDER BY created_at DESC LIMIT 1`)
+    .bind(keyId, keyVersion).first<{ public_key: string }>();
+  if (!signer || signer.public_key !== publicKey) return json({ error: "The hosted readiness signer is not activated." }, 409);
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  const allowedKeys = ["run_id", "case_id", "declared_risk_codes", "derived_risk_codes", "operating_mode", "satisfaction_path", "verification_completed_at", "server_now", "signatures", "drift_field"] as const;
+  if (!body || !hasOnlyKeys(body, allowedKeys)) return json({ error: "The hosted case input is outside the bounded contract." }, 400);
+  const runId = String(body.run_id ?? "");
+  const caseId = String(body.case_id ?? "");
+  const verifiedAt = String(body.verification_completed_at ?? "");
+  const serverNow = String(body.server_now ?? "");
+  const operatingMode = String(body.operating_mode ?? "") as "SOLO_CALIBRATION" | "TEAM";
+  const satisfactionPath = String(body.satisfaction_path ?? "") as SatisfactionPath;
+  const driftField = String(body.drift_field ?? "NONE");
+  const driftFields = ["NONE", "IMPLEMENTATION", "MIGRATION", "RUNTIME_POLICY", "EXAM", "VERIFICATION_RECEIPT", "DERIVED_DOMAINS", "CRITIC_TARGET", "RISK_POLICY"];
+  if (!/^[a-z0-9][a-z0-9._:-]{2,79}$/.test(runId) || !/^RR74-[A-Z0-9-]{3,40}$/.test(caseId) ||
+      !Number.isFinite(Date.parse(verifiedAt)) || !Number.isFinite(Date.parse(serverNow)) || !driftFields.includes(driftField)) {
+    return json({ error: "The hosted case identity, clock, or drift field is invalid." }, 400);
+  }
+  const parsedSignatures = Array.isArray(body.signatures) && body.signatures.length <= 16 ? body.signatures : [];
+  const signatures = parsedSignatures.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const value = entry as Record<string, unknown>;
+    if (!hasOnlyKeys(value, ["member_id", "role", "kind", "pod_id", "current_role", "status", "is_submitter", "is_builder"])) return [];
+    const memberId = String(value.member_id ?? "");
+    const role = String(value.role ?? "");
+    const currentRole = String(value.current_role ?? "");
+    const eligible = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(memberId) && value.kind === "human" && value.pod_id === "steer-flight-team" &&
+      value.status === "available" && !value.is_submitter && !value.is_builder && currentRole.includes(role);
+    return eligible ? [{ member_id: memberId, role, status: "ACCEPTED" }] : [];
+  });
+  const classification = classifyRiskCodes(body.declared_risk_codes, body.derived_risk_codes);
+  const pathError = validateSatisfactionPath(classification, operatingMode, satisfactionPath);
+  const requiredRoles = requiredRolesFor(classification.codes, classification.tier);
+  const effective = effectiveNotBefore(verifiedAt, satisfactionPath === "TIME" ? classification.delay_hours : 0);
+  const snapshot: ReleaseReadinessSnapshot = {
+    schema: "steer.gate-readiness-snapshot/v1", snapshot_id: "case-" + await releaseReadinessDigest({ runId, caseId, body }),
+    work_item_id: 74000, work_item_key: "ISSUE-74-HOSTED", work_item_updated_at: verifiedAt, pod_id: "steer-flight-team",
+    brief_commit: "a".repeat(40), brief_sha256: "a".repeat(64), exam_commit: readinessPolicyRulingRevision,
+    exam_sha256: readinessPolicyRulingSha256, implementation_commit: "b".repeat(40), build_sha256: "b".repeat(64),
+    migration_set_sha256: "c".repeat(64), runtime_policy_sha256: await releaseReadinessDigest(RELEASE_READINESS_POLICY_V1),
+    verification_receipt_id: "d".repeat(64), verification_receipt_sha256: "d".repeat(64), verification_completed_at: new Date(Date.parse(verifiedAt)).toISOString(),
+    critic_review_id: 74, critic_target_revision: "b".repeat(40), critic_recommendation: "PASS", evidence_set_sha256: "e".repeat(64),
+    declared_risk_codes: parseRiskCodes(body.declared_risk_codes).codes, derived_risk_codes: parseRiskCodes(body.derived_risk_codes).codes,
+    resolved_risk_codes: classification.codes, classification_errors: classification.errors, tier: classification.tier, risk_policy_version: 1,
+    operating_mode: operatingMode, satisfaction_path: satisfactionPath, delay_hours: classification.delay_hours,
+    required_roles: requiredRoles, effective_not_before: effective, created_by: "staging-verification-service", created_at: new Date().toISOString(), predecessor_snapshot_sha256: null,
+  };
+  const evaluated = pathError
+    ? { status: "NOT_READY" as const, reason: pathError, missing_roles: requiredRoles }
+    : driftField !== "NONE"
+      ? { status: "INVALIDATED" as const, reason: `${driftField}_DRIFT`, missing_roles: requiredRoles }
+      : readinessStatus({ snapshot, now: new Date(Date.parse(serverNow)).toISOString(), currentCandidateSha256: snapshot.evidence_set_sha256, currentCriticReviewId: snapshot.critic_review_id, signatures });
+  const requestRecord = { ...body, run_id: runId, case_id: caseId, verification_completed_at: new Date(Date.parse(verifiedAt)).toISOString(), server_now: new Date(Date.parse(serverNow)).toISOString() };
+  const requestSha256 = await releaseReadinessDigest(requestRecord);
+  const responseRecord = {
+    schema: "steer.hosted-readiness-case-result/v1", run_id: runId, case_id: caseId, request_sha256: requestSha256,
+    policy_sha256: await releaseReadinessDigest(RELEASE_READINESS_POLICY_V1), classification,
+    selected_path: satisfactionPath, effective_not_before: effective, eligible_signatures: signatures,
+    result: evaluated, key_id: keyId, key_version: keyVersion,
+  };
+  const responseSha256 = await releaseReadinessDigest(responseRecord);
+  const existing = await db.prepare("SELECT request_sha256, response_json, response_sha256, service_signature FROM staging_readiness_case_results WHERE run_id = ? AND case_id = ?")
+    .bind(runId, caseId).first<Record<string, unknown>>();
+  if (existing) {
+    if (existing.request_sha256 !== requestSha256) return json({ error: "The hosted case identity is already bound to different immutable input." }, 409);
+    return json({ response: JSON.parse(String(existing.response_json)), response_sha256: existing.response_sha256, service_signature: existing.service_signature, replay: true });
+  }
+  const signature = signAuthorityPayload("STEER_HOSTED_READINESS_CASE_V1", responseRecord, privateKey);
+  const now = new Date().toISOString();
+  await db.batch([
+    db.prepare(`INSERT INTO staging_readiness_case_results
+      (run_id, case_id, request_json, request_sha256, response_json, response_sha256, service_signature, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(runId, caseId, canonicalJson(requestRecord), requestSha256, canonicalJson(responseRecord), responseSha256, signature, now),
+    db.prepare(`INSERT INTO steer_telemetry (metric_name, label_name, label_value, value, case_id, observed_at)
+      VALUES ('steer_release_hosted_case_total', 'outcome', ?, 1, ?, ?)`).bind(evaluated.status, caseId, now),
+  ]);
+  return json({ response: responseRecord, response_sha256: responseSha256, service_signature: signature, replay: false }, 201);
+}
+
 async function handleDecisionProofService(request: Request, db: Database, env: Env) {
   if (request.method !== "POST") return null;
   const pathname = new URL(request.url).pathname;
+  if (pathname === "/api/staging-release-readiness-cases") return runStagingReadinessCase(request, db, env);
   if (pathname === "/api/staging-verification-receipts") return createStagingVerificationReceipt(request, db, env);
   const proofMatch = pathname.match(/^\/api\/decision-intents\/([0-9a-f-]{36})\/issuer-proof$/);
   if (proofMatch) return proveDecisionIntent(request, db, env, proofMatch[1]);
@@ -4066,7 +4187,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (!user) return json({ error: "Authentication required." }, 401);
     await ensureCurrentUser(env.DB, user);
     if (request.method === "GET" && url.pathname === "/api/buzz-status") return getBuzzStatus();
-    if (request.method === "GET" && url.pathname === "/api/bootstrap") return json(await bootstrap(env.DB, user));
+    if (request.method === "GET" && url.pathname === "/api/bootstrap") return json(await bootstrap(env.DB, user, env));
     if (request.method === "POST" && url.pathname === "/api/telemetry") return recordBoundedTelemetry(request, env.DB, env);
     if (request.method === "POST" && url.pathname === "/api/privacy-policy/activate") return activatePrivacyPolicy(request, env.DB, user);
     if (request.method === "POST" && url.pathname === "/api/decision-signers/activate") return activateDecisionIssuer(request, env.DB, user);
