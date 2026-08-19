@@ -6,7 +6,7 @@
 
 ## Frozen runtime policy
 
-- Staging provider/model: OpenAI Responses API, exact model `gpt-5.6-terra`
+- Staging provider/model: OpenAI Responses API, exact model `gpt-5.6-luna`
 - Request policy: `reasoning.effort: low`, standard service tier, no model tools, no web search, and `store: false`
 - Prompt-contract/schema version: `signal-proposal-v1`
 - Maximum signal length: 4,000 characters
@@ -21,7 +21,7 @@
 - p95 capture response: at most 750 ms, excluding generation
 - p95 proposal completion: at most 60 seconds for eligible staging cases
 
-The model choice uses the balanced GPT-5.6 tier because this is low-volume, decision-quality preparation rather than bulk classification. Official OpenAI documentation identifies `gpt-5.6-terra` as the intelligence/cost-balanced tier, supports the Responses API and Structured Outputs, and lists standard short-context pricing of USD 2.00 per million input tokens and USD 12.00 per million output tokens as of 2026-08-19. The 12,000/4,000 token caps imply a nominal maximum of USD 0.072 before any applicable regional uplift, leaving headroom under the frozen USD 0.10 ceiling. Sources: [model contract](https://developers.openai.com/api/docs/models/gpt-5.6-terra), [pricing](https://developers.openai.com/api/docs/pricing), and [current model guidance](https://developers.openai.com/api/docs/guides/latest-model).
+The amended model choice uses the cost-sensitive GPT-5.6 tier for this bounded, schema-constrained workload and preserves the same quality and safety acceptance threshold rather than lowering it. Official OpenAI documentation identifies `gpt-5.6-luna` as optimized for cost-sensitive workloads, confirms Responses API and Structured Outputs support, and lists standard short-context pricing of USD 0.20 per million input tokens and USD 1.20 per million output tokens as of 2026-08-19. The 12,000/4,000 token caps imply a nominal maximum of USD 0.0072 before any applicable regional uplift, leaving headroom under the unchanged USD 0.10 ceiling. Source: [GPT-5.6 Luna model contract](https://developers.openai.com/api/docs/models/gpt-5.6-luna).
 
 ## Acceptance tests
 
@@ -87,6 +87,14 @@ The Test and Critic agents perform the interaction, accessibility, safety, and e
 GATE 2: APPROVED — 2026-08-19T14:08:11Z — idrissenayat
 
 GATE 2 EVIDENCE: Tech Lead/solo operator approval [PR #71 comment](https://github.com/idrissenayat/federal-bd-platform/pull/71#issuecomment-5343303386), bound to pre-signature commit `d394941439fe90ceca64a2c1e1f914612da88c83` and Exam SHA-256 `33346e7308706a25c0c6a208a12904551f9b3ef0b21df08da71bb1d841ec7375`.
+
+MODEL AMENDMENT AUTHORIZATION: APPROVED — 2026-08-19T14:41:02Z — idrissenayat
+
+MODEL AMENDMENT SCOPE: Replace only the frozen provider model from `gpt-5.6-terra` to `gpt-5.6-luna`; preserve every other Gate 2 control and rerun the complete approved Exam. The amended Exam requires an exact revision and SHA-256 binding before staging deployment.
+
+AMENDED GATE 2:
+
+AMENDED GATE 2 EVIDENCE:
 
 GATE 3:
 

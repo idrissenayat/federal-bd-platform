@@ -1,11 +1,13 @@
 export const SIGNAL_PROPOSAL_SCHEMA_VERSION = "signal-proposal-v1";
-export const SIGNAL_MODEL = "gpt-5.6-terra";
+export const SIGNAL_MODEL = "gpt-5.6-luna";
 export const SIGNAL_PROMPT_VERSION = "issue-70-signal-proposal-v1";
 export const SIGNAL_MAX_CHARACTERS = 4_000;
 export const SIGNAL_MAX_INPUT_TOKENS = 12_000;
 export const SIGNAL_MAX_OUTPUT_TOKENS = 4_000;
 export const SIGNAL_MAX_COST_MICROS = 100_000;
 export const SIGNAL_TIMEOUT_MS = 45_000;
+export const SIGNAL_INPUT_COST_MICROS_PER_TOKEN = 0.2;
+export const SIGNAL_OUTPUT_COST_MICROS_PER_TOKEN = 1.2;
 
 export type SignalStatement = { text: string; sourceIds: string[] };
 export type SignalRisk = { domain: string; signal: string; control: string };

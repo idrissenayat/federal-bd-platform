@@ -87,11 +87,11 @@ test("generation stores validated provenance and usage without changing existing
   assert.equal(workspace.signal.current_proposal_version, 1);
   assert.equal(workspace.proposal.value.schemaVersion, "signal-proposal-v1");
   assert.equal(workspace.proposal.value.facts.length, 0);
-  assert.equal(workspace.proposal.model, "gpt-5.6-terra");
+  assert.equal(workspace.proposal.model, "gpt-5.6-luna");
   assert.equal(workspace.proposal.implementation_revision, "a".repeat(40));
   assert.equal(workspace.sources.length, 1);
   assert.equal(workspace.sources[0].revision, workspace.sources[0].sha256);
-  assert.deepEqual(workspace.attempts[0], { ...workspace.attempts[0], state: "SUCCEEDED", input_tokens: 900, output_tokens: 1200, estimated_cost_micros: 16200 });
+  assert.deepEqual(workspace.attempts[0], { ...workspace.attempts[0], state: "SUCCEEDED", input_tokens: 900, output_tokens: 1200, estimated_cost_micros: 1620 });
   assert.equal(JSON.stringify(db.sqlite.prepare("SELECT * FROM work_items").all()), before);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) count FROM decisions").get()?.count, 0);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) count FROM dispatch_receipts").get()?.count, 0);

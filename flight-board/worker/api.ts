@@ -27,6 +27,8 @@ import {
   SIGNAL_MAX_INPUT_TOKENS,
   SIGNAL_MAX_OUTPUT_TOKENS,
   SIGNAL_MODEL,
+  SIGNAL_INPUT_COST_MICROS_PER_TOKEN,
+  SIGNAL_OUTPUT_COST_MICROS_PER_TOKEN,
   SIGNAL_PROMPT_VERSION,
   SIGNAL_PROPOSAL_SCHEMA_VERSION,
   SIGNAL_TIMEOUT_MS,
@@ -1849,7 +1851,8 @@ async function callSignalModel(env: Env, signalId: string, original: string) {
   const input = signalProposalInput(signalId, original);
   const conservativeInputTokens = [...instructions, ...input].length;
   if (conservativeInputTokens > SIGNAL_MAX_INPUT_TOKENS) throw new Error("INPUT_BUDGET_EXCEEDED");
-  const nominalMaximumCostMicros = SIGNAL_MAX_INPUT_TOKENS * 2 + SIGNAL_MAX_OUTPUT_TOKENS * 12;
+  const nominalMaximumCostMicros = SIGNAL_MAX_INPUT_TOKENS * SIGNAL_INPUT_COST_MICROS_PER_TOKEN
+    + SIGNAL_MAX_OUTPUT_TOKENS * SIGNAL_OUTPUT_COST_MICROS_PER_TOKEN;
   if (nominalMaximumCostMicros > SIGNAL_MAX_COST_MICROS) throw new Error("COST_BUDGET_EXCEEDED");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SIGNAL_TIMEOUT_MS);
@@ -1883,7 +1886,8 @@ async function callSignalModel(env: Env, signalId: string, original: string) {
     const inputTokens = Number(usage.input_tokens ?? 0);
     const outputTokens = Number(usage.output_tokens ?? 0);
     if (!Number.isFinite(inputTokens) || !Number.isFinite(outputTokens) || inputTokens > SIGNAL_MAX_INPUT_TOKENS || outputTokens > SIGNAL_MAX_OUTPUT_TOKENS) throw new Error("TOKEN_BUDGET_EXCEEDED");
-    const estimatedCostMicros = Math.round(inputTokens * 2 + outputTokens * 12);
+    const estimatedCostMicros = Math.round(inputTokens * SIGNAL_INPUT_COST_MICROS_PER_TOKEN
+      + outputTokens * SIGNAL_OUTPUT_COST_MICROS_PER_TOKEN);
     if (estimatedCostMicros > SIGNAL_MAX_COST_MICROS) throw new Error("COST_BUDGET_EXCEEDED");
     return { proposal, inputTokens, outputTokens, estimatedCostMicros, unsupportedFactCount };
   } catch (error) {
