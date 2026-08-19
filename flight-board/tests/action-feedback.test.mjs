@@ -11,6 +11,15 @@ test("failed actions remain visible above modal workspaces", () => {
   assert.match(css, /\.action-feedback[^}]*position: fixed[^}]*z-index: 180/);
 });
 
+test("signal capture errors stay inside the modal focus loop and preserve the draft", () => {
+  assert.match(page, /const \[signalIntakeError, setSignalIntakeError\]/);
+  assert.match(page, /ref=\{signalIntakeErrorRef\} className="signal-intake-error" role="alert" aria-live="assertive" tabIndex=\{-1\}/);
+  assert.match(page, /setSignalIntakeError\(caught instanceof Error/);
+  assert.match(page, /setSignalIntakeError\(null\); signalInputRef\.current\?\.focus\(\)/);
+  assert.match(page, /signalIntakeErrorRef\.current\?\.focus\(\)/);
+  assert.match(css, /\.signal-intake-error \{[^}]*background: #fff0f0;/s);
+});
+
 test("Gate 1 approval exposes and enforces the value prerequisite", () => {
   assert.match(page, /Complete one prerequisite/);
   assert.match(page, /Review prepared proposal/);

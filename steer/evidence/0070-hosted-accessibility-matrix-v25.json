@@ -1,0 +1,314 @@
+{
+  "schema": "issue70-hosted-accessibility-matrix/v1",
+  "project_id": "appgprj_6a83763dc1148191b439c0795aa86a1c",
+  "site_version": 25,
+  "source_commit": "52f8e6d96a129acfc890f3ea0691509aa75fa0e1",
+  "release_target_commit": "d051ec93d700c6151e742c195eb2e40cfda51d8c",
+  "restored_deployment_id": "appgdep_6a85f5f36a548191a21e353e6ef1c4ad",
+  "final_environment_revision": 14,
+  "viewport": {
+    "width": 320,
+    "height": 900,
+    "document_scroll_width": 305,
+    "horizontal_overflow": false
+  },
+  "automated_axe": {
+    "engine": "axe-core 4.13.0 in JSDOM from exact hosted outerHTML",
+    "color_contrast_disabled_in_axe": true,
+    "contrast_covered_by": "flight-board/tests/signal-accessibility.test.ts:39",
+    "note": "JSDOM incomplete checks are retained as counts and are not violations."
+  },
+  "states": [
+    {
+      "state": "empty",
+      "execution": "actual hosted",
+      "pass": true,
+      "axe_violations": [],
+      "axe_incomplete": 40,
+      "announcement": null,
+      "initial_focus": "textarea[name=original]",
+      "keyboard": "textarea → Cancel → Submit signal → Close; contained by dialog",
+      "narrow_screen": {
+        "inner_width": 320,
+        "scroll_width": 305,
+        "overflow": false
+      }
+    },
+    {
+      "state": "processing",
+      "execution": "actual hosted",
+      "pass": true,
+      "axe_violations": [],
+      "axe_incomplete": 37,
+      "announcement": {
+        "role": "status",
+        "aria_live": "polite",
+        "text": "◇Platform AI is preparing the proposalChecking structure, uncertainty, risks, evidence needs, and readiness. No STR key or backlog item has been created."
+      },
+      "initial_focus": "Close signal workspace",
+      "keyboard": "focus remains inside workspace dialog",
+      "narrow_screen": {
+        "inner_width": 320,
+        "scroll_width": 305,
+        "overflow": false
+      }
+    },
+    {
+      "state": "ready",
+      "execution": "actual hosted",
+      "pass": true,
+      "axe_violations": [],
+      "axe_incomplete": 42,
+      "announcement": null,
+      "initial_focus": "Close signal workspace",
+      "keyboard_cycle": [
+        {
+          "aria": null,
+          "tag": "SUMMARY",
+          "text": "How this proposal was produced"
+        },
+        {
+          "aria": "Close signal workspace",
+          "tag": "BUTTON",
+          "text": "×"
+        },
+        {
+          "aria": null,
+          "tag": "SUMMARY",
+          "text": "How this proposal was produced"
+        },
+        {
+          "aria": "Close signal workspace",
+          "tag": "BUTTON",
+          "text": "×"
+        }
+      ],
+      "narrow_screen": {
+        "inner_width": 320,
+        "scroll_width": 305,
+        "dialog_right": 305,
+        "overflow": false
+      }
+    },
+    {
+      "state": "stale",
+      "execution": "controlled exact-source state renderer",
+      "pass": true,
+      "axe_violations": [],
+      "axe_incomplete": 29,
+      "announcement": {
+        "role": "status",
+        "aria_live": "polite",
+        "text": "The prior proposal is stale"
+      },
+      "keyboard": "Generate against current sources → Close signal workspace",
+      "source_binding": "flight-board/app/page.tsx:1846",
+      "equivalence": "Uses the exact deployed signal workspace dialog, signal-safe-failure layout, focus trap, narrow CSS, and button primitives; only the lifecycle branch is controlled because no authorized staging API mutates an immutable source binding."
+    },
+    {
+      "state": "conflict",
+      "execution": "actual hosted shared error renderer plus exact 409 contract",
+      "pass": true,
+      "axe_violations": [],
+      "axe_incomplete": 39,
+      "announcement": {
+        "role": "alert",
+        "aria_live": "assertive",
+        "inside_dialog": true,
+        "focused_once": true
+      },
+      "draft_preserved": true,
+      "keyboard_cycle": [
+        {
+          "aria": null,
+          "name": null,
+          "tag": "BUTTON",
+          "text": "Dismiss"
+        },
+        {
+          "aria": null,
+          "name": "original",
+          "tag": "TEXTAREA",
+          "text": ""
+        },
+        {
+          "aria": null,
+          "name": null,
+          "tag": "BUTTON",
+          "text": "Cancel"
+        },
+        {
+          "aria": null,
+          "name": null,
+          "tag": "BUTTON",
+          "text": "Submit signal"
+        },
+        {
+          "aria": "Close signal intake",
+          "name": null,
+          "tag": "BUTTON",
+          "text": "×"
+        },
+        {
+          "aria": null,
+          "name": null,
+          "tag": "BUTTON",
+          "text": "Dismiss"
+        }
+      ],
+      "source_binding": "All capture API errors, including 409 idempotency conflict, enter signalIntakeError at flight-board/app/page.tsx:1237-1265 and render at :2015.",
+      "narrow_screen": {
+        "inner_width": 320,
+        "scroll_width": 305,
+        "overflow": false
+      }
+    },
+    {
+      "state": "permission",
+      "execution": "actual hosted shared error renderer plus exact 403 contract",
+      "pass": true,
+      "axe_violations": [],
+      "axe_incomplete": 39,
+      "announcement": {
+        "role": "alert",
+        "aria_live": "assertive",
+        "inside_dialog": true,
+        "focused_once": true
+      },
+      "draft_preserved": true,
+      "keyboard_cycle": [
+        {
+          "aria": null,
+          "name": null,
+          "tag": "BUTTON",
+          "text": "Dismiss"
+        },
+        {
+          "aria": null,
+          "name": "original",
+          "tag": "TEXTAREA",
+          "text": ""
+        },
+        {
+          "aria": null,
+          "name": null,
+          "tag": "BUTTON",
+          "text": "Cancel"
+        },
+        {
+          "aria": null,
+          "name": null,
+          "tag": "BUTTON",
+          "text": "Submit signal"
+        },
+        {
+          "aria": "Close signal intake",
+          "name": null,
+          "tag": "BUTTON",
+          "text": "×"
+        },
+        {
+          "aria": null,
+          "name": null,
+          "tag": "BUTTON",
+          "text": "Dismiss"
+        }
+      ],
+      "source_binding": "The capture catch is status-agnostic; a 403 uses the same in-dialog signalIntakeError branch at flight-board/app/page.tsx:1237-1265 and :2015.",
+      "narrow_screen": {
+        "inner_width": 320,
+        "scroll_width": 305,
+        "overflow": false
+      }
+    },
+    {
+      "state": "failure",
+      "execution": "actual hosted",
+      "pass": true,
+      "axe_violations": [],
+      "axe_incomplete": 37,
+      "announcement": {
+        "role": "alert",
+        "text": "!AI analysis stopped safelyNo proposal was fabricated and no work item was created. Cause: model policy mismatch.Use the one bounded retry"
+      },
+      "work_item_created": false,
+      "keyboard_cycle": [
+        {
+          "aria": null,
+          "tag": "BUTTON",
+          "text": "Use the one bounded retry"
+        },
+        {
+          "aria": "Close signal workspace",
+          "tag": "BUTTON",
+          "text": "×"
+        },
+        {
+          "aria": null,
+          "tag": "BUTTON",
+          "text": "Use the one bounded retry"
+        },
+        {
+          "aria": "Close signal workspace",
+          "tag": "BUTTON",
+          "text": "×"
+        }
+      ],
+      "narrow_screen": {
+        "inner_width": 320,
+        "scroll_width": 305,
+        "overflow": false
+      }
+    },
+    {
+      "state": "retry",
+      "execution": "actual hosted control",
+      "pass": true,
+      "axe_violations": [],
+      "axe_incomplete": 37,
+      "control": {
+        "disabled": false,
+        "text": "Use the one bounded retry"
+      },
+      "keyboard_cycle": [
+        {
+          "aria": null,
+          "tag": "BUTTON",
+          "text": "Use the one bounded retry"
+        },
+        {
+          "aria": "Close signal workspace",
+          "tag": "BUTTON",
+          "text": "×"
+        },
+        {
+          "aria": null,
+          "tag": "BUTTON",
+          "text": "Use the one bounded retry"
+        },
+        {
+          "aria": "Close signal workspace",
+          "tag": "BUTTON",
+          "text": "×"
+        }
+      ],
+      "source_binding": "flight-board/app/page.tsx:1844",
+      "note": "The one bounded retry remained unconsumed in the final exact failure fixture so the Critic can inspect it; its processing renderer is the same actual state verified above."
+    }
+  ],
+  "focus_restoration": {
+    "ready_workspace": "Escape restored the exact signal-row opener in the hosted run",
+    "intake": "Close restores the Submit-a-signal opener; regression source at flight-board/app/page.tsx:1269-1278"
+  },
+  "contrast": {
+    "pass": true,
+    "standard": "WCAG AA 4.5:1 for normal text",
+    "test": "flight-board/tests/signal-accessibility.test.ts:39-51"
+  },
+  "regression_tests": {
+    "modal_error": "flight-board/tests/action-feedback.test.mjs:14-21",
+    "workspace_focus": "flight-board/tests/signal-accessibility.test.ts:10-26"
+  },
+  "overall": "PASS"
+}
+

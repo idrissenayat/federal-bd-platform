@@ -15,6 +15,24 @@ import { canonicalJson, createSignedDispatchEvent, dispatchPublicKey, sha256Hex,
 import { isStr028CaseId } from "../lib/str028-manifest";
 import { buildDecisionEvent, createDecisionIssuerEnvelope, createUuidV7, decisionDigest, decisionFinalizationError, decisionIssuerPublicKey, safeDecisionExport, validateDecisionIntent, verifyDecisionIssuerEnvelope, type DecisionIntentPayload, type PreparedDecisionPackage } from "../lib/decision-package";
 import { buildReviewIdentity, createSignedReviewEvent, validateReviewAssignmentPayload, verifyReviewerBinding, type ReviewAssignmentPayload } from "../lib/review-lifecycle";
+import {
+  downgradeUnsupportedFacts,
+  inspectSignalSafety,
+  signalProposalInput,
+  signalProposalInstructions,
+  signalProposalProviderSchema,
+  validateSignalProposal,
+  SIGNAL_MAX_CHARACTERS,
+  SIGNAL_MAX_COST_MICROS,
+  SIGNAL_MAX_INPUT_TOKENS,
+  SIGNAL_MAX_OUTPUT_TOKENS,
+  SIGNAL_MODEL,
+  SIGNAL_INPUT_COST_MICROS_PER_TOKEN,
+  SIGNAL_OUTPUT_COST_MICROS_PER_TOKEN,
+  SIGNAL_PROMPT_VERSION,
+  SIGNAL_PROPOSAL_SCHEMA_VERSION,
+  SIGNAL_TIMEOUT_MS,
+} from "../lib/signal-proposal";
 import { buildInitialQueuedEvent, ensureDispatchServiceSigner, handleDispatchServiceApi, type DispatchServiceEnv } from "./dispatch";
 
 type D1Result<T = Record<string, unknown>> = {
@@ -46,6 +64,10 @@ type Env = {
   DECISION_SERVICE_KEY_ID?: string;
   DECISION_SERVICE_KEY_VERSION?: string;
   DECISION_SERVICE_TOKEN?: string;
+  OPENAI_API_KEY?: string;
+  SIGNAL_AI_MODEL?: string;
+  SIGNAL_IMPLEMENTATION_REVISION?: string;
+  SIGNAL_RETENTION_SERVICE_TOKEN?: string;
 } & DispatchServiceEnv;
 
 type User = { id: string; email: string | null; name: string };
@@ -274,6 +296,58 @@ async function ensureColumn(db: Database, table: string, column: string, definit
   if (!(columns.results ?? []).some((candidate) => candidate.name === column)) {
     await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${definition}`).run();
   }
+}
+
+async function upgradeSignalRetentionDeleteTriggers(db: Database) {
+  const current = await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'signals_no_delete'")
+    .first<{ sql: string | null }>();
+  if (current?.sql?.includes("signal retention eligibility changed")) return;
+  await db.batch([
+    db.prepare("DROP TRIGGER IF EXISTS signals_no_delete"),
+    db.prepare(`CREATE TRIGGER signals_no_delete BEFORE DELETE ON signals WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      JOIN dispatch_privacy_policies policy ON policy.pod_id = OLD.pod_id
+        AND policy.policy_version = a.policy_version
+        AND policy.policy_version = (
+          SELECT MAX(latest.policy_version) FROM dispatch_privacy_policies latest WHERE latest.pod_id = OLD.pod_id
+        )
+      WHERE a.signal_id = OLD.signal_id
+        AND unixepoch(a.expires_at) > unixepoch('now')
+        AND OLD.lifecycle_state IN ('READY', 'SAFE_FAILURE', 'STALE')
+        AND OLD.terminal_disposition_at IS NOT NULL
+        AND unixepoch(OLD.retention_delete_after) <= unixepoch(a.cutoff_at)
+        AND policy.status = 'ACTIVE'
+        AND policy.terminal_retention_days = 90
+        AND policy.provider_recovery_days <= 30
+        AND policy.ruling_sha256 = a.ruling_sha256
+        AND policy.activation_receipt_sha256 = a.activation_receipt_sha256
+        AND NOT EXISTS (
+          SELECT 1 FROM signal_retention_holds hold
+          WHERE hold.signal_id = OLD.signal_id AND hold.action = 'HOLD'
+            AND unixepoch(hold.expires_at) > unixepoch('now')
+            AND NOT EXISTS (
+              SELECT 1 FROM signal_retention_holds release
+              WHERE release.signal_id = hold.signal_id AND release.action = 'RELEASE'
+                AND unixepoch(release.created_at) >= unixepoch(hold.created_at)
+            )
+        )
+    ) BEGIN SELECT RAISE(ABORT, 'signal retention eligibility changed'); END`),
+    db.prepare("DROP TRIGGER IF EXISTS signal_events_no_delete"),
+    db.prepare(`CREATE TRIGGER signal_events_no_delete BEFORE DELETE ON signal_events WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal events require the governed retention path'); END`),
+    db.prepare("DROP TRIGGER IF EXISTS signal_proposals_no_delete"),
+    db.prepare(`CREATE TRIGGER signal_proposals_no_delete BEFORE DELETE ON signal_proposals WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal proposals require the governed retention path'); END`),
+    db.prepare("DROP TRIGGER IF EXISTS signal_sources_no_delete"),
+    db.prepare(`CREATE TRIGGER signal_sources_no_delete BEFORE DELETE ON signal_sources WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal sources require the governed retention path'); END`),
+  ]);
 }
 
 async function ensureSchema(db: Database) {
@@ -660,8 +734,107 @@ async function ensureSchema(db: Database) {
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_code_reviews_item_created ON code_reviews (item_id, created_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_code_reviews_pr_head ON code_reviews (repository, pull_number, head_sha)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS signals (
+      signal_id text PRIMARY KEY NOT NULL, pod_id text NOT NULL, submitter_id text NOT NULL,
+      original_text text NOT NULL, original_sha256 text NOT NULL, idempotency_key text NOT NULL,
+      lifecycle_state text NOT NULL, current_proposal_version integer NOT NULL DEFAULT 0,
+      terminal_disposition_at text, retention_delete_after text NOT NULL,
+      created_at text NOT NULL, updated_at text NOT NULL,
+      UNIQUE(pod_id, idempotency_key)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_signals_pod_created ON signals (pod_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS signal_events (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, signal_id text NOT NULL, event_version integer NOT NULL,
+      event_type text NOT NULL, actor_id text NOT NULL, detail_json text NOT NULL,
+      previous_event_sha256 text, event_sha256 text NOT NULL, created_at text NOT NULL,
+      UNIQUE(signal_id, event_version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_signal_events_created ON signal_events (signal_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS signal_proposals (
+      proposal_id text PRIMARY KEY NOT NULL, signal_id text NOT NULL, version integer NOT NULL,
+      proposal_json text NOT NULL, schema_version text NOT NULL, input_sha256 text NOT NULL,
+      output_sha256 text NOT NULL, state text NOT NULL, confidence text NOT NULL,
+      readiness_status text NOT NULL, provider text NOT NULL, model text NOT NULL,
+      prompt_version text NOT NULL, implementation_revision text NOT NULL, supersedes_proposal_id text,
+      created_at text NOT NULL,
+      UNIQUE(signal_id, version)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_signal_proposals_created ON signal_proposals (signal_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS signal_sources (
+      source_id text PRIMARY KEY NOT NULL, signal_id text NOT NULL, proposal_id text NOT NULL,
+      source_type text NOT NULL, source_reference text NOT NULL, revision text, sha256 text NOT NULL,
+      verification_state text NOT NULL, retrieved_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_signal_sources_proposal ON signal_sources (proposal_id, source_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS signal_generation_attempts (
+      attempt_id text PRIMARY KEY NOT NULL, signal_id text NOT NULL, attempt_number integer NOT NULL,
+      provider text NOT NULL, model text NOT NULL, prompt_version text NOT NULL, state text NOT NULL,
+      implementation_revision text NOT NULL,
+      target_proposal_version integer NOT NULL DEFAULT 1, started_at text NOT NULL,
+      completed_at text, input_tokens integer, output_tokens integer,
+      estimated_cost_micros integer, error_code text, input_sha256 text NOT NULL, output_sha256 text,
+      UNIQUE(signal_id, attempt_number)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_signal_attempts_started ON signal_generation_attempts (signal_id, started_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS signal_rejections (
+      rejection_id text PRIMARY KEY NOT NULL, pod_id text NOT NULL, actor_id text NOT NULL,
+      reason_code text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_signal_rejections_pod_created ON signal_rejections (pod_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS signal_retention_holds (
+      hold_event_id text PRIMARY KEY NOT NULL, signal_id text NOT NULL,
+      action text NOT NULL, reason_code text NOT NULL, expires_at text NOT NULL,
+      actor_id text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_signal_retention_holds_signal_created ON signal_retention_holds (signal_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS signal_retention_authorizations (
+      signal_id text PRIMARY KEY NOT NULL, authorization_nonce text NOT NULL, expires_at text NOT NULL,
+      cutoff_at text NOT NULL, policy_version integer NOT NULL, ruling_sha256 text NOT NULL,
+      activation_receipt_sha256 text NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS signal_retention_runs (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL, cutoff_at text NOT NULL,
+      eligible_count integer NOT NULL, deleted_count integer NOT NULL,
+      policy_bindings_sha256 text NOT NULL, created_at text NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_signal_retention_runs_created ON signal_retention_runs (created_at)"),
   ]);
   await ensureColumn(db, "work_items", "rework_instructions", "rework_instructions text");
+  await ensureColumn(db, "signal_proposals", "supersedes_proposal_id", "supersedes_proposal_id text");
+  await ensureColumn(db, "signal_generation_attempts", "target_proposal_version", "target_proposal_version integer NOT NULL DEFAULT 1");
+  await ensureColumn(db, "signal_generation_attempts", "implementation_revision", "implementation_revision text NOT NULL DEFAULT 'legacy-unbound'");
+  await ensureColumn(db, "signals", "terminal_disposition_at", "terminal_disposition_at text");
+  await ensureColumn(db, "signal_retention_authorizations", "cutoff_at", "cutoff_at text NOT NULL DEFAULT '1970-01-01T00:00:00.000Z'");
+  await ensureColumn(db, "signal_retention_authorizations", "policy_version", "policy_version integer NOT NULL DEFAULT 0");
+  await ensureColumn(db, "signal_retention_authorizations", "ruling_sha256", "ruling_sha256 text NOT NULL DEFAULT ''");
+  await ensureColumn(db, "signal_retention_authorizations", "activation_receipt_sha256", "activation_receipt_sha256 text NOT NULL DEFAULT ''");
+  await db.batch([
+    db.prepare("DROP TRIGGER IF EXISTS signals_immutable_original"),
+    db.prepare(`UPDATE signals SET
+      terminal_disposition_at = updated_at,
+      retention_delete_after = strftime('%Y-%m-%dT%H:%M:%fZ', updated_at, '+90 days')
+      WHERE terminal_disposition_at IS NULL AND lifecycle_state IN ('READY', 'SAFE_FAILURE', 'STALE')`),
+    db.prepare(`UPDATE signals SET retention_delete_after = '9999-12-31T23:59:59.999Z'
+      WHERE terminal_disposition_at IS NULL AND lifecycle_state NOT IN ('READY', 'SAFE_FAILURE', 'STALE')`),
+    db.prepare(`CREATE TRIGGER signals_immutable_original
+      BEFORE UPDATE ON signals WHEN
+        NEW.signal_id != OLD.signal_id OR NEW.pod_id != OLD.pod_id OR NEW.submitter_id != OLD.submitter_id OR
+        NEW.original_text != OLD.original_text OR NEW.original_sha256 != OLD.original_sha256 OR
+        NEW.idempotency_key != OLD.idempotency_key OR
+        ((NEW.terminal_disposition_at IS NOT OLD.terminal_disposition_at OR NEW.retention_delete_after != OLD.retention_delete_after) AND NOT (
+          OLD.terminal_disposition_at IS NULL AND NEW.terminal_disposition_at IS NOT NULL AND
+          NEW.lifecycle_state IN ('READY', 'SAFE_FAILURE', 'STALE') AND
+          unixepoch(NEW.retention_delete_after) = unixepoch(NEW.terminal_disposition_at, '+90 days')
+        )) OR NEW.created_at != OLD.created_at
+      BEGIN SELECT RAISE(ABORT, 'signal original and authority are immutable'); END`),
+    db.prepare(`CREATE TRIGGER IF NOT EXISTS signals_terminal_transition_guard
+      BEFORE UPDATE ON signals WHEN
+        OLD.terminal_disposition_at IS NULL AND NEW.lifecycle_state IN ('READY', 'SAFE_FAILURE', 'STALE') AND
+        (NEW.terminal_disposition_at IS NULL OR
+          unixepoch(NEW.retention_delete_after) != unixepoch(NEW.terminal_disposition_at, '+90 days'))
+      BEGIN SELECT RAISE(ABORT, 'signal terminal retention boundary is required'); END`),
+  ]);
+  await upgradeSignalRetentionDeleteTriggers(db);
   await ensureColumn(db, "work_items", "blocked_since", "blocked_since text");
   await ensureColumn(db, "work_items", "value_hypothesis_json", "value_hypothesis_json text");
   await ensureColumn(db, "work_items", "delivery_forecast_json", "delivery_forecast_json text");
@@ -825,6 +998,74 @@ async function ensureSchema(db: Database) {
     BEFORE UPDATE ON dispatch_privacy_policies BEGIN SELECT RAISE(ABORT, 'dispatch privacy policy versions are immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS dispatch_privacy_policies_no_delete
     BEFORE DELETE ON dispatch_privacy_policies BEGIN SELECT RAISE(ABORT, 'dispatch privacy policy versions are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signals_immutable_original
+    BEFORE UPDATE ON signals WHEN
+      NEW.signal_id != OLD.signal_id OR NEW.pod_id != OLD.pod_id OR NEW.submitter_id != OLD.submitter_id OR
+      NEW.original_text != OLD.original_text OR NEW.original_sha256 != OLD.original_sha256 OR
+      NEW.idempotency_key != OLD.idempotency_key OR
+      ((NEW.terminal_disposition_at IS NOT OLD.terminal_disposition_at OR NEW.retention_delete_after != OLD.retention_delete_after) AND NOT (
+        OLD.terminal_disposition_at IS NULL AND NEW.terminal_disposition_at IS NOT NULL AND
+        NEW.lifecycle_state IN ('READY', 'SAFE_FAILURE', 'STALE') AND
+        unixepoch(NEW.retention_delete_after) = unixepoch(NEW.terminal_disposition_at, '+90 days')
+      )) OR
+      NEW.created_at != OLD.created_at
+    BEGIN SELECT RAISE(ABORT, 'signal original and authority are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signals_terminal_transition_guard
+    BEFORE UPDATE ON signals WHEN
+      OLD.terminal_disposition_at IS NULL AND NEW.lifecycle_state IN ('READY', 'SAFE_FAILURE', 'STALE') AND
+      (NEW.terminal_disposition_at IS NULL OR
+        unixepoch(NEW.retention_delete_after) != unixepoch(NEW.terminal_disposition_at, '+90 days'))
+    BEGIN SELECT RAISE(ABORT, 'signal terminal retention boundary is required'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_events_no_update
+    BEFORE UPDATE ON signal_events BEGIN SELECT RAISE(ABORT, 'signal events are append-only'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_events_no_delete BEFORE DELETE ON signal_events WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal events require the governed retention path'); END`).run();
+  await db.prepare("DROP TRIGGER IF EXISTS signal_proposals_no_update").run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_proposals_governed_state
+    BEFORE UPDATE ON signal_proposals WHEN
+      NEW.proposal_id != OLD.proposal_id OR NEW.signal_id != OLD.signal_id OR NEW.version != OLD.version OR
+      NEW.proposal_json != OLD.proposal_json OR NEW.schema_version != OLD.schema_version OR
+      NEW.input_sha256 != OLD.input_sha256 OR NEW.output_sha256 != OLD.output_sha256 OR
+      NEW.confidence != OLD.confidence OR NEW.readiness_status != OLD.readiness_status OR
+      NEW.provider != OLD.provider OR NEW.model != OLD.model OR NEW.prompt_version != OLD.prompt_version OR
+      NEW.implementation_revision != OLD.implementation_revision OR
+      NEW.supersedes_proposal_id IS NOT OLD.supersedes_proposal_id OR NEW.created_at != OLD.created_at OR
+      OLD.state != 'CURRENT' OR NEW.state != 'STALE'
+    BEGIN SELECT RAISE(ABORT, 'signal proposal content is immutable and only CURRENT to STALE is allowed'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_proposals_no_delete BEFORE DELETE ON signal_proposals WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal proposals require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_sources_no_update
+    BEFORE UPDATE ON signal_sources BEGIN SELECT RAISE(ABORT, 'signal sources are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_sources_no_delete BEFORE DELETE ON signal_sources WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal sources require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_generation_attempts_no_delete BEFORE DELETE ON signal_generation_attempts WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal attempts require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_generation_attempts_immutable_provenance
+    BEFORE UPDATE ON signal_generation_attempts WHEN
+      NEW.attempt_id != OLD.attempt_id OR NEW.signal_id != OLD.signal_id OR
+      NEW.attempt_number != OLD.attempt_number OR NEW.target_proposal_version != OLD.target_proposal_version OR
+      NEW.provider != OLD.provider OR NEW.model != OLD.model OR NEW.prompt_version != OLD.prompt_version OR
+      NEW.implementation_revision != OLD.implementation_revision OR NEW.started_at != OLD.started_at OR
+      NEW.input_sha256 != OLD.input_sha256
+    BEGIN SELECT RAISE(ABORT, 'signal attempt provenance is immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_retention_holds_no_update
+    BEFORE UPDATE ON signal_retention_holds BEGIN SELECT RAISE(ABORT, 'signal retention hold events are immutable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_retention_holds_no_delete BEFORE DELETE ON signal_retention_holds WHEN NOT EXISTS (
+      SELECT 1 FROM signal_retention_authorizations a
+      WHERE a.signal_id = OLD.signal_id AND unixepoch(a.expires_at) > unixepoch('now')
+    ) BEGIN SELECT RAISE(ABORT, 'signal holds require the governed retention path'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_retention_runs_no_update
+    BEFORE UPDATE ON signal_retention_runs BEGIN SELECT RAISE(ABORT, 'signal retention runs are append-only'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS signal_retention_runs_no_delete
+    BEFORE DELETE ON signal_retention_runs BEGIN SELECT RAISE(ABORT, 'signal retention runs are append-only'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS buzz_channel_registry_no_update
     BEFORE UPDATE ON buzz_channel_registry BEGIN SELECT RAISE(ABORT, 'Buzz channel registry versions are immutable'); END`).run();
   await db.prepare(`CREATE TRIGGER IF NOT EXISTS buzz_channel_registry_no_delete
@@ -1140,6 +1381,10 @@ async function bootstrap(db: Database, user: User) {
     FROM decision_intents i JOIN work_items w ON w.id = i.item_id
     WHERE i.pod_id = ? ORDER BY i.created_at DESC LIMIT 80`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").all<Record<string, unknown>>();
+  const recentSignals = await db.prepare(`SELECT signal_id, submitter_id, original_text, original_sha256,
+      lifecycle_state, current_proposal_version, terminal_disposition_at, retention_delete_after, created_at, updated_at
+    FROM signals WHERE pod_id = ? ORDER BY created_at DESC LIMIT 20`)
+    .bind(currentMember?.pod_id ?? "steer-flight-team").all<Record<string, unknown>>();
   return {
     generated_at: generatedAt,
     user: { ...user, role: currentMember?.role ?? "Contributor", authority: currentMember?.authority ?? "May own work", role_contexts: roleContexts(currentMember?.role ?? "Contributor") },
@@ -1154,6 +1399,7 @@ async function bootstrap(db: Database, user: User) {
     service_level_distributions: buildServiceLevelDistributions(authorizedItems),
     privacy_policy: privacyPolicy ?? null,
     decision_policy: decisionPolicy ?? null,
+    signals: recentSignals.results ?? [],
     decision_receipts: (decisionReceipts.results ?? []).map((receipt) => {
       const intent = JSON.parse(String(receipt.intent_json)) as DecisionIntentPayload;
       return {
@@ -1520,7 +1766,7 @@ async function manageDispatchRetentionHold(request: Request, db: Database, user:
   return json({ ok: true, hold_event_id: holdEventId, action, expires_at: new Date(requestedExpiry).toISOString() }, 201);
 }
 
-const telemetryContract: Record<string, { labelName: string; values: string[]; histogram?: boolean }> = {
+const telemetryContract: Record<string, { labelName: string; values: string[]; histogram?: boolean; measureMaximum?: number }> = {
   steer_work_item_save_feedback_latency_ms: { labelName: "", values: [], histogram: true },
   steer_agent_handoff_feedback_latency_ms: { labelName: "", values: [], histogram: true },
   steer_work_item_save_outcome_total: { labelName: "outcome", values: ["success", "validation", "conflict", "transport"] },
@@ -1528,6 +1774,17 @@ const telemetryContract: Record<string, { labelName: string; values: string[]; h
   steer_agent_handoff_outcome_total: { labelName: "outcome", values: ["queued", "delivered", "blocked", "duplicate_suppressed", "error"] },
   steer_stale_ui_recurrence_total: { labelName: "severity", values: ["critical", "noncritical"] },
   steer_duplicate_dispatch_total: { labelName: "", values: [] },
+  steer_signal_capture_total: { labelName: "outcome", values: ["success", "replay", "validation", "conflict", "safety_rejection"] },
+  steer_signal_capture_latency_ms: { labelName: "", values: [], histogram: true },
+  steer_signal_generation_total: { labelName: "outcome", values: ["success", "missing_credential", "model_policy_mismatch", "input_budget_exceeded", "cost_budget_exceeded", "provider_timeout", "provider_4xx", "provider_5xx", "malformed_output", "proposal_validation_failed", "token_budget_exceeded", "provider_failure"] },
+  steer_signal_generation_latency_ms: { labelName: "", values: [], histogram: true },
+  steer_signal_validation_total: { labelName: "outcome", values: ["success", "failure"] },
+  steer_signal_safety_rejection_total: { labelName: "reason_code", values: ["PRIVATE_KEY", "API_KEY", "ACCESS_KEY", "BEARER_TOKEN", "CREDENTIAL", "SSN", "CLASSIFIED", "CONTROLLED_DATA", "EXPORT_CONTROLLED", "PROMPT_INJECTION", "ACTIVE_MARKUP"] },
+  steer_signal_retry_total: { labelName: "outcome", values: ["started", "failure", "success", "limit", "reconciled"] },
+  steer_signal_provider_tokens_total: { labelName: "direction", values: ["input", "output"], measureMaximum: SIGNAL_MAX_INPUT_TOKENS },
+  steer_signal_provider_estimated_cost_micros_total: { labelName: "", values: [], measureMaximum: SIGNAL_MAX_COST_MICROS },
+  steer_signal_unsupported_fact_total: { labelName: "", values: [], measureMaximum: 20 },
+  steer_signal_work_item_side_effect_total: { labelName: "", values: [], measureMaximum: 100 },
 };
 
 async function recordBoundedTelemetry(request: Request, db: Database, env: Env) {
@@ -1555,8 +1812,8 @@ async function recordBoundedTelemetry(request: Request, db: Database, env: Env) 
     if (!contract || labelName !== contract.labelName || (contract.values.length ? !contract.values.includes(labelValue) : labelValue !== "")) {
       return json({ error: "Telemetry metric or label is outside the bounded allowlist." }, 400);
     }
-    if (!Number.isInteger(value) || value < 0 || (contract.histogram ? value > 60_000 : value !== 1)) {
-      return json({ error: contract.histogram ? "Latency must be an integer from 0 through 60000 ms." : "Counter observations must have value 1." }, 400);
+    if (!Number.isInteger(value) || value < 0 || (contract.histogram ? value > 60_000 : contract.measureMaximum !== undefined ? value > contract.measureMaximum : value !== 1)) {
+      return json({ error: contract.histogram ? "Latency must be an integer from 0 through 60000 ms." : contract.measureMaximum !== undefined ? "Measured value is outside its bounded contract." : "Counter observations must have value 1." }, 400);
     }
     if (caseId && !isStr028CaseId(caseId)) {
       return json({ error: "Only a pre-enrolled bounded matrix case ID may label telemetry." }, 400);
@@ -1571,6 +1828,487 @@ async function recordBoundedTelemetry(request: Request, db: Database, env: Env) 
     (metric_name, label_name, label_value, value, case_id, observed_at) VALUES (?, ?, ?, ?, ?, ?)`)
     .bind(observation.metricName, observation.labelName, observation.labelValue, observation.value, observation.caseId, observedAt)));
   return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+}
+
+type SignalRow = {
+  signal_id: string;
+  pod_id: string;
+  submitter_id: string;
+  original_text: string;
+  original_sha256: string;
+  idempotency_key: string;
+  lifecycle_state: string;
+  current_proposal_version: number;
+  terminal_disposition_at: string | null;
+  retention_delete_after: string;
+  created_at: string;
+  updated_at: string;
+};
+
+async function recordSignalTelemetry(db: Database, metricName: string, labelName = "", labelValue = "", value = 1) {
+  await db.prepare(`INSERT INTO steer_telemetry
+    (metric_name, label_name, label_value, value, case_id, observed_at)
+    VALUES (?, ?, ?, ?, NULL, ?)`).bind(metricName, labelName, labelValue, value, new Date().toISOString()).run();
+}
+
+async function recordSignalLatency(db: Database, metricName: string, startedAtMs: number) {
+  await recordSignalTelemetry(db, metricName, "", "", Math.max(0, Math.min(60_000, Date.now() - startedAtMs)));
+}
+
+function signalRetentionDate(now: Date) {
+  return new Date(now.getTime() + 90 * 24 * 60 * 60 * 1_000).toISOString();
+}
+
+const signalPendingRetentionDate = "9999-12-31T23:59:59.999Z";
+
+async function scopedSignal(db: Database, user: User, signalId: string) {
+  return db.prepare(`SELECT s.* FROM signals s
+    JOIN members actor ON actor.id = ? AND actor.pod_id = s.pod_id AND actor.status IN ('available', 'enrolled')
+    WHERE s.signal_id = ?`).bind(user.id, signalId).first<SignalRow>();
+}
+
+async function signalSnapshot(db: Database, user: User, signalId: string) {
+  const signal = await scopedSignal(db, user, signalId);
+  if (!signal) return null;
+  const [proposal, sources, attempts, events] = await Promise.all([
+    db.prepare(`SELECT * FROM signal_proposals WHERE signal_id = ?
+      ORDER BY version DESC LIMIT 1`).bind(signalId).first<Record<string, unknown>>(),
+    db.prepare(`SELECT source.* FROM signal_sources source
+      JOIN signal_proposals proposal ON proposal.proposal_id = source.proposal_id
+      WHERE source.signal_id = ? AND proposal.state = 'CURRENT'
+      ORDER BY source.retrieved_at DESC, source.source_id`).bind(signalId).all<Record<string, unknown>>(),
+    db.prepare(`SELECT attempt_id, signal_id, attempt_number, provider, model, prompt_version, implementation_revision, state,
+      target_proposal_version, started_at, completed_at, input_tokens, output_tokens, estimated_cost_micros, error_code,
+      input_sha256, output_sha256 FROM signal_generation_attempts WHERE signal_id = ?
+      ORDER BY attempt_number DESC`).bind(signalId).all<Record<string, unknown>>(),
+    db.prepare(`SELECT id, signal_id, event_version, event_type, actor_id, detail_json,
+      previous_event_sha256, event_sha256, created_at FROM signal_events WHERE signal_id = ?
+      ORDER BY event_version`).bind(signalId).all<Record<string, unknown>>(),
+  ]);
+  return {
+    signal,
+    proposal: proposal ? { ...proposal, value: JSON.parse(String(proposal.proposal_json)) } : null,
+    sources: sources.results ?? [],
+    attempts: attempts.results ?? [],
+    events: (events.results ?? []).map((event) => ({ ...event, detail: JSON.parse(String(event.detail_json)) })),
+  };
+}
+
+async function nextSignalEvent(db: Database, signalId: string, eventType: string, actorId: string, detail: Record<string, unknown>, now: string) {
+  const previous = await db.prepare(`SELECT event_version, event_sha256 FROM signal_events
+    WHERE signal_id = ? ORDER BY event_version DESC LIMIT 1`).bind(signalId).first<{ event_version: number; event_sha256: string }>();
+  const eventVersion = Number(previous?.event_version ?? -1) + 1;
+  const payload = { signalId, eventVersion, eventType, actorId, detail, previousEventSha256: previous?.event_sha256 ?? null, createdAt: now };
+  return {
+    eventVersion,
+    detailJson: canonicalJson(detail),
+    previousEventSha256: previous?.event_sha256 ?? null,
+    eventSha256: await sha256Hex(canonicalJson(payload)),
+  };
+}
+
+async function createSignal(request: Request, db: Database, user: User) {
+  const captureStartedAt = Date.now();
+  const actor = await memberContext(db, user);
+  if (!actor || !["available", "enrolled"].includes(actor.status)) return json({ error: "Enrolled POD membership is required." }, 403);
+  const body = await request.json() as Record<string, unknown>;
+  if (Object.keys(body).some((key) => !["original", "idempotencyKey"].includes(key))) {
+    await recordSignalTelemetry(db, "steer_signal_capture_total", "outcome", "validation");
+    await recordSignalLatency(db, "steer_signal_capture_latency_ms", captureStartedAt);
+    return json({ error: "Signal capture accepts only the original signal and idempotency key." }, 400);
+  }
+  const original = typeof body.original === "string" ? body.original : "";
+  const idempotencyKey = String(body.idempotencyKey ?? "");
+  if (original.trim().length < 10 || [...original].length > SIGNAL_MAX_CHARACTERS || !/^[A-Za-z0-9:_-]{16,128}$/.test(idempotencyKey)) {
+    await recordSignalTelemetry(db, "steer_signal_capture_total", "outcome", "validation");
+    await recordSignalLatency(db, "steer_signal_capture_latency_ms", captureStartedAt);
+    return json({ error: original.trim().length < 10 || [...original].length > SIGNAL_MAX_CHARACTERS ? `Describe the signal in 10–${SIGNAL_MAX_CHARACTERS.toLocaleString()} characters.` : "A valid 16–128 character idempotency key is required." }, 400);
+  }
+  const safety = inspectSignalSafety(original);
+  const now = new Date().toISOString();
+  const podId = actor.pod_id ?? "steer-flight-team";
+  if (!safety.ok) {
+    await db.prepare(`INSERT INTO signal_rejections
+      (rejection_id, pod_id, actor_id, reason_code, created_at) VALUES (?, ?, ?, ?, ?)`)
+      .bind(createUuidV7(), podId, user.id, safety.code, now).run();
+    await recordSignalTelemetry(db, "steer_signal_safety_rejection_total", "reason_code", safety.code);
+    await recordSignalTelemetry(db, "steer_signal_capture_total", "outcome", "safety_rejection");
+    await recordSignalLatency(db, "steer_signal_capture_latency_ms", captureStartedAt);
+    return json({ error: "This signal may contain credentials, controlled data, or instructions aimed at the AI. Remove that content and submit only public, unclassified work context.", code: safety.code }, 422);
+  }
+  const originalSha256 = await sha256Hex(original);
+  const existing = await db.prepare(`SELECT signal_id, original_sha256 FROM signals
+    WHERE pod_id = ? AND idempotency_key = ?`).bind(podId, idempotencyKey).first<{ signal_id: string; original_sha256: string }>();
+  if (existing) {
+    if (existing.original_sha256 !== originalSha256) {
+      await recordSignalTelemetry(db, "steer_signal_capture_total", "outcome", "conflict");
+      await recordSignalLatency(db, "steer_signal_capture_latency_ms", captureStartedAt);
+      return json({ error: "This idempotency key was already used for different signal bytes.", code: "IDEMPOTENCY_CONFLICT" }, 409);
+    }
+    await recordSignalTelemetry(db, "steer_signal_capture_total", "outcome", "replay");
+    await recordSignalLatency(db, "steer_signal_capture_latency_ms", captureStartedAt);
+    return json({ ok: true, idempotent_replay: true, ...(await signalSnapshot(db, user, existing.signal_id)) });
+  }
+  const signalId = createUuidV7();
+  const event = await nextSignalEvent(db, signalId, "SIGNAL_CAPTURED", user.id, { originalSha256, lifecycleState: "CAPTURED" }, now);
+  try {
+    await db.batch([
+      db.prepare(`INSERT INTO signals
+        (signal_id, pod_id, submitter_id, original_text, original_sha256, idempotency_key,
+         lifecycle_state, current_proposal_version, terminal_disposition_at, retention_delete_after, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'CAPTURED', 0, NULL, ?, ?, ?)`)
+        .bind(signalId, podId, user.id, original, originalSha256, idempotencyKey, signalPendingRetentionDate, now, now),
+      db.prepare(`INSERT INTO signal_events
+        (signal_id, event_version, event_type, actor_id, detail_json, previous_event_sha256, event_sha256, created_at)
+        VALUES (?, ?, 'SIGNAL_CAPTURED', ?, ?, ?, ?, ?)`)
+        .bind(signalId, event.eventVersion, user.id, event.detailJson, event.previousEventSha256, event.eventSha256, now),
+    ]);
+  } catch (error) {
+    const raced = await db.prepare(`SELECT signal_id, original_sha256 FROM signals
+      WHERE pod_id = ? AND idempotency_key = ?`).bind(podId, idempotencyKey).first<{ signal_id: string; original_sha256: string }>();
+    if (!raced || raced.original_sha256 !== originalSha256) throw error;
+    await recordSignalTelemetry(db, "steer_signal_capture_total", "outcome", "replay");
+    await recordSignalLatency(db, "steer_signal_capture_latency_ms", captureStartedAt);
+    return json({ ok: true, idempotent_replay: true, ...(await signalSnapshot(db, user, raced.signal_id)) });
+  }
+  await recordSignalTelemetry(db, "steer_signal_capture_total", "outcome", "success");
+  await recordSignalLatency(db, "steer_signal_capture_latency_ms", captureStartedAt);
+  return json({ ok: true, idempotent_replay: false, ...(await signalSnapshot(db, user, signalId)) }, 201);
+}
+
+function responseOutputText(value: Record<string, unknown>) {
+  if (typeof value.output_text === "string") return value.output_text;
+  const output = Array.isArray(value.output) ? value.output : [];
+  for (const item of output) {
+    if (!item || typeof item !== "object") continue;
+    const content = Array.isArray((item as Record<string, unknown>).content) ? (item as Record<string, unknown>).content as unknown[] : [];
+    for (const part of content) {
+      if (part && typeof part === "object" && (part as Record<string, unknown>).type === "output_text" && typeof (part as Record<string, unknown>).text === "string") return String((part as Record<string, unknown>).text);
+    }
+  }
+  return "";
+}
+
+async function callSignalModel(env: Env, signalId: string, original: string) {
+  if (!env.OPENAI_API_KEY) throw new Error("MISSING_CREDENTIAL");
+  if (env.SIGNAL_AI_MODEL && env.SIGNAL_AI_MODEL !== SIGNAL_MODEL) throw new Error("MODEL_POLICY_MISMATCH");
+  const instructions = signalProposalInstructions();
+  const input = signalProposalInput(signalId, original);
+  const conservativeInputTokens = [...instructions, ...input].length;
+  if (conservativeInputTokens > SIGNAL_MAX_INPUT_TOKENS) throw new Error("INPUT_BUDGET_EXCEEDED");
+  const nominalMaximumCostMicros = SIGNAL_MAX_INPUT_TOKENS * SIGNAL_INPUT_COST_MICROS_PER_TOKEN
+    + SIGNAL_MAX_OUTPUT_TOKENS * SIGNAL_OUTPUT_COST_MICROS_PER_TOKEN;
+  if (nominalMaximumCostMicros > SIGNAL_MAX_COST_MICROS) throw new Error("COST_BUDGET_EXCEEDED");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SIGNAL_TIMEOUT_MS);
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY}` },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: SIGNAL_MODEL,
+        service_tier: "default",
+        reasoning: { effort: "low" },
+        store: false,
+        instructions,
+        input,
+        max_output_tokens: SIGNAL_MAX_OUTPUT_TOKENS,
+        text: { format: { type: "json_schema", name: "signal_proposal", strict: true, schema: signalProposalProviderSchema } },
+      }),
+    });
+    if (!response.ok) throw new Error(response.status >= 500 ? "PROVIDER_5XX" : "PROVIDER_4XX");
+    const result = await response.json() as Record<string, unknown>;
+    const outputText = responseOutputText(result);
+    if (!outputText) throw new Error("MALFORMED_OUTPUT");
+    let parsed: unknown;
+    try { parsed = JSON.parse(outputText); } catch { throw new Error("MALFORMED_OUTPUT"); }
+    const validated = validateSignalProposal(parsed);
+    if (validated.error || !validated.proposal) throw new Error("PROPOSAL_VALIDATION_FAILED");
+    const proposal = downgradeUnsupportedFacts(validated.proposal, new Set());
+    const unsupportedFactCount = validated.proposal.facts.length - proposal.facts.length;
+    const usage = result.usage && typeof result.usage === "object" ? result.usage as Record<string, unknown> : {};
+    const inputTokens = Number(usage.input_tokens ?? 0);
+    const outputTokens = Number(usage.output_tokens ?? 0);
+    if (!Number.isFinite(inputTokens) || !Number.isFinite(outputTokens) || inputTokens > SIGNAL_MAX_INPUT_TOKENS || outputTokens > SIGNAL_MAX_OUTPUT_TOKENS) throw new Error("TOKEN_BUDGET_EXCEEDED");
+    const estimatedCostMicros = Math.round(inputTokens * SIGNAL_INPUT_COST_MICROS_PER_TOKEN
+      + outputTokens * SIGNAL_OUTPUT_COST_MICROS_PER_TOKEN);
+    if (estimatedCostMicros > SIGNAL_MAX_COST_MICROS) throw new Error("COST_BUDGET_EXCEEDED");
+    return { proposal, inputTokens, outputTokens, estimatedCostMicros, unsupportedFactCount };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw new Error("PROVIDER_TIMEOUT");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+const signalFailureCodes = new Set([
+  "MISSING_CREDENTIAL", "MODEL_POLICY_MISMATCH", "INPUT_BUDGET_EXCEEDED", "COST_BUDGET_EXCEEDED",
+  "PROVIDER_TIMEOUT", "PROVIDER_4XX", "PROVIDER_5XX", "MALFORMED_OUTPUT",
+  "PROPOSAL_VALIDATION_FAILED", "TOKEN_BUDGET_EXCEEDED",
+]);
+
+async function failSignalAttempt(db: Database, user: User, signal: SignalRow, attemptId: string, code: string, now: string) {
+  const event = await nextSignalEvent(db, signal.signal_id, "SIGNAL_GENERATION_FAILED", user.id, { attemptId, code, lifecycleState: "SAFE_FAILURE" }, now);
+  await db.batch([
+    db.prepare(`UPDATE signal_generation_attempts SET state = 'FAILED', completed_at = ?, error_code = ? WHERE attempt_id = ?`).bind(now, code, attemptId),
+    db.prepare(`UPDATE signals SET lifecycle_state = 'SAFE_FAILURE',
+      terminal_disposition_at = COALESCE(terminal_disposition_at, ?),
+      retention_delete_after = CASE WHEN terminal_disposition_at IS NULL THEN ? ELSE retention_delete_after END,
+      updated_at = ? WHERE signal_id = ?`).bind(now, signalRetentionDate(new Date(now)), now, signal.signal_id),
+    db.prepare(`INSERT INTO signal_events
+      (signal_id, event_version, event_type, actor_id, detail_json, previous_event_sha256, event_sha256, created_at)
+      VALUES (?, ?, 'SIGNAL_GENERATION_FAILED', ?, ?, ?, ?, ?)`)
+      .bind(signal.signal_id, event.eventVersion, user.id, event.detailJson, event.previousEventSha256, event.eventSha256, now),
+  ]);
+}
+
+async function generateSignalProposal(db: Database, env: Env, user: User, signalId: string, allowRetry: boolean) {
+  const generationStartedAt = Date.now();
+  const signal = await scopedSignal(db, user, signalId);
+  if (!signal) return json({ error: "Signal not found in your POD." }, 404);
+  if (signal.lifecycle_state === "READY") return json({ ok: true, idempotent_replay: true, ...(await signalSnapshot(db, user, signalId)) });
+  if (signal.lifecycle_state === "PROCESSING") return json({ ok: true, processing: true, ...(await signalSnapshot(db, user, signalId)) }, 202);
+  if (signal.lifecycle_state === "SAFE_FAILURE" && !allowRetry) return json({ error: "This signal is in a safe-failure state. Use its bounded retry action.", code: "RETRY_REQUIRED", ...(await signalSnapshot(db, user, signalId)) }, 409);
+  if (!['CAPTURED', 'SAFE_FAILURE', 'STALE'].includes(signal.lifecycle_state)) return json({ error: "This signal state cannot start generation." }, 409);
+  const targetProposalVersion = Number(signal.current_proposal_version ?? 0) + 1;
+  const [attemptCount, targetAttemptCount] = await Promise.all([
+    db.prepare("SELECT COUNT(*) AS count FROM signal_generation_attempts WHERE signal_id = ?").bind(signalId).first<{ count: number }>(),
+    db.prepare("SELECT COUNT(*) AS count FROM signal_generation_attempts WHERE signal_id = ? AND target_proposal_version = ?").bind(signalId, targetProposalVersion).first<{ count: number }>(),
+  ]);
+  const attemptNumber = Number(attemptCount?.count ?? 0) + 1;
+  const attemptsForTarget = Number(targetAttemptCount?.count ?? 0);
+  if ((!allowRetry && attemptsForTarget !== 0) || (allowRetry && attemptsForTarget !== 1)) {
+    if (allowRetry) await recordSignalTelemetry(db, "steer_signal_retry_total", "outcome", "limit");
+    return json({ error: "The bounded generation-attempt limit has been reached.", code: "RETRY_LIMIT" }, 409);
+  }
+  const attemptId = createUuidV7();
+  const startedAt = new Date().toISOString();
+  const implementationRevision = String(env.SIGNAL_IMPLEMENTATION_REVISION ?? "local-unversioned");
+  const inputSha256 = await sha256Hex(canonicalJson({ signalId, originalSha256: signal.original_sha256, promptVersion: SIGNAL_PROMPT_VERSION, schemaVersion: SIGNAL_PROPOSAL_SCHEMA_VERSION, model: SIGNAL_MODEL }));
+  const startedEvent = await nextSignalEvent(db, signalId, "SIGNAL_GENERATION_STARTED", user.id, { attemptId, attemptNumber, lifecycleState: "PROCESSING", inputSha256 }, startedAt);
+  try {
+    await db.batch([
+      db.prepare(`INSERT INTO signal_generation_attempts
+        (attempt_id, signal_id, attempt_number, target_proposal_version, provider, model, prompt_version,
+         implementation_revision, state, started_at, input_sha256)
+        VALUES (?, ?, ?, ?, 'OpenAI', ?, ?, ?, 'PROCESSING', ?, ?)`)
+        .bind(attemptId, signalId, attemptNumber, targetProposalVersion, SIGNAL_MODEL, SIGNAL_PROMPT_VERSION, implementationRevision, startedAt, inputSha256),
+      db.prepare(`UPDATE signals SET lifecycle_state = 'PROCESSING', updated_at = ?
+        WHERE signal_id = ? AND lifecycle_state = ?`).bind(startedAt, signalId, signal.lifecycle_state),
+      db.prepare(`INSERT INTO signal_events
+        (signal_id, event_version, event_type, actor_id, detail_json, previous_event_sha256, event_sha256, created_at)
+        VALUES (?, ?, 'SIGNAL_GENERATION_STARTED', ?, ?, ?, ?, ?)`)
+        .bind(signalId, startedEvent.eventVersion, user.id, startedEvent.detailJson, startedEvent.previousEventSha256, startedEvent.eventSha256, startedAt),
+    ]);
+  } catch {
+    if (allowRetry) await recordSignalTelemetry(db, "steer_signal_retry_total", "outcome", "reconciled");
+    return json({ ok: true, processing: true, ...(await signalSnapshot(db, user, signalId)) }, 202);
+  }
+  if (allowRetry) await recordSignalTelemetry(db, "steer_signal_retry_total", "outcome", "started");
+  try {
+    const result = await callSignalModel(env, signalId, signal.original_text);
+    const completedAt = new Date().toISOString();
+    const proposalJson = canonicalJson(result.proposal);
+    const outputSha256 = await sha256Hex(proposalJson);
+    const proposalId = createUuidV7();
+    const proposalVersion = Number(signal.current_proposal_version ?? 0) + 1;
+    const superseded = signal.current_proposal_version > 0 ? await db.prepare(`SELECT proposal_id FROM signal_proposals
+      WHERE signal_id = ? AND version = ? LIMIT 1`).bind(signalId, signal.current_proposal_version).first<{ proposal_id: string }>() : null;
+    const sourceId = `${proposalId}:signal`;
+    const readyEvent = await nextSignalEvent(db, signalId, "SIGNAL_PROPOSAL_READY", user.id, { attemptId, proposalId, proposalVersion, outputSha256, lifecycleState: "READY" }, completedAt);
+    await db.batch([
+      db.prepare(`INSERT INTO signal_proposals
+        (proposal_id, signal_id, version, proposal_json, schema_version, input_sha256, output_sha256,
+         state, confidence, readiness_status, provider, model, prompt_version, implementation_revision,
+         supersedes_proposal_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'CURRENT', ?, ?, 'OpenAI', ?, ?, ?, ?, ?)`)
+        .bind(proposalId, signalId, proposalVersion, proposalJson, SIGNAL_PROPOSAL_SCHEMA_VERSION, inputSha256, outputSha256, result.proposal.confidence, result.proposal.readiness.status, SIGNAL_MODEL, SIGNAL_PROMPT_VERSION, implementationRevision, superseded?.proposal_id ?? null, completedAt),
+      db.prepare(`INSERT INTO signal_sources
+        (source_id, signal_id, proposal_id, source_type, source_reference, revision, sha256, verification_state, retrieved_at)
+        VALUES (?, ?, ?, 'contributor_signal', ?, ?, ?, 'unverified', ?)`)
+        .bind(sourceId, signalId, proposalId, `signal:${signalId}`, signal.original_sha256, signal.original_sha256, completedAt),
+      db.prepare(`UPDATE signal_generation_attempts SET state = 'SUCCEEDED', completed_at = ?, input_tokens = ?,
+        output_tokens = ?, estimated_cost_micros = ?, output_sha256 = ? WHERE attempt_id = ?`)
+        .bind(completedAt, result.inputTokens, result.outputTokens, result.estimatedCostMicros, outputSha256, attemptId),
+      db.prepare(`UPDATE signals SET lifecycle_state = 'READY', current_proposal_version = ?,
+        terminal_disposition_at = COALESCE(terminal_disposition_at, ?),
+        retention_delete_after = CASE WHEN terminal_disposition_at IS NULL THEN ? ELSE retention_delete_after END,
+        updated_at = ? WHERE signal_id = ?`)
+        .bind(proposalVersion, completedAt, signalRetentionDate(new Date(completedAt)), completedAt, signalId),
+      db.prepare(`INSERT INTO signal_events
+        (signal_id, event_version, event_type, actor_id, detail_json, previous_event_sha256, event_sha256, created_at)
+        VALUES (?, ?, 'SIGNAL_PROPOSAL_READY', ?, ?, ?, ?, ?)`)
+        .bind(signalId, readyEvent.eventVersion, user.id, readyEvent.detailJson, readyEvent.previousEventSha256, readyEvent.eventSha256, completedAt),
+    ]);
+    await recordSignalTelemetry(db, "steer_signal_generation_total", "outcome", "success");
+    await recordSignalTelemetry(db, "steer_signal_validation_total", "outcome", "success");
+    await recordSignalLatency(db, "steer_signal_generation_latency_ms", generationStartedAt);
+    await recordSignalTelemetry(db, "steer_signal_provider_tokens_total", "direction", "input", result.inputTokens);
+    await recordSignalTelemetry(db, "steer_signal_provider_tokens_total", "direction", "output", result.outputTokens);
+    await recordSignalTelemetry(db, "steer_signal_provider_estimated_cost_micros_total", "", "", result.estimatedCostMicros);
+    if (result.unsupportedFactCount > 0) await recordSignalTelemetry(db, "steer_signal_unsupported_fact_total", "", "", result.unsupportedFactCount);
+    if (allowRetry) await recordSignalTelemetry(db, "steer_signal_retry_total", "outcome", "success");
+    return json({ ok: true, ...(await signalSnapshot(db, user, signalId)) });
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : "PROVIDER_FAILURE";
+    const code = signalFailureCodes.has(raw) ? raw : "PROVIDER_FAILURE";
+    const failedAt = new Date().toISOString();
+    await failSignalAttempt(db, user, signal, attemptId, code, failedAt);
+    await recordSignalTelemetry(db, "steer_signal_generation_total", "outcome", code.toLowerCase());
+    await recordSignalLatency(db, "steer_signal_generation_latency_ms", generationStartedAt);
+    if (["MALFORMED_OUTPUT", "PROPOSAL_VALIDATION_FAILED"].includes(code)) await recordSignalTelemetry(db, "steer_signal_validation_total", "outcome", "failure");
+    if (allowRetry) await recordSignalTelemetry(db, "steer_signal_retry_total", "outcome", "failure");
+    return json({ error: "Platform AI could not prepare a trustworthy proposal. No work item was created. You may use the single bounded retry when the cause is resolved.", code, ...(await signalSnapshot(db, user, signalId)) }, 503);
+  }
+}
+
+async function reconcileSignalSources(db: Database, user: User, signalId: string) {
+  const signal = await scopedSignal(db, user, signalId);
+  if (!signal) return json({ error: "Signal not found in your POD." }, 404);
+  const proposal = await db.prepare(`SELECT proposal_id, version, state FROM signal_proposals
+    WHERE signal_id = ? ORDER BY version DESC LIMIT 1`).bind(signalId).first<{ proposal_id: string; version: number; state: string }>();
+  if (!proposal || proposal.state !== "CURRENT") return json({ ok: true, stale: signal.lifecycle_state === "STALE", ...(await signalSnapshot(db, user, signalId)) });
+  const sources = await db.prepare(`SELECT source_type, source_reference, revision, sha256 FROM signal_sources
+    WHERE proposal_id = ? ORDER BY source_id`).bind(proposal.proposal_id).all<{ source_type: string; source_reference: string; revision: string | null; sha256: string }>();
+  const current = sources.results ?? [];
+  const expectedReference = `signal:${signalId}`;
+  const sourceChanged = current.length !== 1 || current.some((source) => source.source_type !== "contributor_signal" || source.source_reference !== expectedReference || source.revision !== signal.original_sha256 || source.sha256 !== signal.original_sha256);
+  if (!sourceChanged) return json({ ok: true, stale: false, ...(await signalSnapshot(db, user, signalId)) });
+  const now = new Date().toISOString();
+  const event = await nextSignalEvent(db, signalId, "SIGNAL_SOURCE_CHANGED", user.id, { proposalId: proposal.proposal_id, proposalVersion: proposal.version, lifecycleState: "STALE" }, now);
+  await db.batch([
+    db.prepare("UPDATE signal_proposals SET state = 'STALE' WHERE proposal_id = ? AND state = 'CURRENT'").bind(proposal.proposal_id),
+    db.prepare(`UPDATE signals SET lifecycle_state = 'STALE',
+      terminal_disposition_at = COALESCE(terminal_disposition_at, ?),
+      retention_delete_after = CASE WHEN terminal_disposition_at IS NULL THEN ? ELSE retention_delete_after END,
+      updated_at = ? WHERE signal_id = ? AND lifecycle_state = 'READY'`)
+      .bind(now, signalRetentionDate(new Date(now)), now, signalId),
+    db.prepare(`INSERT INTO signal_events
+      (signal_id, event_version, event_type, actor_id, detail_json, previous_event_sha256, event_sha256, created_at)
+      VALUES (?, ?, 'SIGNAL_SOURCE_CHANGED', ?, ?, ?, ?, ?)`)
+      .bind(signalId, event.eventVersion, user.id, event.detailJson, event.previousEventSha256, event.eventSha256, now),
+  ]);
+  return json({ ok: true, stale: true, ...(await signalSnapshot(db, user, signalId)) });
+}
+
+async function getSignal(db: Database, user: User, signalId: string) {
+  const snapshot = await signalSnapshot(db, user, signalId);
+  return snapshot ? json(snapshot) : json({ error: "Signal not found in your POD." }, 404);
+}
+
+async function manageSignalRetentionHold(request: Request, db: Database, user: User, signalId: string) {
+  const member = await memberContext(db, user);
+  if (!member || member.kind !== "human" || !["available", "enrolled"].includes(member.status)
+    || !/(Tech Lead|Platform|Ops Lead|Security|Privacy)/.test(member.role)) {
+    return json({ error: "A named Tech, Platform / Ops, Security, or Privacy authority must manage signal retention holds." }, 403);
+  }
+  const signal = await db.prepare(`SELECT s.signal_id FROM signals s
+    JOIN members actor ON actor.id = ? AND actor.pod_id = s.pod_id
+    WHERE s.signal_id = ?`).bind(user.id, signalId).first<{ signal_id: string }>();
+  if (!signal) return json({ error: "Signal not found in your POD." }, 404);
+  const body = await request.json() as Record<string, unknown>;
+  if (Object.keys(body).some((key) => !["action", "reason_code", "expires_at"].includes(key))) {
+    return json({ error: "Signal retention holds accept only action, reason code, and expiry." }, 400);
+  }
+  const action = String(body.action ?? "");
+  const reasonCode = String(body.reason_code ?? "");
+  if (!["HOLD", "RELEASE"].includes(action) || !/^[A-Z0-9_:-]{3,64}$/.test(reasonCode)) {
+    return json({ error: "Use HOLD or RELEASE with a bounded no-PII reason code." }, 400);
+  }
+  const now = new Date();
+  const expiry = action === "HOLD" ? Date.parse(String(body.expires_at ?? "")) : now.getTime() + 1000;
+  if (!Number.isFinite(expiry) || expiry <= now.getTime() || expiry > now.getTime() + 365 * 24 * 60 * 60 * 1000) {
+    return json({ error: "A hold must have an explicit future expiry no more than 365 days away." }, 400);
+  }
+  const holdEventId = crypto.randomUUID();
+  await db.prepare(`INSERT INTO signal_retention_holds
+    (hold_event_id, signal_id, action, reason_code, expires_at, actor_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(holdEventId, signalId, action, reasonCode, new Date(expiry).toISOString(), user.id, now.toISOString()).run();
+  return json({ ok: true, hold_event_id: holdEventId, action, expires_at: new Date(expiry).toISOString() }, 201);
+}
+
+async function runSignalRetention(request: Request, db: Database, env: Env) {
+  const expected = String(env.SIGNAL_RETENTION_SERVICE_TOKEN ?? "");
+  const provided = request.headers.get("authorization") ?? "";
+  if (expected.length < 32 || provided !== `Bearer ${expected}`) {
+    return json({ error: "Signal retention service authentication failed." }, 401);
+  }
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  if (Object.keys(body).some((key) => key !== "cutoff_at")) return json({ error: "Only a bounded retention cutoff is accepted." }, 400);
+  const now = new Date();
+  const cutoff = body.cutoff_at ? new Date(String(body.cutoff_at)) : now;
+  if (!Number.isFinite(cutoff.getTime()) || cutoff.getTime() > now.getTime() + 60_000) {
+    return json({ error: "The retention cutoff is invalid." }, 400);
+  }
+  const candidates = await db.prepare(`SELECT s.signal_id, s.pod_id, policy.policy_version,
+      policy.ruling_sha256, policy.activation_receipt_sha256
+    FROM signals s
+    JOIN dispatch_privacy_policies policy ON policy.pod_id = s.pod_id
+      AND policy.policy_version = (
+        SELECT MAX(latest.policy_version) FROM dispatch_privacy_policies latest WHERE latest.pod_id = s.pod_id
+      )
+    WHERE s.lifecycle_state IN ('READY', 'SAFE_FAILURE', 'STALE')
+      AND unixepoch(s.retention_delete_after) <= unixepoch(?)
+      AND policy.status = 'ACTIVE'
+      AND policy.terminal_retention_days = 90
+      AND policy.provider_recovery_days = 30
+      AND policy.inventory_url = ? AND policy.inventory_sha256 = ?
+      AND policy.ruling_url = ? AND policy.ruling_sha256 = ?
+      AND policy.change_reason = ?
+      AND length(policy.authorization_event_id) = 64
+      AND length(policy.activation_receipt_sha256) = 64
+      AND NOT EXISTS (
+        SELECT 1 FROM signal_retention_holds hold
+        WHERE hold.signal_id = s.signal_id AND hold.action = 'HOLD'
+          AND unixepoch(hold.expires_at) > unixepoch(?)
+          AND NOT EXISTS (
+            SELECT 1 FROM signal_retention_holds release
+            WHERE release.signal_id = hold.signal_id AND release.action = 'RELEASE'
+              AND unixepoch(release.created_at) >= unixepoch(hold.created_at)
+          )
+      )
+    ORDER BY s.retention_delete_after, s.signal_id LIMIT 100`)
+    .bind(cutoff.toISOString(), dispatchPrivacyInventoryUrl, dispatchPrivacyInventorySha256,
+      dispatchPrivacyRulingUrl, dispatchPrivacyRulingSha256, dispatchPrivacyActivationReason,
+      cutoff.toISOString()).all<{ signal_id: string; pod_id: string; policy_version: number; ruling_sha256: string; activation_receipt_sha256: string }>();
+  const rows = candidates.results ?? [];
+  const policyBindings = [...new Map(rows.map((candidate) => [candidate.pod_id, {
+    podId: candidate.pod_id,
+    policyVersion: Number(candidate.policy_version),
+    rulingSha256: candidate.ruling_sha256,
+    activationReceiptSha256: candidate.activation_receipt_sha256,
+  }])).values()].sort((left, right) => left.podId.localeCompare(right.podId));
+  const policyBindingsSha256 = await sha256Hex(canonicalJson(policyBindings));
+  let deleted = 0;
+  for (const candidate of rows) {
+    const nonce = crypto.randomUUID();
+    const authorizationExpiry = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
+    try {
+      await db.batch([
+        db.prepare(`INSERT OR REPLACE INTO signal_retention_authorizations
+          (signal_id, authorization_nonce, expires_at, cutoff_at, policy_version, ruling_sha256, activation_receipt_sha256)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`)
+          .bind(candidate.signal_id, nonce, authorizationExpiry, cutoff.toISOString(), candidate.policy_version,
+            candidate.ruling_sha256, candidate.activation_receipt_sha256),
+        db.prepare("DELETE FROM signals WHERE signal_id = ?").bind(candidate.signal_id),
+        db.prepare("DELETE FROM signal_sources WHERE signal_id = ?").bind(candidate.signal_id),
+        db.prepare("DELETE FROM signal_proposals WHERE signal_id = ?").bind(candidate.signal_id),
+        db.prepare("DELETE FROM signal_generation_attempts WHERE signal_id = ?").bind(candidate.signal_id),
+        db.prepare("DELETE FROM signal_events WHERE signal_id = ?").bind(candidate.signal_id),
+        db.prepare("DELETE FROM signal_retention_holds WHERE signal_id = ?").bind(candidate.signal_id),
+        db.prepare("DELETE FROM signal_retention_authorizations WHERE signal_id = ? AND authorization_nonce = ?").bind(candidate.signal_id, nonce),
+      ]);
+      deleted += 1;
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("signal retention eligibility changed")) throw error;
+    }
+  }
+  await db.prepare(`INSERT INTO signal_retention_runs
+    (cutoff_at, eligible_count, deleted_count, policy_bindings_sha256, created_at)
+    VALUES (?, ?, ?, ?, ?)`).bind(cutoff.toISOString(), rows.length, deleted, policyBindingsSha256, now.toISOString()).run();
+  return json({ ok: true, eligible_count: rows.length, deleted_count: deleted, policy_bindings_sha256: policyBindingsSha256 });
 }
 
 async function createItem(request: Request, db: Database, user: User) {
@@ -3592,6 +4330,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     const decisionProofServiceResponse = await handleDecisionProofService(request, env.DB, env);
     if (decisionProofServiceResponse) return decisionProofServiceResponse;
     if (request.method === "POST" && url.pathname === "/api/review-retention/run") return runReviewRetention(request, env.DB, env);
+    if (request.method === "POST" && url.pathname === "/api/signal-retention/run") return runSignalRetention(request, env.DB, env);
     const signedReviewServiceResponse = await handleSignedReviewService(request, env.DB, env);
     if (signedReviewServiceResponse) return signedReviewServiceResponse;
     const user = userFrom(request);
@@ -3603,6 +4342,17 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "POST" && url.pathname === "/api/privacy-policy/activate") return activatePrivacyPolicy(request, env.DB, user);
     if (request.method === "POST" && url.pathname === "/api/decision-signers/activate") return activateDecisionIssuer(request, env.DB, user);
     if (request.method === "POST" && url.pathname === "/api/decision-signer-policies/activate") return activateDecisionSignerPolicy(request, env.DB, user);
+    if (request.method === "POST" && url.pathname === "/api/signals") return createSignal(request, env.DB, user);
+    const signalMatch = url.pathname.match(/^\/api\/signals\/([0-9a-f-]{36})$/);
+    if (request.method === "GET" && signalMatch) return getSignal(env.DB, user, signalMatch[1]);
+    const signalGenerateMatch = url.pathname.match(/^\/api\/signals\/([0-9a-f-]{36})\/generate$/);
+    if (request.method === "POST" && signalGenerateMatch) return generateSignalProposal(env.DB, env, user, signalGenerateMatch[1], false);
+    const signalRetryMatch = url.pathname.match(/^\/api\/signals\/([0-9a-f-]{36})\/retry$/);
+    if (request.method === "POST" && signalRetryMatch) return generateSignalProposal(env.DB, env, user, signalRetryMatch[1], true);
+    const signalReconcileMatch = url.pathname.match(/^\/api\/signals\/([0-9a-f-]{36})\/reconcile$/);
+    if (request.method === "POST" && signalReconcileMatch) return reconcileSignalSources(env.DB, user, signalReconcileMatch[1]);
+    const signalRetentionHoldMatch = url.pathname.match(/^\/api\/signals\/([0-9a-f-]{36})\/retention-holds$/);
+    if (request.method === "POST" && signalRetentionHoldMatch) return manageSignalRetentionHold(request, env.DB, user, signalRetentionHoldMatch[1]);
     if (request.method === "POST" && url.pathname === "/api/items") return createItem(request, env.DB, user);
     const itemMatch = url.pathname.match(/^\/api\/items\/(\d+)$/);
     if (request.method === "PATCH" && itemMatch) return updateItem(request, env.DB, user, Number(itemMatch[1]));

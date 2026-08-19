@@ -1,0 +1,1754 @@
+{
+  "schema_version": "issue-70-case-ledger-v1",
+  "generated_at": "2026-08-19T16:39:05.581Z",
+  "implementation_revision": "c5a0e92ad85cbf65e08b2cdc29168cb673620a8f",
+  "frozen_model": "gpt-5.6-luna",
+  "case_count": 20,
+  "passed": 20,
+  "p95_capture_ms": 3,
+  "p95_generation_ms": 16,
+  "content_free_telemetry": true,
+  "zero_protected_side_effects": true,
+  "cases": [
+    {
+      "case_id": "SIG-01",
+      "input_class": "imperfect public signal",
+      "expected_state": "CAPTURED",
+      "actual_state": "CAPTURED",
+      "response_statuses": [
+        201
+      ],
+      "attempt_ids": [],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 5,
+      "capture_ms": [
+        5
+      ],
+      "generation_ms": [],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 3
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 0,
+        "signal_events": 1,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "07e123690a0b84bcff19eeb016e511f67a20f483547ecf1b38026a2486046c9d",
+      "protected_tables_after_sha256": "07e123690a0b84bcff19eeb016e511f67a20f483547ecf1b38026a2486046c9d",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-02",
+      "input_class": "unicode, emoji, RTL, spelling and punctuation",
+      "expected_state": "CAPTURED",
+      "actual_state": "CAPTURED",
+      "response_statuses": [
+        201
+      ],
+      "attempt_ids": [],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 3,
+      "capture_ms": [
+        2
+      ],
+      "generation_ms": [],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 0,
+        "signal_events": 1,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "10cfc1f3eddea5de448614b9c67b10031f2a76a5ca0022dd3c2179ddd2b78421",
+      "protected_tables_after_sha256": "10cfc1f3eddea5de448614b9c67b10031f2a76a5ca0022dd3c2179ddd2b78421",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-03",
+      "input_class": "idempotent replay",
+      "expected_state": "CAPTURED",
+      "actual_state": "CAPTURED",
+      "response_statuses": [
+        201,
+        200
+      ],
+      "attempt_ids": [],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 4,
+      "capture_ms": [
+        3,
+        1
+      ],
+      "generation_ms": [],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "replay",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 0,
+        "signal_events": 1,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "b1426c1b197188832aaccf501d28105266d6e3161a065f61c9376ff2c47216c5",
+      "protected_tables_after_sha256": "b1426c1b197188832aaccf501d28105266d6e3161a065f61c9376ff2c47216c5",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-04",
+      "input_class": "idempotency conflict",
+      "expected_state": "CAPTURED",
+      "actual_state": "CAPTURED",
+      "response_statuses": [
+        201,
+        409
+      ],
+      "attempt_ids": [],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 4,
+      "capture_ms": [
+        2,
+        2
+      ],
+      "generation_ms": [],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "conflict",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 0,
+        "signal_events": 1,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "fd5e999d4a19ba459973287f2aa111708f88faa256fb65d7514b2302103ad415",
+      "protected_tables_after_sha256": "fd5e999d4a19ba459973287f2aa111708f88faa256fb65d7514b2302103ad415",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-05",
+      "input_class": "valid schema-constrained provider completion",
+      "expected_state": "READY",
+      "actual_state": "READY",
+      "response_statuses": [
+        201,
+        200
+      ],
+      "attempt_ids": [
+        "01a01ae4-0190-7eac-b10c-3a6eed2304b8"
+      ],
+      "proposal_digests": [
+        "a5c4019baaf7a12214197789ed65f6fa1c858d65d260c32122b2d7f0ad260dd5"
+      ],
+      "source_digests": [
+        "78da6b5db9d1cc96ffd380ab371e50421b866728df7131b1938b8cd3616b432c"
+      ],
+      "elapsed_ms": 5,
+      "capture_ms": [
+        2
+      ],
+      "generation_ms": [
+        2
+      ],
+      "usage": [
+        {
+          "input_tokens": 900,
+          "output_tokens": 1200,
+          "estimated_cost_micros": 1620
+        }
+      ],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_provider_estimated_cost_micros_total",
+          "label_name": "",
+          "label_value": "",
+          "value": 1620
+        },
+        {
+          "metric_name": "steer_signal_provider_tokens_total",
+          "label_name": "direction",
+          "label_value": "input",
+          "value": 900
+        },
+        {
+          "metric_name": "steer_signal_provider_tokens_total",
+          "label_name": "direction",
+          "label_value": "output",
+          "value": 1200
+        },
+        {
+          "metric_name": "steer_signal_validation_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 1,
+        "signal_sources": 1,
+        "signal_generation_attempts": 1,
+        "signal_events": 3,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "a838f208d67c0b78cd9790322bc228c62154e43a0bfe893dd82da2a682fe1318",
+      "protected_tables_after_sha256": "a838f208d67c0b78cd9790322bc228c62154e43a0bfe893dd82da2a682fe1318",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-06",
+      "input_class": "unsupported provider fact citation",
+      "expected_state": "READY",
+      "actual_state": "READY",
+      "response_statuses": [
+        201,
+        200
+      ],
+      "attempt_ids": [
+        "01a01ae4-019d-7eb2-88f0-e498808318c3"
+      ],
+      "proposal_digests": [
+        "61f198a1927c44da795218519d0626f9b235c441141aafeabf20939fbdb821bf"
+      ],
+      "source_digests": [
+        "78da6b5db9d1cc96ffd380ab371e50421b866728df7131b1938b8cd3616b432c"
+      ],
+      "elapsed_ms": 4,
+      "capture_ms": [
+        2
+      ],
+      "generation_ms": [
+        2
+      ],
+      "usage": [
+        {
+          "input_tokens": 900,
+          "output_tokens": 1200,
+          "estimated_cost_micros": 1620
+        }
+      ],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_provider_estimated_cost_micros_total",
+          "label_name": "",
+          "label_value": "",
+          "value": 1620
+        },
+        {
+          "metric_name": "steer_signal_provider_tokens_total",
+          "label_name": "direction",
+          "label_value": "input",
+          "value": 900
+        },
+        {
+          "metric_name": "steer_signal_provider_tokens_total",
+          "label_name": "direction",
+          "label_value": "output",
+          "value": 1200
+        },
+        {
+          "metric_name": "steer_signal_unsupported_fact_total",
+          "label_name": "",
+          "label_value": "",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_validation_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 1,
+        "signal_sources": 1,
+        "signal_generation_attempts": 1,
+        "signal_events": 3,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "42ba8a6face8c4f72e74313637458eb8e5c5f09a06ddcc53a00c67f0c7cb76d2",
+      "protected_tables_after_sha256": "42ba8a6face8c4f72e74313637458eb8e5c5f09a06ddcc53a00c67f0c7cb76d2",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-07",
+      "input_class": "malformed provider JSON",
+      "expected_state": "SAFE_FAILURE",
+      "actual_state": "SAFE_FAILURE",
+      "response_statuses": [
+        201,
+        503
+      ],
+      "attempt_ids": [
+        "01a01ae4-01ab-7982-9515-a4434a160d9c"
+      ],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 4,
+      "capture_ms": [
+        2
+      ],
+      "generation_ms": [
+        2
+      ],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_generation_total",
+          "label_name": "outcome",
+          "label_value": "malformed_output",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_validation_total",
+          "label_name": "outcome",
+          "label_value": "failure",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 1,
+        "signal_events": 3,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "e39f94864ebebbc925bb75452962468faae566c17b17c0798a451e2f9aec4c86",
+      "protected_tables_after_sha256": "e39f94864ebebbc925bb75452962468faae566c17b17c0798a451e2f9aec4c86",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-08",
+      "input_class": "unknown provider-controlled field",
+      "expected_state": "SAFE_FAILURE",
+      "actual_state": "SAFE_FAILURE",
+      "response_statuses": [
+        201,
+        503
+      ],
+      "attempt_ids": [
+        "01a01ae4-01b8-7fa2-b141-5c9ae9064d37"
+      ],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 3,
+      "capture_ms": [
+        2
+      ],
+      "generation_ms": [
+        2
+      ],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_generation_total",
+          "label_name": "outcome",
+          "label_value": "proposal_validation_failed",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_validation_total",
+          "label_name": "outcome",
+          "label_value": "failure",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 1,
+        "signal_events": 3,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "e86c629857ba769964ab41e26a7101792ef2e24d5449ea02f92cb846993553fc",
+      "protected_tables_after_sha256": "e86c629857ba769964ab41e26a7101792ef2e24d5449ea02f92cb846993553fc",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-09",
+      "input_class": "missing required provider field",
+      "expected_state": "SAFE_FAILURE",
+      "actual_state": "SAFE_FAILURE",
+      "response_statuses": [
+        201,
+        503
+      ],
+      "attempt_ids": [
+        "01a01ae4-01c6-761a-8279-986cf7025b36"
+      ],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 4,
+      "capture_ms": [
+        2
+      ],
+      "generation_ms": [
+        1
+      ],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_generation_total",
+          "label_name": "outcome",
+          "label_value": "proposal_validation_failed",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_validation_total",
+          "label_name": "outcome",
+          "label_value": "failure",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 1,
+        "signal_events": 3,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "c37c7f64a03b46255aea53cd7254042a383426127bda0b3d2e295ab9655368af",
+      "protected_tables_after_sha256": "c37c7f64a03b46255aea53cd7254042a383426127bda0b3d2e295ab9655368af",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-10",
+      "input_class": "missing provider credential",
+      "expected_state": "SAFE_FAILURE",
+      "actual_state": "SAFE_FAILURE",
+      "response_statuses": [
+        201,
+        503
+      ],
+      "attempt_ids": [
+        "01a01ae4-01d2-7e6a-bddf-01116a7e7a25"
+      ],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 3,
+      "capture_ms": [
+        1
+      ],
+      "generation_ms": [
+        1
+      ],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_generation_total",
+          "label_name": "outcome",
+          "label_value": "missing_credential",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 1,
+        "signal_events": 3,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "c3dc027076fdb2e0d010783d01f20b68cf58b015976680eb53e091f9505f2eee",
+      "protected_tables_after_sha256": "c3dc027076fdb2e0d010783d01f20b68cf58b015976680eb53e091f9505f2eee",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-11",
+      "input_class": "frozen model mismatch",
+      "expected_state": "SAFE_FAILURE",
+      "actual_state": "SAFE_FAILURE",
+      "response_statuses": [
+        201,
+        503
+      ],
+      "attempt_ids": [
+        "01a01ae4-01df-79d4-a6c5-be6a7b3aed95"
+      ],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 4,
+      "capture_ms": [
+        2
+      ],
+      "generation_ms": [
+        1
+      ],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_total",
+          "label_name": "outcome",
+          "label_value": "model_policy_mismatch",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 1,
+        "signal_events": 3,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "d3dad641c7d999b52e36420eb664157951da37b8faa994f32062e58d06d42b2e",
+      "protected_tables_after_sha256": "d3dad641c7d999b52e36420eb664157951da37b8faa994f32062e58d06d42b2e",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-12",
+      "input_class": "provider 4xx",
+      "expected_state": "SAFE_FAILURE",
+      "actual_state": "SAFE_FAILURE",
+      "response_statuses": [
+        201,
+        503
+      ],
+      "attempt_ids": [
+        "01a01ae4-01ec-7681-99e2-42a6813a01cb"
+      ],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 3,
+      "capture_ms": [
+        1
+      ],
+      "generation_ms": [
+        1
+      ],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_generation_total",
+          "label_name": "outcome",
+          "label_value": "provider_4xx",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 1,
+        "signal_events": 3,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "38e89db3eb20e4fa1723d0b3c4c511ef8714789a96761551c2479179b73fede4",
+      "protected_tables_after_sha256": "38e89db3eb20e4fa1723d0b3c4c511ef8714789a96761551c2479179b73fede4",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-13",
+      "input_class": "provider 5xx",
+      "expected_state": "SAFE_FAILURE",
+      "actual_state": "SAFE_FAILURE",
+      "response_statuses": [
+        201,
+        503
+      ],
+      "attempt_ids": [
+        "01a01ae4-01f9-7abe-bf49-6c4e14691fa4"
+      ],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 4,
+      "capture_ms": [
+        2
+      ],
+      "generation_ms": [
+        1
+      ],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_generation_total",
+          "label_name": "outcome",
+          "label_value": "provider_5xx",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 1,
+        "signal_events": 3,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "87e58ca1ba4662dbb6e9ed08be43f2eedbd322868ac0900925f9576284fc1545",
+      "protected_tables_after_sha256": "87e58ca1ba4662dbb6e9ed08be43f2eedbd322868ac0900925f9576284fc1545",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-14",
+      "input_class": "provider timeout",
+      "expected_state": "SAFE_FAILURE",
+      "actual_state": "SAFE_FAILURE",
+      "response_statuses": [
+        201,
+        503
+      ],
+      "attempt_ids": [
+        "01a01ae4-0206-7979-9cdb-3f2dac468c37"
+      ],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 3,
+      "capture_ms": [
+        1
+      ],
+      "generation_ms": [
+        2
+      ],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_generation_total",
+          "label_name": "outcome",
+          "label_value": "provider_timeout",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 1,
+        "signal_events": 3,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "5ef5f365819778daa27bbb09b9bf75364ab51be4d9d9c4e2370c7e6956275bd1",
+      "protected_tables_after_sha256": "5ef5f365819778daa27bbb09b9bf75364ab51be4d9d9c4e2370c7e6956275bd1",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-15",
+      "input_class": "provider token budget exhaustion",
+      "expected_state": "SAFE_FAILURE",
+      "actual_state": "SAFE_FAILURE",
+      "response_statuses": [
+        201,
+        503
+      ],
+      "attempt_ids": [
+        "01a01ae4-0213-754a-980e-aa2ad4aa4f69"
+      ],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 4,
+      "capture_ms": [
+        2
+      ],
+      "generation_ms": [
+        2
+      ],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_generation_total",
+          "label_name": "outcome",
+          "label_value": "token_budget_exceeded",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 1,
+        "signal_events": 3,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "62634c6b71b9185419be0833cb2ba5e533f9c51f4ede1ae4fa520af652f9e07a",
+      "protected_tables_after_sha256": "62634c6b71b9185419be0833cb2ba5e533f9c51f4ede1ae4fa520af652f9e07a",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-16",
+      "input_class": "prompt-injection signal",
+      "expected_state": "REJECTED_BEFORE_CAPTURE",
+      "actual_state": "REJECTED_BEFORE_CAPTURE",
+      "response_statuses": [
+        422
+      ],
+      "attempt_ids": [],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 1,
+      "capture_ms": [
+        1
+      ],
+      "generation_ms": [],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "safety_rejection",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_safety_rejection_total",
+          "label_name": "reason_code",
+          "label_value": "PROMPT_INJECTION",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 0,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 0,
+        "signal_events": 0,
+        "signal_rejections": 1
+      },
+      "protected_tables_before_sha256": "d4c8c8a2c59933c403098d1cd3c26d4611e6fffe63fa4c96379257376cf7b244",
+      "protected_tables_after_sha256": "d4c8c8a2c59933c403098d1cd3c26d4611e6fffe63fa4c96379257376cf7b244",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-17",
+      "input_class": "credential-bearing signal",
+      "expected_state": "REJECTED_BEFORE_CAPTURE",
+      "actual_state": "REJECTED_BEFORE_CAPTURE",
+      "response_statuses": [
+        422
+      ],
+      "attempt_ids": [],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 2,
+      "capture_ms": [
+        1
+      ],
+      "generation_ms": [],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "safety_rejection",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_safety_rejection_total",
+          "label_name": "reason_code",
+          "label_value": "CREDENTIAL",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 0,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 0,
+        "signal_events": 0,
+        "signal_rejections": 1
+      },
+      "protected_tables_before_sha256": "8e043e218af77345a222b1142a34f5fc3d454b558a720eabc27959c4898fe8b6",
+      "protected_tables_after_sha256": "8e043e218af77345a222b1142a34f5fc3d454b558a720eabc27959c4898fe8b6",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-18",
+      "input_class": "active markup signal",
+      "expected_state": "REJECTED_BEFORE_CAPTURE",
+      "actual_state": "REJECTED_BEFORE_CAPTURE",
+      "response_statuses": [
+        422
+      ],
+      "attempt_ids": [],
+      "proposal_digests": [],
+      "source_digests": [],
+      "elapsed_ms": 2,
+      "capture_ms": [
+        1
+      ],
+      "generation_ms": [],
+      "usage": [],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "safety_rejection",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_safety_rejection_total",
+          "label_name": "reason_code",
+          "label_value": "ACTIVE_MARKUP",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 0,
+        "signal_proposals": 0,
+        "signal_sources": 0,
+        "signal_generation_attempts": 0,
+        "signal_events": 0,
+        "signal_rejections": 1
+      },
+      "protected_tables_before_sha256": "2b6fcdfaaf6daa20d33358fb2e172b94c9ea46d1a46a22e61efdaaa0af90c19d",
+      "protected_tables_after_sha256": "2b6fcdfaaf6daa20d33358fb2e172b94c9ea46d1a46a22e61efdaaa0af90c19d",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-19",
+      "input_class": "concurrent bounded retry and exhausted replay",
+      "expected_state": "READY",
+      "actual_state": "READY",
+      "response_statuses": [
+        201,
+        503,
+        200,
+        202,
+        200
+      ],
+      "attempt_ids": [
+        "01a01ae4-0241-769e-b2fb-f6eb47d86be9",
+        "01a01ae4-0244-7bb2-ae68-8c27060e9c84"
+      ],
+      "proposal_digests": [
+        "a5c4019baaf7a12214197789ed65f6fa1c858d65d260c32122b2d7f0ad260dd5"
+      ],
+      "source_digests": [
+        "78da6b5db9d1cc96ffd380ab371e50421b866728df7131b1938b8cd3616b432c"
+      ],
+      "elapsed_ms": 21,
+      "capture_ms": [
+        1
+      ],
+      "generation_ms": [
+        2,
+        16,
+        1
+      ],
+      "usage": [
+        {
+          "input_tokens": 900,
+          "output_tokens": 1200,
+          "estimated_cost_micros": 1620
+        }
+      ],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 13
+        },
+        {
+          "metric_name": "steer_signal_generation_total",
+          "label_name": "outcome",
+          "label_value": "missing_credential",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_generation_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_provider_estimated_cost_micros_total",
+          "label_name": "",
+          "label_value": "",
+          "value": 1620
+        },
+        {
+          "metric_name": "steer_signal_provider_tokens_total",
+          "label_name": "direction",
+          "label_value": "input",
+          "value": 900
+        },
+        {
+          "metric_name": "steer_signal_provider_tokens_total",
+          "label_name": "direction",
+          "label_value": "output",
+          "value": 1200
+        },
+        {
+          "metric_name": "steer_signal_retry_total",
+          "label_name": "outcome",
+          "label_value": "reconciled",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_retry_total",
+          "label_name": "outcome",
+          "label_value": "started",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_retry_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_validation_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 1
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 1,
+        "signal_proposals": 1,
+        "signal_sources": 1,
+        "signal_generation_attempts": 2,
+        "signal_events": 5,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "0300a65931f54765c3d2c240c433c283743f4df23901717c2ed8404d8dc3773b",
+      "protected_tables_after_sha256": "0300a65931f54765c3d2c240c433c283743f4df23901717c2ed8404d8dc3773b",
+      "pass": true
+    },
+    {
+      "case_id": "SIG-20",
+      "input_class": "POD isolation, enrolled agent, stale source and superseding proposal",
+      "expected_state": "READY",
+      "actual_state": "READY",
+      "response_statuses": [
+        201,
+        404,
+        201,
+        200,
+        200,
+        200
+      ],
+      "attempt_ids": [
+        "01a01ae4-0269-7bcd-9ebd-9902cc78682b",
+        "01a01ae4-026c-7305-af4d-0c003a066da6"
+      ],
+      "proposal_digests": [
+        "a5c4019baaf7a12214197789ed65f6fa1c858d65d260c32122b2d7f0ad260dd5",
+        "a5c4019baaf7a12214197789ed65f6fa1c858d65d260c32122b2d7f0ad260dd5"
+      ],
+      "source_digests": [
+        "78da6b5db9d1cc96ffd380ab371e50421b866728df7131b1938b8cd3616b432c",
+        "78da6b5db9d1cc96ffd380ab371e50421b866728df7131b1938b8cd3616b432c",
+        "changed"
+      ],
+      "elapsed_ms": 15,
+      "capture_ms": [
+        1,
+        1
+      ],
+      "generation_ms": [
+        1,
+        1
+      ],
+      "usage": [
+        {
+          "input_tokens": 900,
+          "output_tokens": 1200,
+          "estimated_cost_micros": 1620
+        },
+        {
+          "input_tokens": 900,
+          "output_tokens": 1200,
+          "estimated_cost_micros": 1620
+        }
+      ],
+      "telemetry": [
+        {
+          "metric_name": "steer_signal_capture_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 1
+        },
+        {
+          "metric_name": "steer_signal_capture_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 2
+        },
+        {
+          "metric_name": "steer_signal_generation_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 0
+        },
+        {
+          "metric_name": "steer_signal_generation_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 2
+        },
+        {
+          "metric_name": "steer_signal_provider_estimated_cost_micros_total",
+          "label_name": "",
+          "label_value": "",
+          "value": 3240
+        },
+        {
+          "metric_name": "steer_signal_provider_tokens_total",
+          "label_name": "direction",
+          "label_value": "input",
+          "value": 1800
+        },
+        {
+          "metric_name": "steer_signal_provider_tokens_total",
+          "label_name": "direction",
+          "label_value": "output",
+          "value": 2400
+        },
+        {
+          "metric_name": "steer_signal_validation_total",
+          "label_name": "outcome",
+          "label_value": "success",
+          "value": 2
+        }
+      ],
+      "database_projection": {
+        "activity": 6,
+        "agent_reviews": 0,
+        "code_reviews": 0,
+        "decision_intents": 0,
+        "decision_packages": 0,
+        "decision_sessions": 0,
+        "decisions": 0,
+        "dispatch_attempts": 0,
+        "dispatch_authorization_audits": 0,
+        "dispatch_events": 0,
+        "dispatch_outbox": 0,
+        "dispatch_receipts": 0,
+        "notifications": 0,
+        "review_assignments": 0,
+        "review_events": 0,
+        "work_economics_agent_facts": 0,
+        "work_economics_delivery_events": 0,
+        "work_economics_duration_facts": 0,
+        "work_economics_events": 0,
+        "work_economics_human_facts": 0,
+        "work_items": 7,
+        "signals": 2,
+        "signal_proposals": 2,
+        "signal_sources": 3,
+        "signal_generation_attempts": 2,
+        "signal_events": 7,
+        "signal_rejections": 0
+      },
+      "protected_tables_before_sha256": "393fbbfc3ec94dbc74e66e2ca1b17369dcb69cfd071d33c00a1cd1ecf6ce3188",
+      "protected_tables_after_sha256": "393fbbfc3ec94dbc74e66e2ca1b17369dcb69cfd071d33c00a1cd1ecf6ce3188",
+      "pass": true
+    }
+  ]
+}

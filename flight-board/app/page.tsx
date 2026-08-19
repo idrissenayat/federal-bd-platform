@@ -252,6 +252,70 @@ type Notification = {
   created_at: string;
 };
 
+type SignalSummary = {
+  signal_id: string;
+  submitter_id: string;
+  original_text: string;
+  original_sha256: string;
+  lifecycle_state: "CAPTURED" | "PROCESSING" | "READY" | "STALE" | "SAFE_FAILURE";
+  current_proposal_version: number;
+  terminal_disposition_at: string | null;
+  retention_delete_after: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type SignalStatement = { text: string; sourceIds: string[] };
+type SignalProposalValue = {
+  schemaVersion: string;
+  correctedTitle: string;
+  problemStatement: string;
+  beneficiary: string;
+  expectedOutcome: string;
+  measurementApproach: string;
+  whyNow: string;
+  recommendedDisposition: string;
+  recommendedPriority: string;
+  confidence: string;
+  summary: string;
+  scope: string[];
+  exclusions: string[];
+  terminalCondition: string;
+  alternatives: string[];
+  dependencies: string[];
+  risks: Array<{ domain: string; signal: string; control: string }>;
+  evidenceNeeds: string[];
+  readiness: { status: string; blockers: string[] };
+  facts: SignalStatement[];
+  inferences: SignalStatement[];
+  assumptions: SignalStatement[];
+  unknowns: SignalStatement[];
+  clarificationQuestion: string;
+};
+
+type SignalWorkspace = {
+  signal: SignalSummary;
+  proposal: null | {
+    proposal_id: string;
+    version: number;
+    schema_version: string;
+    input_sha256: string;
+    output_sha256: string;
+    state: string;
+    confidence: string;
+    readiness_status: string;
+    provider: string;
+    model: string;
+    prompt_version: string;
+    implementation_revision: string;
+    created_at: string;
+    value: SignalProposalValue;
+  };
+  sources: Array<{ source_id: string; source_type: string; source_reference: string; revision: string | null; sha256: string; verification_state: string; retrieved_at: string }>;
+  attempts: Array<{ attempt_id: string; attempt_number: number; target_proposal_version: number; provider: string; model: string; prompt_version: string; implementation_revision: string; state: string; started_at: string; completed_at: string | null; input_tokens: number | null; output_tokens: number | null; estimated_cost_micros: number | null; error_code: string | null; input_sha256: string; output_sha256: string | null }>;
+  events: Array<{ id: number; event_version: number; event_type: string; event_sha256: string; created_at: string; detail: Record<string, unknown> }>;
+};
+
 type Bootstrap = {
   generated_at: string;
   user: { id: string; email: string | null; name: string; role: string; authority: string; role_contexts: RoleContext[] };
@@ -267,6 +331,7 @@ type Bootstrap = {
   privacy_policy: { policy_version: number; status: string; inventory_url: string; inventory_sha256: string; ruling_url: string | null; ruling_sha256: string | null; authorization_event_id: string | null; activation_receipt_sha256: string | null } | null;
   decision_policy: DecisionPolicy | null;
   decision_receipts: DecisionReceipt[];
+  signals: SignalSummary[];
 };
 
 type ItemMutationSnapshot = AuthoritativeItemSnapshot<WorkItem, Activity, WorkEconomicsEvent>;
@@ -501,6 +566,7 @@ const drawerFocusableSelector = [
   "input:not([disabled])",
   "select:not([disabled])",
   "textarea:not([disabled])",
+  "summary",
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
@@ -901,6 +967,11 @@ export default function Home() {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null);
+  const [signalWorkspace, setSignalWorkspace] = useState<SignalWorkspace | null>(null);
+  const [signalLoading, setSignalLoading] = useState(false);
+  const [signalGenerating, setSignalGenerating] = useState(false);
+  const [signalIntakeError, setSignalIntakeError] = useState<string | null>(null);
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -944,6 +1015,13 @@ export default function Home() {
   const decisionDialogRef = useRef<HTMLDialogElement>(null);
   const decisionCloseRef = useRef<HTMLButtonElement>(null);
   const decisionReturnFocus = useRef<HTMLElement | null>(null);
+  const signalDialogRef = useRef<HTMLDialogElement>(null);
+  const signalCloseRef = useRef<HTMLButtonElement>(null);
+  const signalHeadingRef = useRef<HTMLHeadingElement>(null);
+  const signalReturnFocus = useRef<HTMLElement | null>(null);
+  const signalInputRef = useRef<HTMLTextAreaElement>(null);
+  const signalIntakeRef = useRef<HTMLDialogElement>(null);
+  const signalIntakeErrorRef = useRef<HTMLDivElement>(null);
 
   async function load(options: { quiet?: boolean } = {}) {
     const sequence = ++loadSequence.current;
@@ -1051,6 +1129,24 @@ export default function Home() {
   }, [decisionOpen]);
 
   useEffect(() => {
+    if (!selectedSignalId) return;
+    const frame = requestAnimationFrame(() => signalHeadingRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [selectedSignalId]);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    const frame = requestAnimationFrame(() => signalInputRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [createOpen]);
+
+  useEffect(() => {
+    if (!signalIntakeError) return;
+    const frame = requestAnimationFrame(() => signalIntakeErrorRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [signalIntakeError]);
+
+  useEffect(() => {
     if (!decisionSession) return;
     const now = Date.now();
     const remaining = Math.max(0, Date.parse(decisionSession.expires_at) - now);
@@ -1121,22 +1217,117 @@ export default function Home() {
     }
   }
 
-  async function createItem(event: FormEvent<HTMLFormElement>) {
+  function reconcileSignal(summary: SignalSummary) {
+    setData((current) => current ? {
+      ...current,
+      signals: [summary, ...current.signals.filter((candidate) => candidate.signal_id !== summary.signal_id)],
+    } : current);
+  }
+
+  async function signalMutation(path: string) {
+    const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    const payload = await response.json() as SignalWorkspace & { error?: string; code?: string };
+    if (payload.signal) {
+      setSignalWorkspace(payload);
+      setSelectedSignalId(payload.signal.signal_id);
+      reconcileSignal(payload.signal);
+    }
+    if (!response.ok) throw new ApiRequestError(payload.error ?? "Platform AI could not prepare the proposal.", response.status);
+    return payload;
+  }
+
+  async function createSignal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     setSaving(true);
+    setError(null);
+    setSignalIntakeError(null);
     try {
-      await api("/api/items", {
+      const captured = await api("/api/signals", {
         method: "POST",
-        body: JSON.stringify(Object.fromEntries(form.entries())),
-      });
+        body: JSON.stringify({ original: String(form.get("original") ?? ""), idempotencyKey: clientUuidV7() }),
+      }) as SignalWorkspace & { ok: true };
+      setSignalWorkspace(captured);
+      setSelectedSignalId(captured.signal.signal_id);
+      reconcileSignal(captured.signal);
       setCreateOpen(false);
-      await load();
       setView("backlog");
+      setSignalGenerating(true);
+      try {
+        await signalMutation(`/api/signals/${captured.signal.signal_id}/generate`);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Platform AI could not prepare the proposal.");
+      } finally {
+        setSignalGenerating(false);
+        void load({ quiet: true });
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The item could not be created.");
+      setSignalIntakeError(caught instanceof Error ? caught.message : "The signal could not be captured.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  function openSignalIntake() {
+    signalReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSignalIntakeError(null);
+    setCreateOpen(true);
+  }
+
+  function closeSignalIntake() {
+    setSignalIntakeError(null);
+    setCreateOpen(false);
+    requestAnimationFrame(() => signalReturnFocus.current?.focus());
+  }
+
+  async function openSignal(signal: SignalSummary) {
+    signalReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSelectedSignalId(signal.signal_id);
+    setSignalLoading(true);
+    setError(null);
+    try {
+      const workspace = await signalMutation(`/api/signals/${signal.signal_id}/reconcile`);
+      setSignalWorkspace(workspace);
+      reconcileSignal(workspace.signal);
+    } catch (caught) {
+      setSignalWorkspace(null);
+      setError(caught instanceof Error ? caught.message : "The signal could not be loaded.");
+    } finally {
+      setSignalLoading(false);
+    }
+  }
+
+  function closeSignal() {
+    setSelectedSignalId(null);
+    setSignalWorkspace(null);
+    requestAnimationFrame(() => signalReturnFocus.current?.focus());
+  }
+
+  async function retrySignal() {
+    if (!selectedSignalId) return;
+    setSignalGenerating(true);
+    setError(null);
+    try {
+      await signalMutation(`/api/signals/${selectedSignalId}/retry`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The bounded retry did not complete.");
+    } finally {
+      setSignalGenerating(false);
+      void load({ quiet: true });
+    }
+  }
+
+  async function regenerateStaleSignal() {
+    if (!selectedSignalId) return;
+    setSignalGenerating(true);
+    setError(null);
+    try {
+      await signalMutation(`/api/signals/${selectedSignalId}/generate`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The superseding proposal did not complete.");
+    } finally {
+      setSignalGenerating(false);
+      void load({ quiet: true });
     }
   }
 
@@ -1427,6 +1618,28 @@ export default function Home() {
     }
   }
 
+  function handleSignalKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeSignal();
+      return;
+    }
+    if (event.key === "Tab" && event.currentTarget === signalDialogRef.current && cycleDrawerFocus(event.currentTarget, event.shiftKey)) {
+      event.preventDefault();
+    }
+  }
+
+  function handleSignalIntakeKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeSignalIntake();
+      return;
+    }
+    if (event.key === "Tab" && event.currentTarget === signalIntakeRef.current && cycleDrawerFocus(event.currentTarget, event.shiftKey)) {
+      event.preventDefault();
+    }
+  }
+
   async function openBuzzWorkspace() {
     setBuzzOpen(true);
     setBuzzCopied(false);
@@ -1565,7 +1778,7 @@ export default function Home() {
           <div className="top-actions">
             <a href={`${githubRoot}/issues/14`} target="_blank" rel="noreferrer" title="Open current GitHub issue">Evidence ↗</a>
             {data.privacy_policy?.status !== "ACTIVE" && data.user.role.includes("Product Lead") && data.user.role.includes("Tech Lead") && <button disabled={saving} onClick={() => void activateApprovedPrivacyPolicy()} aria-label="Activate the approved STR-028 privacy policy">{saving ? "Activating…" : "Activate approved privacy policy"}</button>}
-            <button className="create-button" onClick={() => setCreateOpen(true)}><span>＋</span> Create work item</button>
+            <button className="create-button" onClick={openSignalIntake}><span>＋</span> Submit a signal</button>
           </div>
         </header>
 
@@ -1605,11 +1818,74 @@ export default function Home() {
             />
           )}
           {view === "board" && <FlightBoard items={filteredItems} onOpen={openItem} onMove={updateItem} saving={saving} />}
-          {view === "backlog" && <Backlog items={filteredItems} onOpen={openItem} onCreate={() => setCreateOpen(true)} />}
+          {view === "backlog" && <Backlog items={filteredItems} signals={data.signals} onOpen={openItem} onOpenSignal={openSignal} onCreate={openSignalIntake} />}
           {view === "decisions" && <DecisionInbox items={decisionItems} decisions={data.decisions} reviews={data.reviews} reviewingIds={reviewingIds} onOpen={openDecisionWorkspace} />}
           {view === "team" && <Team members={data.members} items={data.items} onOpenBuzz={() => void openBuzzWorkspace()} />}
         </div>
       </main>
+
+      {selectedSignalId && (
+        <div className="drawer-scrim signal-workspace-scrim">
+          <dialog ref={signalDialogRef} open className="item-drawer signal-workspace" aria-modal="true" aria-labelledby="signal-workspace-title" tabIndex={-1} onKeyDown={handleSignalKeyDown}>
+            <header className="drawer-header">
+              <div><span>Signal · not a work item</span>{signalWorkspace && <StatusPill value={signalWorkspace.signal.lifecycle_state.replaceAll("_", " ")} />}</div>
+              <button ref={signalCloseRef} aria-label="Close signal workspace" onClick={closeSignal}>×</button>
+            </header>
+            <div className="drawer-body">
+              <h2 ref={signalHeadingRef} id="signal-workspace-title" tabIndex={-1}>Platform AI decision preparation</h2>
+              {signalLoading && <div className="signal-processing" role="status" aria-live="polite"><span>◇</span><div><strong>Loading the authoritative signal…</strong><p>No local or template content is substituted.</p></div></div>}
+              {!signalLoading && signalWorkspace && <>
+                <section className="signal-original" aria-labelledby="signal-original-title">
+                  <div><span>Original signal · preserved exactly</span><code>{signalWorkspace.signal.original_sha256.slice(0, 12)}</code></div>
+                  <p id="signal-original-title">{signalWorkspace.signal.original_text}</p>
+                  <small>Submitted {formatDate(signalWorkspace.signal.created_at)} · {signalWorkspace.signal.terminal_disposition_at ? `retained until ${formatDate(signalWorkspace.signal.retention_delete_after)}` : "the 90-day retention period starts at terminal disposition"} unless a governed hold applies</small>
+                </section>
+
+                {(signalGenerating || ["CAPTURED", "PROCESSING"].includes(signalWorkspace.signal.lifecycle_state)) && <div className="signal-processing" role="status" aria-live="polite"><span>◇</span><div><strong>Platform AI is preparing the proposal</strong><p>Checking structure, uncertainty, risks, evidence needs, and readiness. No STR key or backlog item has been created.</p></div></div>}
+
+                {!signalGenerating && signalWorkspace.signal.lifecycle_state === "READY" && <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">Proposal ready for human review. No work item has been created.</div>}
+
+                {signalWorkspace.signal.lifecycle_state === "SAFE_FAILURE" && <div className="signal-safe-failure" role="alert"><span>!</span><div><strong>AI analysis stopped safely</strong><p>No proposal was fabricated and no work item was created. Cause: {signalWorkspace.attempts[0]?.error_code?.replaceAll("_", " ").toLowerCase() ?? "provider failure"}.</p><button disabled={signalGenerating || signalWorkspace.attempts.filter((attempt) => attempt.target_proposal_version === signalWorkspace.signal.current_proposal_version + 1).length >= 2} onClick={() => void retrySignal()}>{signalGenerating ? "Retrying…" : signalWorkspace.attempts.filter((attempt) => attempt.target_proposal_version === signalWorkspace.signal.current_proposal_version + 1).length >= 2 ? "Retry limit reached" : "Use the one bounded retry"}</button></div></div>}
+
+                {signalWorkspace.signal.lifecycle_state === "STALE" && <div className="signal-safe-failure signal-stale" role="status" aria-live="polite"><span>↻</span><div><strong>The prior proposal is stale</strong><p>A proposal source no longer matches its bound revision. The original signal is unchanged; review the old proposal only as history, then generate one superseding version.</p><button disabled={signalGenerating} onClick={() => void regenerateStaleSignal()}>{signalGenerating ? "Preparing superseding proposal…" : "Generate against current sources"}</button></div></div>}
+
+                {signalWorkspace.proposal && <>
+                  <section className="signal-answer" aria-label="Platform AI recommendation">
+                    <header><div><span>◇ Advisory recommendation</span><h3>{signalWorkspace.proposal.value.correctedTitle}</h3></div><StatusPill value={signalWorkspace.proposal.value.recommendedPriority} /></header>
+                    <div className="signal-recommendation-grid"><div><span>Disposition</span><strong>{signalWorkspace.proposal.value.recommendedDisposition.replaceAll("_", " ")}</strong></div><div><span>Readiness</span><strong>{signalWorkspace.proposal.value.readiness.status.replaceAll("_", " ")}</strong></div><div><span>Confidence</span><strong>{signalWorkspace.proposal.value.confidence}</strong></div></div>
+                    <p>{signalWorkspace.proposal.value.summary}</p>
+                    <small>Advisory only. This slice cannot admit work, allocate an STR key, approve a Gate, assign, or dispatch.</small>
+                  </section>
+
+                  <section className="signal-decision-brief">
+                    <h3>Decision-ready proposal</h3>
+                    <dl><div><dt>Problem</dt><dd>{signalWorkspace.proposal.value.problemStatement}</dd></div><div><dt>Beneficiary</dt><dd>{signalWorkspace.proposal.value.beneficiary}</dd></div><div><dt>Expected outcome</dt><dd>{signalWorkspace.proposal.value.expectedOutcome}</dd></div><div><dt>How to measure</dt><dd>{signalWorkspace.proposal.value.measurementApproach}</dd></div><div><dt>Why now</dt><dd>{signalWorkspace.proposal.value.whyNow}</dd></div><div><dt>Terminal condition</dt><dd>{signalWorkspace.proposal.value.terminalCondition}</dd></div></dl>
+                    {signalWorkspace.proposal.value.clarificationQuestion && <div className="signal-clarification"><span>One material clarification</span><strong>{signalWorkspace.proposal.value.clarificationQuestion}</strong></div>}
+                  </section>
+
+                  <div className="signal-detail-grid">
+                    <SignalList title="In scope" values={signalWorkspace.proposal.value.scope} />
+                    <SignalList title="Explicitly excluded" values={signalWorkspace.proposal.value.exclusions} />
+                    <SignalList title="Alternatives" values={signalWorkspace.proposal.value.alternatives} />
+                    <SignalList title="Dependencies" values={signalWorkspace.proposal.value.dependencies} empty="No dependency established from the available signal." />
+                    <SignalList title="Evidence needed" values={signalWorkspace.proposal.value.evidenceNeeds} empty="No additional evidence named." />
+                    <SignalList title="Readiness blockers" values={signalWorkspace.proposal.value.readiness.blockers} empty="No readiness blocker named." />
+                  </div>
+
+                  <section className="signal-classification" aria-label="Facts, inferences, assumptions, and unknowns">
+                    <h3>What Platform AI knows—and does not know</h3>
+                    <div><SignalStatements title="Verified facts" values={signalWorkspace.proposal.value.facts} empty="No verified facts are available from the contributor signal alone." /><SignalStatements title="AI inferences" values={signalWorkspace.proposal.value.inferences} /><SignalStatements title="Assumptions" values={signalWorkspace.proposal.value.assumptions} /><SignalStatements title="Unknowns" values={signalWorkspace.proposal.value.unknowns} /></div>
+                  </section>
+
+                  <section className="signal-risks"><h3>Risk signals and controls</h3>{signalWorkspace.proposal.value.risks.length ? signalWorkspace.proposal.value.risks.map((risk, index) => <article key={`${risk.domain}-${index}`}><span>{risk.domain}</span><div><strong>{risk.signal}</strong><p>{risk.control}</p></div></article>) : <p>No risk was established from the available signal. This is not proof of absence.</p>}</section>
+
+                  <details className="signal-provenance"><summary>How this proposal was produced</summary><dl><div><dt>Provider and model</dt><dd>{signalWorkspace.proposal.provider} · {signalWorkspace.proposal.model}</dd></div><div><dt>Prompt/schema</dt><dd>{signalWorkspace.proposal.prompt_version} · {signalWorkspace.proposal.schema_version}</dd></div><div><dt>Implementation</dt><dd>{signalWorkspace.proposal.implementation_revision}</dd></div><div><dt>Input digest</dt><dd>{signalWorkspace.proposal.input_sha256}</dd></div><div><dt>Output digest</dt><dd>{signalWorkspace.proposal.output_sha256}</dd></div><div><dt>Source status</dt><dd>{signalWorkspace.sources.map((source) => `${source.source_type}: ${source.verification_state}`).join(" · ")}</dd></div><div><dt>Usage / estimated cost</dt><dd>{signalWorkspace.attempts[0]?.input_tokens ?? "Unavailable"} input · {signalWorkspace.attempts[0]?.output_tokens ?? "Unavailable"} output · {signalWorkspace.attempts[0]?.estimated_cost_micros == null ? "Unavailable" : `$${(signalWorkspace.attempts[0].estimated_cost_micros / 1_000_000).toFixed(4)}`}</dd></div></dl></details>
+                </>}
+              </>}
+            </div>
+          </dialog>
+        </div>
+      )}
 
       {selected && (
         <div className="drawer-scrim">
@@ -1736,22 +2012,16 @@ export default function Home() {
 
       {createOpen && (
         <div className="modal-scrim">
-          <form className="modal-card create-modal" onSubmit={createItem}>
-            <header><div><span>New work item</span><h2>Bring a signal into STEER</h2></div><button type="button" onClick={() => setCreateOpen(false)}>×</button></header>
-            <p className="modal-intro">Create a durable item with enough context to enter Sense. Gate 1 will remain pending until a human Product Lead rules.</p>
-            <label>Title<input name="title" required minLength={3} placeholder="What outcome needs attention?" /></label>
-            <label>Description<textarea name="description" required minLength={10} placeholder="Why this matters and what would be different if it succeeds" /></label>
-            <div className="form-grid">
-              <label>Initial phase<select name="phase" defaultValue="Sense">{phases.map((phase) => <option key={phase}>{phase}</option>)}</select></label>
-              <label>Priority<select name="priority" defaultValue="Next">{priorities.map((priority) => <option key={priority}>{priority}</option>)}</select></label>
-              <label>Workflow<select name="workflow" defaultValue="Unassigned">{workflows.map((workflow) => <option key={workflow}>{workflow}</option>)}</select></label>
-              <label>Work type<select name="workType" defaultValue="Unclassified">{WORK_TYPES.map((workType) => <option key={workType}>{workType}</option>)}</select></label>
-              <label>Assignee<select name="assigneeId" defaultValue=""><option value="">Unassigned</option>{data.members.map((member) => <option value={member.id} key={member.id}>{member.display_name}</option>)}</select></label>
-            </div>
-            <label>Next action<input name="nextAction" placeholder="Frame the intended outcome and prepare Gate 1 evidence." /></label>
-            <label>Engineering record<input name="githubUrl" type="url" placeholder="https://github.com/idrissenayat/federal-bd-platform/issues/31" /></label>
-            <footer><button type="button" className="secondary-button" onClick={() => setCreateOpen(false)}>Cancel</button><button className="primary-button" disabled={saving}>{saving ? "Creating…" : "Create in backlog"}</button></footer>
-          </form>
+          <dialog ref={signalIntakeRef} open className="signal-intake-dialog-shell" aria-modal="true" aria-labelledby="signal-intake-title" tabIndex={-1} onKeyDown={handleSignalIntakeKeyDown}>
+            <form className="modal-card create-modal signal-intake-modal" onSubmit={createSignal}>
+              <header><div><span>New signal</span><h2 id="signal-intake-title">Tell Platform AI what you noticed</h2></div><button type="button" aria-label="Close signal intake" onClick={closeSignalIntake}>×</button></header>
+              <p className="modal-intro">Write naturally. Spelling, grammar, incomplete context, and uncertainty are acceptable. Platform AI prepares the product analysis; it does not create or approve a work item.</p>
+              {signalIntakeError && <div ref={signalIntakeErrorRef} className="signal-intake-error" role="alert" aria-live="assertive" tabIndex={-1}><div><strong>Signal not submitted</strong><span>{signalIntakeError}</span></div><button type="button" onClick={() => { setSignalIntakeError(null); signalInputRef.current?.focus(); }}>Dismiss</button></div>}
+              <label className="signal-primary-input">What did you notice, need, or want to improve?<textarea ref={signalInputRef} name="original" required minLength={10} maxLength={4000} placeholder="For example: We should be able to assign human contributors to different roles through the application because right now I cannot manage the team without leaving the platform." /></label>
+              <div className="signal-data-boundary" role="note"><strong>Public, unclassified information only</strong><p>Do not include passwords, credentials, personal records, CUI/FCI, classified, export-controlled, or proprietary proposal information. Unsafe input is rejected before any AI request.</p></div>
+              <footer><button type="button" className="secondary-button" onClick={closeSignalIntake}>Cancel</button><button className="primary-button" disabled={saving}>{saving ? "Preserving signal…" : "Submit signal"}</button></footer>
+            </form>
+          </dialog>
         </div>
       )}
 
@@ -2021,6 +2291,14 @@ function Overview({ items, activity, decisions, blocked, active, onOpen, onNavig
   </>;
 }
 
+function SignalList({ title, values, empty = "None recorded." }: { title: string; values: string[]; empty?: string }) {
+  return <section><h4>{title}</h4>{values.length ? <ul>{values.map((value, index) => <li key={`${title}-${index}`}>{value}</li>)}</ul> : <p>{empty}</p>}</section>;
+}
+
+function SignalStatements({ title, values, empty = "None recorded." }: { title: string; values: SignalStatement[]; empty?: string }) {
+  return <section><h4>{title}</h4>{values.length ? <ul>{values.map((value, index) => <li key={`${title}-${index}`}>{value.text}{value.sourceIds.length > 0 && <small>Sources: {value.sourceIds.join(", ")}</small>}</li>)}</ul> : <p>{empty}</p>}</section>;
+}
+
 function FlightBoard({ items, onOpen, onMove, saving }: { items: WorkItem[]; onOpen: (item: WorkItem) => void; onMove: (id: number, changes: Record<string, unknown>) => Promise<void>; saving: boolean }) {
   return <>
     <PageHeading eyebrow="Seven-phase workflow" title="Flight Board" copy="Move evidence through STEER without losing the why. Human gates stay visible and cannot be crossed by an agent ruling." actions={<div className="board-legend"><span><i className="dot active" /> Active</span><span><i className="dot blocked" /> Blocked</span><span>◆ Human gate</span></div>} />
@@ -2028,7 +2306,7 @@ function FlightBoard({ items, onOpen, onMove, saving }: { items: WorkItem[]; onO
   </>;
 }
 
-function Backlog({ items, onOpen, onCreate }: { items: WorkItem[]; onOpen: (item: WorkItem) => void; onCreate: () => void }) {
+function Backlog({ items, signals, onOpen, onOpenSignal, onCreate }: { items: WorkItem[]; signals: SignalSummary[]; onOpen: (item: WorkItem) => void; onOpenSignal: (signal: SignalSummary) => void; onCreate: () => void }) {
   const [scope, setScope] = useState<BacklogScope>("all");
   const [dateField, setDateField] = useState<BacklogDateField>("created_at");
   const [dateFrom, setDateFrom] = useState("");
@@ -2037,7 +2315,17 @@ function Backlog({ items, onOpen, onCreate }: { items: WorkItem[]; onOpen: (item
   const closed = items.filter((item) => item.state === "complete");
   const visibleItems = backlogItemsForDateRange(backlogItemsForScope(items, scope), dateField, dateFrom, dateTo);
   return <>
-    <PageHeading eyebrow="Complete work register" title="Product backlog" copy="See every work item from capture through closure. New demand enters here, stays traceable, and can be filtered without losing delivery history." actions={<button className="primary-button compact" onClick={onCreate}>＋ Add to backlog</button>} />
+    <PageHeading eyebrow="Complete work register" title="Product backlog" copy="Review preserved contributor signals separately from admitted work. Platform AI may prepare a proposal, but only governed human authority can admit it to this backlog." actions={<button className="primary-button compact" onClick={onCreate}>＋ Submit a signal</button>} />
+    <section className="panel signal-register" aria-labelledby="signal-register-title">
+      <header>
+        <div><span className="panel-eyebrow">Pre-admission register</span><h2 id="signal-register-title">Recent contributor signals</h2></div>
+        <b>{signals.length}</b>
+      </header>
+      <p>These records are not work items. Open one to inspect the exact original, AI proposal, uncertainty, evidence classification, and provenance.</p>
+      <div>
+        {signals.length ? signals.slice(0, 8).map((signal) => <button key={signal.signal_id} onClick={() => onOpenSignal(signal)}><span className="signal-register-state">{signal.lifecycle_state.replaceAll("_", " ")}</span><strong>{signal.original_text}</strong><small>Submitted {formatDate(signal.created_at)} · proposal v{signal.current_proposal_version || 0}</small><b aria-hidden="true">→</b></button>) : <Empty title="No contributor signals captured" copy="Submit an imperfect observation or need; Platform AI will prepare an advisory proposal without creating a work item." />}
+      </div>
+    </section>
     <section className="panel backlog-panel">
       <header className="table-toolbar">
         <div className="backlog-summary"><strong>{items.length} total items</strong><span>{open.length} open · {closed.length} closed · {open.filter((item) => item.workflow === "Unassigned").length} require workflow allocation</span></div>

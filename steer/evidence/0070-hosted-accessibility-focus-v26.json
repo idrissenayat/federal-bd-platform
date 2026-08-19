@@ -1,0 +1,50 @@
+{
+  "schema": "issue-70-hosted-accessibility-focus-v26",
+  "project_id": "appgprj_6a83763dc1148191b439c0795aa86a1c",
+  "site_version": 26,
+  "version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_f0020bab8b2c8191b949930dda57ef1a",
+  "source_commit": "2293a800ef8053a035768ab926227d7afce66b08",
+  "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+  "runtime_model": "gpt-5.6-luna",
+  "tested_at": "2026-08-19T19:17:00Z",
+  "actual_hosted_ready_transition": {
+    "case_id": "V26X-16",
+    "dialog_name": "Platform AI decision preparation",
+    "initial_focus": {
+      "tag": "H2",
+      "id": "signal-workspace-title",
+      "tabindex": "-1",
+      "text": "Platform AI decision preparation",
+      "pass": true
+    },
+    "ready_announcement": {
+      "role": "status",
+      "aria_live": "polite",
+      "aria_atomic": true,
+      "text": "Proposal ready for human review. No work item has been created.",
+      "occurrences": 1,
+      "pass": true
+    },
+    "proposal_visible": true,
+    "provenance_summary_visible": true,
+    "axe": {
+      "violations": [],
+      "passes": 41,
+      "incomplete": 0,
+      "color_contrast": "covered by the explicit signal surface contrast regression; JSDOM axe cannot compute layout contrast"
+    }
+  },
+  "unchanged_eight_state_matrix": {
+    "evidence": "steer/evidence/0070-hosted-accessibility-matrix-v25.json",
+    "critic_disposition": "accepted for empty, processing, stale, conflict, permission, failure, retry, narrow-screen, and shared-renderer presentation claims",
+    "changed_ready_transition_retested_here": true
+  },
+  "local_regressions": {
+    "signal_ui_source_contract": "PASS",
+    "signal_accessibility_contrast": "PASS",
+    "full_test_suite": "146/146 PASS",
+    "typecheck": "PASS",
+    "lint": "PASS"
+  },
+  "result": "PASS"
+}

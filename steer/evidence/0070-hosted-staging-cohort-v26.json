@@ -1,0 +1,905 @@
+{
+  "schema": "issue-70-hosted-staging-cohort-v26",
+  "project_id": "appgprj_6a83763dc1148191b439c0795aa86a1c",
+  "site_version": 26,
+  "version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_f0020bab8b2c8191b949930dda57ef1a",
+  "source_commit": "2293a800ef8053a035768ab926227d7afce66b08",
+  "release_target_commit": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+  "runtime_model": "gpt-5.6-luna",
+  "gate2_exam_revision": "482a56abf5ecc262428d02613726a5c9f2c04d0d",
+  "gate2_exam_sha256": "66a959826d327f8f4e7f69a95e438c93a76f48e45a9babc49b02708f3cfe98d5",
+  "cohort_started_at": "2026-08-19T19:08:17.019Z",
+  "cohort_completed_at": "2026-08-19T19:18:53.620Z",
+  "browser_observation_completed_at": "2026-08-19T19:18:54.387Z",
+  "completion_boundary_source": "maximum authoritative signal_generation_attempts.completed_at across the frozen denominator",
+  "case_count": 20,
+  "pass_count": 20,
+  "success_threshold": 18,
+  "outcomes": {
+    "ready": 16,
+    "rejected_pre_provider": 3,
+    "safe_failure": 1
+  },
+  "deployments": {
+    "exact_success_environment_revision": 15,
+    "exact_success_deployment_id": "appgdep_6a85fe2072f481919c566744169c69cb",
+    "controlled_failure_environment_revision": 16,
+    "controlled_failure_deployment_id": "appgdep_6a86013c5df081919b72294fb61c6547",
+    "restored_environment_revision": 17,
+    "restored_deployment_id": "appgdep_6a8601ab2f808191b08f9d6c6ba67c8e"
+  },
+  "performance": {
+    "capture_observations": 21,
+    "capture_p95_ms": 282,
+    "capture_limit_ms": 750,
+    "generation_observations": 17,
+    "generation_p95_ms": 15655,
+    "generation_limit_ms": 60000,
+    "note": "Capture telemetry includes one disclosed out-of-denominator harness-qualification API-key rejection; no provider generation occurred for it."
+  },
+  "provenance": {
+    "attempts_with_exact_implementation_revision": 17,
+    "attempts_total": 17,
+    "terminal_boundaries_exactly_90_days": 17,
+    "stored_signals": 17,
+    "proposals": 16,
+    "sources": 16,
+    "events": 51
+  },
+  "guardrails": {
+    "protected_tables": 40,
+    "protected_rows_reference_before": 572,
+    "protected_rows_after": 572,
+    "protected_table_row_counts_equal": true,
+    "protected_tables_changed": [],
+    "work_item_side_effect_total": 0,
+    "unsupported_fact_total": 0,
+    "production_mutated": false
+  },
+  "harness_qualification": {
+    "excluded_rejection_id": "01a01b73-7deb-7fec-a595-0d2ac13cd95a",
+    "reason_code": "API_KEY",
+    "created_at": "2026-08-19T19:15:48.843Z",
+    "explanation": "An initial safety-harness check surfaced an unrelated global refresh alert instead of the intake alert. The content-free rejection is retained and disclosed but excluded from the frozen 20-case denominator; the scoped intake case was then observed directly."
+  },
+  "cases": [
+    {
+      "case_id": "V26X-01",
+      "input_class": "normal",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 29689,
+      "signal_id": "01a01b6c-9928-75f2-9f8a-075972263cdd",
+      "original_sha256": "efa35f54a5859480632dc46a8af517f8b483523bf8798c8f2461d1393a24b898",
+      "terminal_disposition_at": "2026-08-19T19:08:38.956Z",
+      "retention_delete_after": "2026-11-17T19:08:38.956Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b6c-b2c4-7755-95c4-1e93f37aa32f",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:08:23.620Z",
+        "completed_at": "2026-08-19T19:08:38.956Z",
+        "error_code": null,
+        "input_tokens": 719,
+        "output_tokens": 1057,
+        "estimated_cost_micros": 1412,
+        "input_sha256": "a155c943fcaad6f30e7552a83db926a6a8fc1ae231e9f5bbe68169f1f4aeffa8",
+        "output_sha256": "72591c49f9ae59a2974580e22568db455a89e7845e188dd2ed5fbc1bb5d347d6"
+      },
+      "proposal": {
+        "proposal_id": "01a01b6c-eeac-7052-a843-3df8d4d2d5b3",
+        "output_sha256": "72591c49f9ae59a2974580e22568db455a89e7845e188dd2ed5fbc1bb5d347d6",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "efa35f54a5859480632dc46a8af517f8b483523bf8798c8f2461d1393a24b898",
+        "revision": "efa35f54a5859480632dc46a8af517f8b483523bf8798c8f2461d1393a24b898"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-02",
+      "input_class": "vague",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 24227,
+      "signal_id": "01a01b6d-099a-7d3b-96db-a2ca4606b292",
+      "original_sha256": "efa50bf607efc5c1943d661d156f12d4c6f93084ac7c06e28b993e1246448add",
+      "terminal_disposition_at": "2026-08-19T19:09:02.660Z",
+      "retention_delete_after": "2026-11-17T19:09:02.660Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b6d-2498-76bd-80e8-b2c48e5c0757",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:08:52.760Z",
+        "completed_at": "2026-08-19T19:09:02.660Z",
+        "error_code": null,
+        "input_tokens": 716,
+        "output_tokens": 1066,
+        "estimated_cost_micros": 1422,
+        "input_sha256": "3f2dd915100bb27f671d713b49d37fdcc2c5245caaeb387706bb3442bcd8d891",
+        "output_sha256": "c70b90f75e4f088c66bc718ab5f6624b7eb892bf8ef173fbcc621e4317a1a413"
+      },
+      "proposal": {
+        "proposal_id": "01a01b6d-4b44-7ced-9637-d070bc917079",
+        "output_sha256": "c70b90f75e4f088c66bc718ab5f6624b7eb892bf8ef173fbcc621e4317a1a413",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "efa50bf607efc5c1943d661d156f12d4c6f93084ac7c06e28b993e1246448add",
+        "revision": "efa50bf607efc5c1943d661d156f12d4c6f93084ac7c06e28b993e1246448add"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-03",
+      "input_class": "misspelled",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 24251,
+      "signal_id": "01a01b6d-7af2-7788-b2aa-0813db74b7e3",
+      "original_sha256": "0a1ffdaf7427f3dc9e223f248c612ee3d4e4a681201add9e57f70944cdea3109",
+      "terminal_disposition_at": "2026-08-19T19:09:31.532Z",
+      "retention_delete_after": "2026-11-17T19:09:31.532Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b6d-967a-79d3-b47b-6d3586740792",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:09:21.914Z",
+        "completed_at": "2026-08-19T19:09:31.532Z",
+        "error_code": null,
+        "input_tokens": 723,
+        "output_tokens": 980,
+        "estimated_cost_micros": 1321,
+        "input_sha256": "508f2b14df66f35e6066133033c54875c7a86223f3d97cfd8df3937c93c4d630",
+        "output_sha256": "2175c2c1830a3fce15886bd5a20c8d913f34aadd089f644fa93680d80bcdc157"
+      },
+      "proposal": {
+        "proposal_id": "01a01b6d-bc0c-7d7a-8e75-9f5a0879432c",
+        "output_sha256": "2175c2c1830a3fce15886bd5a20c8d913f34aadd089f644fa93680d80bcdc157",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "0a1ffdaf7427f3dc9e223f248c612ee3d4e4a681201add9e57f70944cdea3109",
+        "revision": "0a1ffdaf7427f3dc9e223f248c612ee3d4e4a681201add9e57f70944cdea3109"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-04",
+      "input_class": "solution_biased",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 24339,
+      "signal_id": "01a01b6d-da47-7fee-af19-63a15a6c7f51",
+      "original_sha256": "f716682fdd1c121dc110a253db74f92ed74494485c804d6fda392874176d68f7",
+      "terminal_disposition_at": "2026-08-19T19:09:56.235Z",
+      "retention_delete_after": "2026-11-17T19:09:56.235Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b6d-f426-75e8-96fc-e350d4cc9d41",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:09:45.894Z",
+        "completed_at": "2026-08-19T19:09:56.235Z",
+        "error_code": null,
+        "input_tokens": 718,
+        "output_tokens": 1058,
+        "estimated_cost_micros": 1413,
+        "input_sha256": "3c830b8a5e999a923d44e34dc8f57a4d11e0410beee8f362862ae18669d24a52",
+        "output_sha256": "06d2f2496fc2387994abf66be0c2999eb1870071940e9bae9b166f6fd031d605"
+      },
+      "proposal": {
+        "proposal_id": "01a01b6e-1c8b-7eb8-99f7-c551eff89af2",
+        "output_sha256": "06d2f2496fc2387994abf66be0c2999eb1870071940e9bae9b166f6fd031d605",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "f716682fdd1c121dc110a253db74f92ed74494485c804d6fda392874176d68f7",
+        "revision": "f716682fdd1c121dc110a253db74f92ed74494485c804d6fda392874176d68f7"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-05",
+      "input_class": "duplicate_looking",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 25810,
+      "signal_id": "01a01b6e-5184-7545-a7a0-68f5c11e3148",
+      "original_sha256": "48fe918a43305357089f4424501d079ecf8e70ddee8c55920728dff5e8972ed9",
+      "terminal_disposition_at": "2026-08-19T19:10:27.212Z",
+      "retention_delete_after": "2026-11-17T19:10:27.212Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b6e-6bae-73c4-bce9-59947bcc90c3",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:10:16.494Z",
+        "completed_at": "2026-08-19T19:10:27.212Z",
+        "error_code": null,
+        "input_tokens": 724,
+        "output_tokens": 1130,
+        "estimated_cost_micros": 1501,
+        "input_sha256": "e42df1c3578f7bfb75964ddeaa016d1badea446e018f4c782b2cb2db8a11c245",
+        "output_sha256": "3226d43658f67fd5938f99bb018b4591abfb2cd3826cc99b2165b64471778da1"
+      },
+      "proposal": {
+        "proposal_id": "01a01b6e-958c-78b8-baf5-fcf57eda2497",
+        "output_sha256": "3226d43658f67fd5938f99bb018b4591abfb2cd3826cc99b2165b64471778da1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "48fe918a43305357089f4424501d079ecf8e70ddee8c55920728dff5e8972ed9",
+        "revision": "48fe918a43305357089f4424501d079ecf8e70ddee8c55920728dff5e8972ed9"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-06",
+      "input_class": "unicode_emoji",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 24965,
+      "signal_id": "01a01b6e-b39e-7faf-938a-33825765c9bf",
+      "original_sha256": "627f0e7373131d08140b46ccf41328e4512b1a72c124078d760149b550ce491d",
+      "terminal_disposition_at": "2026-08-19T19:10:52.651Z",
+      "retention_delete_after": "2026-11-17T19:10:52.651Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b6e-ceb4-776e-8415-0c316051e88d",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:10:41.844Z",
+        "completed_at": "2026-08-19T19:10:52.651Z",
+        "error_code": null,
+        "input_tokens": 719,
+        "output_tokens": 1093,
+        "estimated_cost_micros": 1455,
+        "input_sha256": "21d2b98522c4ed2f1b529c15399e8fe960616ab060f26ce03e5d129c227a5295",
+        "output_sha256": "2d5ae7df8b683107b420cab9c6493ded55208b2f4f6ec787daab2d6858ab831a"
+      },
+      "proposal": {
+        "proposal_id": "01a01b6e-f8eb-72bf-83b3-7d99010e6500",
+        "output_sha256": "2d5ae7df8b683107b420cab9c6493ded55208b2f4f6ec787daab2d6858ab831a",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "627f0e7373131d08140b46ccf41328e4512b1a72c124078d760149b550ce491d",
+        "revision": "627f0e7373131d08140b46ccf41328e4512b1a72c124078d760149b550ce491d"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-07",
+      "input_class": "right_to_left",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 23446,
+      "signal_id": "01a01b6f-2369-75b1-8810-0b33a07cc67c",
+      "original_sha256": "da99d71d809012a03c77da1177c7e5fa496a09493ed5779449b3348ef054d3b3",
+      "terminal_disposition_at": "2026-08-19T19:11:19.781Z",
+      "retention_delete_after": "2026-11-17T19:11:19.781Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b6f-4081-75e6-84dc-9a01c9f050cb",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:11:10.977Z",
+        "completed_at": "2026-08-19T19:11:19.781Z",
+        "error_code": null,
+        "input_tokens": 727,
+        "output_tokens": 885,
+        "estimated_cost_micros": 1207,
+        "input_sha256": "6cde32ffaab9a71b04d24219f89609c909e71cfd17bf118e2e147d50d33a9dbf",
+        "output_sha256": "8b1147f52714fbe3409ae54e9e4cc2bd8839a5a36bf74c7bb450070334d6de3c"
+      },
+      "proposal": {
+        "proposal_id": "01a01b6f-62e5-7fbb-8be1-9b903230d3cf",
+        "output_sha256": "8b1147f52714fbe3409ae54e9e4cc2bd8839a5a36bf74c7bb450070334d6de3c",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "da99d71d809012a03c77da1177c7e5fa496a09493ed5779449b3348ef054d3b3",
+        "revision": "da99d71d809012a03c77da1177c7e5fa496a09493ed5779449b3348ef054d3b3"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-08",
+      "input_class": "punctuation",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 24217,
+      "signal_id": "01a01b6f-7ecb-7331-959d-b4b5315b7f38",
+      "original_sha256": "6095ee99b7f80df44673baa1ee65a2c912d92f5f3fac98f8a46a3eb30717d53b",
+      "terminal_disposition_at": "2026-08-19T19:11:44.199Z",
+      "retention_delete_after": "2026-11-17T19:11:44.199Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b6f-9871-7107-91ff-5a8e639d6a2f",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:11:33.489Z",
+        "completed_at": "2026-08-19T19:11:44.199Z",
+        "error_code": null,
+        "input_tokens": 725,
+        "output_tokens": 1111,
+        "estimated_cost_micros": 1478,
+        "input_sha256": "e1d098df6ac67240c864fe9fdaafe6208e727c8d51e58d6311584c64b2f190c4",
+        "output_sha256": "066be948ed0dcf74294fbba934e16001c323a5a00d879e6852eb4082002af5f4"
+      },
+      "proposal": {
+        "proposal_id": "01a01b6f-c247-7b61-a3fc-1d93a0470e25",
+        "output_sha256": "066be948ed0dcf74294fbba934e16001c323a5a00d879e6852eb4082002af5f4",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "6095ee99b7f80df44673baa1ee65a2c912d92f5f3fac98f8a46a3eb30717d53b",
+        "revision": "6095ee99b7f80df44673baa1ee65a2c912d92f5f3fac98f8a46a3eb30717d53b"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-09",
+      "input_class": "urgency",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 22665,
+      "signal_id": "01a01b6f-f080-7a9a-a330-63f293387bc1",
+      "original_sha256": "3cb53a590cb7cb5f34d81af7d2e2b23024827bf36a19d64a04d4b84f3f9cfbc6",
+      "terminal_disposition_at": "2026-08-19T19:12:11.868Z",
+      "retention_delete_after": "2026-11-17T19:12:11.868Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b70-0b72-748a-938f-1cd5030f369f",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:12:02.930Z",
+        "completed_at": "2026-08-19T19:12:11.868Z",
+        "error_code": null,
+        "input_tokens": 718,
+        "output_tokens": 927,
+        "estimated_cost_micros": 1256,
+        "input_sha256": "eb07a7be7e004a2ac2237be5098ff4c4e8c361abcbf29592a1e8261df0a5e7fb",
+        "output_sha256": "620fa376c4308712f1f441b62fda2ed241a234a7ff17700ae3b6856e7f0e4bda"
+      },
+      "proposal": {
+        "proposal_id": "01a01b70-2e5c-7ca9-8d51-995612d52504",
+        "output_sha256": "620fa376c4308712f1f441b62fda2ed241a234a7ff17700ae3b6856e7f0e4bda",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "3cb53a590cb7cb5f34d81af7d2e2b23024827bf36a19d64a04d4b84f3f9cfbc6",
+        "revision": "3cb53a590cb7cb5f34d81af7d2e2b23024827bf36a19d64a04d4b84f3f9cfbc6"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-10",
+      "input_class": "multi_sentence",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 24238,
+      "signal_id": "01a01b70-4e2d-7b65-921a-a6ac3cb156c5",
+      "original_sha256": "b33f816eecf7e9614b3b1fc85cc06884ec41fff8cd261e1beec1ace897d37d16",
+      "terminal_disposition_at": "2026-08-19T19:12:35.637Z",
+      "retention_delete_after": "2026-11-17T19:12:35.637Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b70-6838-7942-ba34-f950903b692a",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:12:26.680Z",
+        "completed_at": "2026-08-19T19:12:35.637Z",
+        "error_code": null,
+        "input_tokens": 725,
+        "output_tokens": 856,
+        "estimated_cost_micros": 1172,
+        "input_sha256": "fc14d464c89c129ed56f2695f0c3bb5fedd879c5d3436ac6bbe9a9abc6258675",
+        "output_sha256": "6da5c1379dc20ea46c2ac7baf26282696aa89c22e6f235778768b9bd2df19c07"
+      },
+      "proposal": {
+        "proposal_id": "01a01b70-8b35-7479-8fe5-1ed9e7382207",
+        "output_sha256": "6da5c1379dc20ea46c2ac7baf26282696aa89c22e6f235778768b9bd2df19c07",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "b33f816eecf7e9614b3b1fc85cc06884ec41fff8cd261e1beec1ace897d37d16",
+        "revision": "b33f816eecf7e9614b3b1fc85cc06884ec41fff8cd261e1beec1ace897d37d16"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-11",
+      "input_class": "ambiguity",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 22687,
+      "signal_id": "01a01b70-bdf8-7361-b214-6ce9beb544cc",
+      "original_sha256": "071024527dd9141ac8c99508e4e1f9ec70fdb1a61a5a11a896e1a456e47e3697",
+      "terminal_disposition_at": "2026-08-19T19:13:04.215Z",
+      "retention_delete_after": "2026-11-17T19:13:04.215Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b70-d7e5-76c4-b115-f0fd84b691cb",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:12:55.269Z",
+        "completed_at": "2026-08-19T19:13:04.215Z",
+        "error_code": null,
+        "input_tokens": 719,
+        "output_tokens": 862,
+        "estimated_cost_micros": 1178,
+        "input_sha256": "a64790018b49c314b5edac471c487ff1ae5df00cd5df7fad86d56a7c2abea3fa",
+        "output_sha256": "611b0c84b45982c3f459fc60c5d0421ba8f01ad4cfe6d1c76ef7af6de98e6acf"
+      },
+      "proposal": {
+        "proposal_id": "01a01b70-fad7-7862-b6e4-9d66565043e6",
+        "output_sha256": "611b0c84b45982c3f459fc60c5d0421ba8f01ad4cfe6d1c76ef7af6de98e6acf",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "071024527dd9141ac8c99508e4e1f9ec70fdb1a61a5a11a896e1a456e47e3697",
+        "revision": "071024527dd9141ac8c99508e4e1f9ec70fdb1a61a5a11a896e1a456e47e3697"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-12",
+      "input_class": "role_assignment",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 26565,
+      "signal_id": "01a01b71-1a32-7d7b-bfd4-1e2da0005f15",
+      "original_sha256": "1e5fa11a299db28f1e3db566d6adc8399c86c952635b6f5f52dca89ac4411d86",
+      "terminal_disposition_at": "2026-08-19T19:13:30.922Z",
+      "retention_delete_after": "2026-11-17T19:13:30.922Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b71-34f0-775a-971e-3b97836f9a16",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:13:19.088Z",
+        "completed_at": "2026-08-19T19:13:30.922Z",
+        "error_code": null,
+        "input_tokens": 724,
+        "output_tokens": 1162,
+        "estimated_cost_micros": 1539,
+        "input_sha256": "4dd332b8a2080aeba20627a1fecbfc2fa6d61e8b1b3e55d087c508ce62b29c8f",
+        "output_sha256": "23a38c6820cb7d2613fb84923b3530fa66f6928168f285bab7112a16488c6f04"
+      },
+      "proposal": {
+        "proposal_id": "01a01b71-632a-78fd-b86e-220b41456aa9",
+        "output_sha256": "23a38c6820cb7d2613fb84923b3530fa66f6928168f285bab7112a16488c6f04",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "1e5fa11a299db28f1e3db566d6adc8399c86c952635b6f5f52dca89ac4411d86",
+        "revision": "1e5fa11a299db28f1e3db566d6adc8399c86c952635b6f5f52dca89ac4411d86"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-13",
+      "input_class": "negative_sentiment",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 28961,
+      "signal_id": "01a01b71-8ec1-7b9e-ba25-a631cf989075",
+      "original_sha256": "5a1b9c7592c63467e2bac45d6f3f70fa8ca594006733f48cbdb8ba44243efc4a",
+      "terminal_disposition_at": "2026-08-19T19:14:04.037Z",
+      "retention_delete_after": "2026-11-17T19:14:04.037Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b71-a9ac-7f19-b3d2-d3f3b66c3ac3",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:13:48.972Z",
+        "completed_at": "2026-08-19T19:14:04.037Z",
+        "error_code": null,
+        "input_tokens": 718,
+        "output_tokens": 1194,
+        "estimated_cost_micros": 1576,
+        "input_sha256": "30e7ec03280287cc678ed511f0bb26ff17344a6ed9ecf0aff009bea201300cd6",
+        "output_sha256": "cdb630cc0df1f2441dfb35d22cf7cf9cc5a936f716302019c8d28d8fc77bcdb8"
+      },
+      "proposal": {
+        "proposal_id": "01a01b71-e485-7e2e-aeb3-7bd401836f4f",
+        "output_sha256": "cdb630cc0df1f2441dfb35d22cf7cf9cc5a936f716302019c8d28d8fc77bcdb8",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "5a1b9c7592c63467e2bac45d6f3f70fa8ca594006733f48cbdb8ba44243efc4a",
+        "revision": "5a1b9c7592c63467e2bac45d6f3f70fa8ca594006733f48cbdb8ba44243efc4a"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-14",
+      "input_class": "measurement_unknown",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 23430,
+      "signal_id": "01a01b72-029d-7749-ac8d-b8ebd0df3c79",
+      "original_sha256": "c35abb546343e907a5776733358611d2332126be299f7a9d9b59e8a74023e10f",
+      "terminal_disposition_at": "2026-08-19T19:14:27.161Z",
+      "retention_delete_after": "2026-11-17T19:14:27.161Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b72-1c25-73a5-a5da-4baeeb586008",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:14:18.277Z",
+        "completed_at": "2026-08-19T19:14:27.161Z",
+        "error_code": null,
+        "input_tokens": 723,
+        "output_tokens": 871,
+        "estimated_cost_micros": 1190,
+        "input_sha256": "1ff28875060771169702a0efe0635cd5a64fa9ad50e3c5b443e3bf86a6cf22ce",
+        "output_sha256": "f5077952b682471e33b5c85b93001eb58588fc2c861aa47520aae511c71a4853"
+      },
+      "proposal": {
+        "proposal_id": "01a01b72-3ed9-71c7-97a3-f3fae5611d9c",
+        "output_sha256": "f5077952b682471e33b5c85b93001eb58588fc2c861aa47520aae511c71a4853",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "c35abb546343e907a5776733358611d2332126be299f7a9d9b59e8a74023e10f",
+        "revision": "c35abb546343e907a5776733358611d2332126be299f7a9d9b59e8a74023e10f"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-15",
+      "input_class": "dependency_unknown",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 24232,
+      "signal_id": "01a01b72-69b8-7321-ac3c-cf4d0f82b96e",
+      "original_sha256": "156eacf21083784aa4992424d88e946c12c1f027b5bb0d1952915603ae3b9b00",
+      "terminal_disposition_at": "2026-08-19T19:14:55.520Z",
+      "retention_delete_after": "2026-11-17T19:14:55.520Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b72-82db-7f54-868c-605e6168d5f4",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:14:44.571Z",
+        "completed_at": "2026-08-19T19:14:55.520Z",
+        "error_code": null,
+        "input_tokens": 723,
+        "output_tokens": 1057,
+        "estimated_cost_micros": 1413,
+        "input_sha256": "966b5acc0bd61a6c8520e2f590eb4c26d0c92d84a60990b66d367a00f1e39fa3",
+        "output_sha256": "154b3e98a97253b60e451ac376fa04bb55229f401983a66afe6a2b6c664a8bd8"
+      },
+      "proposal": {
+        "proposal_id": "01a01b72-ada0-7457-bba1-6fd21e6027fc",
+        "output_sha256": "154b3e98a97253b60e451ac376fa04bb55229f401983a66afe6a2b6c664a8bd8",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "156eacf21083784aa4992424d88e946c12c1f027b5bb0d1952915603ae3b9b00",
+        "revision": "156eacf21083784aa4992424d88e946c12c1f027b5bb0d1952915603ae3b9b00"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-16",
+      "input_class": "retention_boundary",
+      "expected": "READY",
+      "actual": "READY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 27873,
+      "signal_id": "01a01b72-f493-761a-bf7e-a025a1f1d8c1",
+      "original_sha256": "d9093c2a6ece2137096c37a9685f2e1b3b8922758a5e1b5c284f5fe254e5f060",
+      "terminal_disposition_at": "2026-08-19T19:15:33.118Z",
+      "retention_delete_after": "2026-11-17T19:15:33.118Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b73-0dcf-718f-97a1-c747fe94174e",
+        "state": "SUCCEEDED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:15:20.143Z",
+        "completed_at": "2026-08-19T19:15:33.118Z",
+        "error_code": null,
+        "input_tokens": 725,
+        "output_tokens": 1201,
+        "estimated_cost_micros": 1586,
+        "input_sha256": "2d2f7fafdff3cee1e4ce4d1fe7a7a30adbf54bf8bb03709989626ad2887291cd",
+        "output_sha256": "85fd722b91a2657bf4ca465e278febab60c9de466b8b8f2e18fa8b272350209b"
+      },
+      "proposal": {
+        "proposal_id": "01a01b73-407e-71ba-baa3-50b112d30f3e",
+        "output_sha256": "85fd722b91a2657bf4ca465e278febab60c9de466b8b8f2e18fa8b272350209b",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e"
+      },
+      "source": {
+        "sha256": "d9093c2a6ece2137096c37a9685f2e1b3b8922758a5e1b5c284f5fe254e5f060",
+        "revision": "d9093c2a6ece2137096c37a9685f2e1b3b8922758a5e1b5c284f5fe254e5f060"
+      },
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 1,
+        "sources": 1,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-17",
+      "input_class": "api_key",
+      "expected": "REJECTED",
+      "actual": "REJECTED",
+      "reason_code": "API_KEY",
+      "pass": true,
+      "browser_visible_elapsed_ms": 7125,
+      "rejection_id": "01a01b74-1ed7-7a10-a657-2e7ee45800ff",
+      "created_at": "2026-08-19T19:16:30.039Z",
+      "provider_called": false,
+      "database_projection": {
+        "signals": 0,
+        "attempts": 0,
+        "proposals": 0,
+        "sources": 0,
+        "events": 0,
+        "rejections": 1,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-18",
+      "input_class": "controlled_data",
+      "expected": "REJECTED",
+      "actual": "REJECTED",
+      "reason_code": "CONTROLLED_DATA",
+      "pass": true,
+      "browser_visible_elapsed_ms": 6525,
+      "rejection_id": "01a01b74-67ea-794a-a9b2-07dd9a614ff2",
+      "created_at": "2026-08-19T19:16:48.746Z",
+      "provider_called": false,
+      "database_projection": {
+        "signals": 0,
+        "attempts": 0,
+        "proposals": 0,
+        "sources": 0,
+        "events": 0,
+        "rejections": 1,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-19",
+      "input_class": "active_markup",
+      "expected": "REJECTED",
+      "actual": "REJECTED",
+      "reason_code": "ACTIVE_MARKUP",
+      "pass": true,
+      "browser_visible_elapsed_ms": 6543,
+      "rejection_id": "01a01b74-80ff-778c-8dbf-aef3ebd09947",
+      "created_at": "2026-08-19T19:16:55.167Z",
+      "provider_called": false,
+      "database_projection": {
+        "signals": 0,
+        "attempts": 0,
+        "proposals": 0,
+        "sources": 0,
+        "events": 0,
+        "rejections": 1,
+        "work_item_side_effects": 0
+      }
+    },
+    {
+      "case_id": "V26X-20",
+      "input_class": "controlled_model_policy_mismatch",
+      "expected": "SAFE_FAILURE",
+      "actual": "SAFE_FAILURE",
+      "pass": true,
+      "browser_visible_elapsed_ms": 13727,
+      "signal_id": "01a01b76-3576-74a8-9bf9-e7e8a9072d91",
+      "original_sha256": "9dd055f5c238e1e68da6cfeebdbd4c2daa9d7b67cfa5bad764a96980591d21d5",
+      "terminal_disposition_at": "2026-08-19T19:18:53.620Z",
+      "retention_delete_after": "2026-11-17T19:18:53.620Z",
+      "terminal_plus_90_days": true,
+      "attempt": {
+        "attempt_id": "01a01b76-4f4b-72e4-b422-b1684c009e70",
+        "state": "FAILED",
+        "provider": "OpenAI",
+        "model": "gpt-5.6-luna",
+        "prompt_version": "issue-70-signal-proposal-v1",
+        "implementation_revision": "d1e3c60b1059a617a2a4a71a1f01b9f9d11c016e",
+        "started_at": "2026-08-19T19:18:53.515Z",
+        "completed_at": "2026-08-19T19:18:53.620Z",
+        "error_code": "MODEL_POLICY_MISMATCH",
+        "input_tokens": null,
+        "output_tokens": null,
+        "estimated_cost_micros": null,
+        "input_sha256": "15f3bce7bc365edfbb4ba1b9fd33eac89e1b64270819fbd252771cabba1e3f1e",
+        "output_sha256": null
+      },
+      "proposal": null,
+      "source": null,
+      "database_projection": {
+        "signals": 1,
+        "attempts": 1,
+        "proposals": 0,
+        "sources": 0,
+        "events": 3,
+        "work_item_side_effects": 0
+      }
+    }
+  ]
+}
