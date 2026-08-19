@@ -31,6 +31,7 @@ Format:
 | 2026-08-12 | environment | Pin Python 3.12 and Node 20; manage Python with `uv` | Match the architecture contract and avoid accidental use of globally newer runtimes | At a measured runtime upgrade |
 | 2026-08-12 | environment | Bind the project Postgres container to `127.0.0.1:55432` | Port 5432 is already owned by another project; loopback isolation prevents collision and unintended network exposure | If a shared database replaces local Compose |
 | 2026-08-12 | environment | Declare Bash for setup gates and test that discovery does not mutate `PATH` | zsh reserves `path` and `status`; ad-hoc probes produced false failures | If setup becomes shell-independent |
+| 2026-08-19 | issue-70 | Permit the bounded non-admitting signal/proposal slice before issues #53/#62 complete; prohibit STR creation, backlog admission, Gate movement, assignment, dispatch, and production under this exception | Prove immutable signal capture and trustworthy proposal generation without changing the unresolved admission or execution policy | At issue #70 closure or any proposed scope expansion |
 
 Rules of the log:
 - If you ruled on it out loud (or in your head) and it changes future behavior, it goes here.

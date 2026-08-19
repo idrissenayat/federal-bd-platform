@@ -6,21 +6,22 @@
 
 ## Frozen runtime policy
 
-Gate 2 must replace every `TBD` below with a numeric or exact configured value:
-
-- Staging provider/model: `TBD`
+- Staging provider/model: OpenAI Responses API, exact model `gpt-5.6-terra`
+- Request policy: `reasoning.effort: low`, standard service tier, no model tools, no web search, and `store: false`
 - Prompt-contract/schema version: `signal-proposal-v1`
 - Maximum signal length: 4,000 characters
-- Maximum provider input: `TBD` tokens
-- Maximum provider output: `TBD` tokens
-- Maximum estimated cost per attempt: `TBD` USD
-- Provider timeout: `TBD` seconds
+- Maximum provider input: 12,000 tokens, enforced before the request
+- Maximum provider output: 4,000 tokens, including reasoning and visible output
+- Maximum estimated cost per attempt: USD 0.10; the request is rejected before provider invocation when the configured price calculation exceeds the ceiling
+- Provider timeout: 45 seconds
 - Automatic retries: zero
 - Human-requested retries: one per immutable signal
 - Terminal signal retention: 90 days unless legal hold applies
 - Provider recovery window: no more than 30 days under the active privacy ruling
 - p95 capture response: at most 750 ms, excluding generation
 - p95 proposal completion: at most 60 seconds for eligible staging cases
+
+The model choice uses the balanced GPT-5.6 tier because this is low-volume, decision-quality preparation rather than bulk classification. Official OpenAI documentation identifies `gpt-5.6-terra` as the intelligence/cost-balanced tier, supports the Responses API and Structured Outputs, and lists standard short-context pricing of USD 2.00 per million input tokens and USD 12.00 per million output tokens as of 2026-08-19. The 12,000/4,000 token caps imply a nominal maximum of USD 0.072 before any applicable regional uplift, leaving headroom under the frozen USD 0.10 ceiling. Sources: [model contract](https://developers.openai.com/api/docs/models/gpt-5.6-terra), [pricing](https://developers.openai.com/api/docs/pricing), and [current model guidance](https://developers.openai.com/api/docs/guides/latest-model).
 
 ## Acceptance tests
 
