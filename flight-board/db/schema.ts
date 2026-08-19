@@ -60,6 +60,126 @@ export const workItems = sqliteTable(
   ],
 );
 
+export const signals = sqliteTable(
+  "signals",
+  {
+    signalId: text("signal_id").primaryKey(),
+    podId: text("pod_id").notNull(),
+    submitterId: text("submitter_id").notNull(),
+    originalText: text("original_text").notNull(),
+    originalSha256: text("original_sha256").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    lifecycleState: text("lifecycle_state").notNull(),
+    currentProposalVersion: integer("current_proposal_version").notNull().default(0),
+    retentionDeleteAfter: text("retention_delete_after").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("uq_signals_pod_idempotency").on(table.podId, table.idempotencyKey),
+    index("idx_signals_pod_created").on(table.podId, table.createdAt),
+  ],
+);
+
+export const signalEvents = sqliteTable(
+  "signal_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    signalId: text("signal_id").notNull(),
+    eventVersion: integer("event_version").notNull(),
+    eventType: text("event_type").notNull(),
+    actorId: text("actor_id").notNull(),
+    detailJson: text("detail_json").notNull(),
+    previousEventSha256: text("previous_event_sha256"),
+    eventSha256: text("event_sha256").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("uq_signal_events_version").on(table.signalId, table.eventVersion),
+    index("idx_signal_events_created").on(table.signalId, table.createdAt),
+  ],
+);
+
+export const signalProposals = sqliteTable(
+  "signal_proposals",
+  {
+    proposalId: text("proposal_id").primaryKey(),
+    signalId: text("signal_id").notNull(),
+    version: integer("version").notNull(),
+    proposalJson: text("proposal_json").notNull(),
+    schemaVersion: text("schema_version").notNull(),
+    inputSha256: text("input_sha256").notNull(),
+    outputSha256: text("output_sha256").notNull(),
+    state: text("state").notNull(),
+    confidence: text("confidence").notNull(),
+    readinessStatus: text("readiness_status").notNull(),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    implementationRevision: text("implementation_revision").notNull(),
+    supersedesProposalId: text("supersedes_proposal_id"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("uq_signal_proposals_version").on(table.signalId, table.version),
+    index("idx_signal_proposals_created").on(table.signalId, table.createdAt),
+  ],
+);
+
+export const signalSources = sqliteTable(
+  "signal_sources",
+  {
+    sourceId: text("source_id").primaryKey(),
+    signalId: text("signal_id").notNull(),
+    proposalId: text("proposal_id").notNull(),
+    sourceType: text("source_type").notNull(),
+    sourceReference: text("source_reference").notNull(),
+    revision: text("revision"),
+    sha256: text("sha256").notNull(),
+    verificationState: text("verification_state").notNull(),
+    retrievedAt: text("retrieved_at").notNull(),
+  },
+  (table) => [index("idx_signal_sources_proposal").on(table.proposalId, table.sourceId)],
+);
+
+export const signalGenerationAttempts = sqliteTable(
+  "signal_generation_attempts",
+  {
+    attemptId: text("attempt_id").primaryKey(),
+    signalId: text("signal_id").notNull(),
+    attemptNumber: integer("attempt_number").notNull(),
+    targetProposalVersion: integer("target_proposal_version").notNull().default(1),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    state: text("state").notNull(),
+    startedAt: text("started_at").notNull(),
+    completedAt: text("completed_at"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    estimatedCostMicros: integer("estimated_cost_micros"),
+    errorCode: text("error_code"),
+    inputSha256: text("input_sha256").notNull(),
+    outputSha256: text("output_sha256"),
+  },
+  (table) => [
+    uniqueIndex("uq_signal_attempts_number").on(table.signalId, table.attemptNumber),
+    index("idx_signal_attempts_started").on(table.signalId, table.startedAt),
+  ],
+);
+
+export const signalRejections = sqliteTable(
+  "signal_rejections",
+  {
+    rejectionId: text("rejection_id").primaryKey(),
+    podId: text("pod_id").notNull(),
+    actorId: text("actor_id").notNull(),
+    reasonCode: text("reason_code").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_signal_rejections_pod_created").on(table.podId, table.createdAt)],
+);
+
 export const workEconomicsEvents = sqliteTable(
   "work_economics_events",
   {

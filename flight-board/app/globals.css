@@ -690,3 +690,86 @@ body { font-size: 14px; }
 .decision-receipt-status > button { background: #742929; border: 0; border-radius: 7px; color: #fff; cursor: pointer; font-size: 11px; font-weight: 800; margin-top: 11px; min-height: 38px; padding: 8px 11px; }
 .decision-effect-note { background: #f2f5f4; border-radius: 8px; color: #3f5148; font-size: 11px; line-height: 1.55; margin: 13px 0 0; padding: 10px 11px; }
 .decision-modal fieldset:disabled .radio-card { cursor: default; opacity: .58; }
+
+/* Issue #70: governed signal capture and advisory proposal workspace. */
+.signal-intake-modal { max-width: 680px; }
+.signal-intake-dialog-shell { background: transparent; border: 0; margin: 0; max-height: none; max-width: none; padding: 0; position: static; }
+.signal-intake-modal .signal-primary-input { color: #24312a; font-size: 13px; font-weight: 780; }
+.signal-primary-input textarea { box-sizing: border-box; min-height: 190px; resize: vertical; width: 100%; }
+.signal-data-boundary { background: #fff7df; border: 1px solid #c8a85b; border-left: 5px solid #7b5910; border-radius: 9px; color: #49380f; padding: 12px 14px; }
+.signal-data-boundary strong { display: block; font-size: 12px; line-height: 1.45; }
+.signal-data-boundary p { font-size: 11px; line-height: 1.55; margin: 4px 0 0; }
+
+.signal-workspace { width: min(760px, 100vw); }
+.signal-workspace .drawer-body { display: grid; gap: 16px; }
+.signal-workspace .drawer-body > h2 { font-size: 22px; line-height: 1.25; margin: 0; }
+.signal-original { background: #f4f2ea; border: 1px solid #c9c5b6; border-radius: 11px; padding: 14px; }
+.signal-original > div { align-items: center; display: flex; gap: 10px; justify-content: space-between; }
+.signal-original span { color: #46564e; font-size: 10px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase; }
+.signal-original code { color: #34433b; font-size: 10px; }
+.signal-original p { color: #1f2924; font-size: 14px; line-height: 1.65; margin: 10px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.signal-original small { color: #555e59; font-size: 10px; line-height: 1.5; }
+.signal-processing, .signal-safe-failure { align-items: flex-start; background: #eef5f7; border: 1px solid #a9c4ca; border-left: 5px solid #397180; border-radius: 10px; display: grid; gap: 10px; grid-template-columns: 24px minmax(0, 1fr); padding: 13px; }
+.signal-safe-failure { background: #fff0f0; border-color: #d49a9a; border-left-color: #872a2a; }
+.signal-safe-failure.signal-stale { background: #fff7df; border-color: #c8a85b; border-left-color: #7b5910; }
+.signal-safe-failure.signal-stale button { background: #6f500c; }
+.signal-processing > span, .signal-safe-failure > span { font-size: 20px; font-weight: 900; }
+.signal-processing strong, .signal-safe-failure strong { color: #24312a; display: block; font-size: 13px; line-height: 1.45; }
+.signal-processing p, .signal-safe-failure p { color: #45534c; font-size: 11px; line-height: 1.55; margin: 3px 0 0; }
+.signal-safe-failure button { background: #742929; border: 0; border-radius: 7px; color: #fff; cursor: pointer; font-size: 11px; font-weight: 800; margin-top: 9px; min-height: 38px; padding: 8px 11px; }
+.signal-safe-failure button:disabled { cursor: default; opacity: .6; }
+.signal-answer { background: linear-gradient(145deg, #e9f5ec, #fff9dd); border: 1px solid #a6beaa; border-radius: 12px; padding: 16px; }
+.signal-answer > header { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; }
+.signal-answer header span { color: #2f6244; font-size: 10px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase; }
+.signal-answer h3 { font-size: 19px; line-height: 1.35; margin: 4px 0 0; }
+.signal-answer > p { color: #394940; font-size: 12px; line-height: 1.65; margin: 12px 0 5px; }
+.signal-answer > small { color: #4d5c53; font-size: 10px; line-height: 1.5; }
+.signal-recommendation-grid { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 13px; }
+.signal-recommendation-grid > div { background: rgba(255,255,255,.68); border: 1px solid rgba(79,111,87,.24); border-radius: 8px; padding: 9px; }
+.signal-recommendation-grid span { display: block; }
+.signal-recommendation-grid strong { display: block; font-size: 11px; line-height: 1.4; margin-top: 3px; overflow-wrap: anywhere; text-transform: capitalize; }
+.signal-decision-brief, .signal-classification, .signal-risks { border-top: 1px solid #d3d7d4; padding-top: 15px; }
+.signal-decision-brief h3, .signal-classification h3, .signal-risks h3 { font-size: 15px; margin: 0 0 11px; }
+.signal-decision-brief dl, .signal-provenance dl { display: grid; gap: 8px; margin: 0; }
+.signal-decision-brief dl > div, .signal-provenance dl > div { background: #f6f7f6; border-radius: 8px; padding: 10px 11px; }
+.signal-decision-brief dt, .signal-provenance dt { color: #4b5951; font-size: 10px; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
+.signal-decision-brief dd, .signal-provenance dd { font-size: 12px; line-height: 1.55; margin: 3px 0 0; overflow-wrap: anywhere; }
+.signal-clarification { background: #fff7df; border-left: 4px solid #7b5910; border-radius: 8px; margin-top: 10px; padding: 11px 12px; }
+.signal-clarification span { color: #614708; display: block; font-size: 10px; font-weight: 850; text-transform: uppercase; }
+.signal-clarification strong { display: block; font-size: 12px; line-height: 1.5; margin-top: 3px; }
+.signal-detail-grid, .signal-classification > div { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.signal-detail-grid section, .signal-classification section { background: #f7f8f7; border: 1px solid #d4d8d5; border-radius: 9px; min-width: 0; padding: 11px; }
+.signal-detail-grid h4, .signal-classification h4 { font-size: 11px; margin: 0 0 6px; }
+.signal-detail-grid p, .signal-classification p, .signal-detail-grid li, .signal-classification li { color: #3f4d45; font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
+.signal-detail-grid ul, .signal-classification ul { margin: 0; padding-left: 18px; }
+.signal-detail-grid li + li, .signal-classification li + li { margin-top: 5px; }
+.signal-classification li small { color: #59665f; display: block; font-size: 9px; }
+.signal-risks article { align-items: start; display: grid; gap: 10px; grid-template-columns: 90px minmax(0, 1fr); padding: 10px 0; }
+.signal-risks article + article { border-top: 1px solid #dde0de; }
+.signal-risks article > span { background: #e7edeb; border-radius: 999px; color: #34473d; font-size: 9px; font-weight: 850; padding: 5px 7px; text-align: center; text-transform: uppercase; }
+.signal-risks strong { font-size: 11px; line-height: 1.5; }
+.signal-risks p { color: #4b5951; font-size: 10px; line-height: 1.55; margin: 3px 0 0; }
+.signal-provenance { border: 1px solid #cdd2cf; border-radius: 9px; padding: 11px; }
+.signal-provenance summary { cursor: pointer; font-size: 11px; font-weight: 850; }
+.signal-provenance dl { margin-top: 10px; }
+
+.signal-register { margin-bottom: 18px; }
+.signal-register > header { align-items: center; display: flex; justify-content: space-between; }
+.signal-register > header h2 { margin-bottom: 0; }
+.signal-register > header > b { background: #e8eeeb; border-radius: 999px; min-width: 28px; padding: 6px 9px; text-align: center; }
+.signal-register > p { color: #4d5a53; font-size: 11px; line-height: 1.55; margin: 8px 0 12px; }
+.signal-register > div { display: grid; gap: 7px; }
+.signal-register > div > button { align-items: center; background: #fbfcfb; border: 1px solid #d5d9d6; border-radius: 9px; color: #26322c; cursor: pointer; display: grid; gap: 9px; grid-template-columns: 108px minmax(0, 1fr) 170px 20px; padding: 10px 11px; text-align: left; }
+.signal-register > div > button:hover, .signal-register > div > button:focus-visible { background: #f0f6f2; border-color: #8fad99; }
+.signal-register-state { color: #3e5949; font-size: 9px; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
+.signal-register > div > button strong { font-size: 11px; line-height: 1.45; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.signal-register > div > button small { color: #56635c; font-size: 9px; line-height: 1.4; }
+
+@media (max-width: 680px) {
+  .signal-workspace { width: 100vw; }
+  .signal-recommendation-grid, .signal-detail-grid, .signal-classification > div { grid-template-columns: 1fr; }
+  .signal-register > div > button { grid-template-columns: 1fr 20px; }
+  .signal-register-state, .signal-register > div > button small { grid-column: 1; }
+  .signal-register > div > button > b { grid-column: 2; grid-row: 1 / span 3; }
+  .signal-risks article { grid-template-columns: 78px minmax(0, 1fr); }
+}
