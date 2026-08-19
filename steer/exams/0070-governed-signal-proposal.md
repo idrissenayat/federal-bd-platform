@@ -92,9 +92,9 @@ MODEL AMENDMENT AUTHORIZATION: APPROVED — 2026-08-19T14:41:02Z — idrissenaya
 
 MODEL AMENDMENT SCOPE: Replace only the frozen provider model from `gpt-5.6-terra` to `gpt-5.6-luna`; preserve every other Gate 2 control and rerun the complete approved Exam. The amended Exam requires an exact revision and SHA-256 binding before staging deployment.
 
-AMENDED GATE 2:
+AMENDED GATE 2: APPROVED — 2026-08-19T14:47:22Z — idrissenayat
 
-AMENDED GATE 2 EVIDENCE:
+AMENDED GATE 2 EVIDENCE: Product Lead approval [PR #71 comment](https://github.com/idrissenayat/federal-bd-platform/pull/71#issuecomment-5343795115), bound to pre-signature commit `482a56abf5ecc262428d02613726a5c9f2c04d0d` and Exam SHA-256 `66a959826d327f8f4e7f69a95e438c93a76f48e45a9babc49b02708f3cfe98d5`.
 
 GATE 3:
 
