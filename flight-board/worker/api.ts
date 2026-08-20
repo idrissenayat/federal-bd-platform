@@ -2212,6 +2212,24 @@ function signalBacklogValidationReason(code: string) {
   return "PARAMETER";
 }
 
+async function recordSignalBacklogTelemetry(db: Database, observations: Array<{
+  metricName: string;
+  labelName?: string;
+  labelValue?: string;
+  value?: number;
+}>) {
+  const observedAt = new Date().toISOString();
+  await db.batch(observations.map((observation) => db.prepare(`INSERT INTO steer_telemetry
+    (metric_name, label_name, label_value, value, case_id, observed_at)
+    VALUES (?, ?, ?, ?, NULL, ?)`).bind(
+      observation.metricName,
+      observation.labelName ?? "",
+      observation.labelValue ?? "",
+      observation.value ?? 1,
+      observedAt,
+    )));
+}
+
 async function listSignals(request: Request, db: Database, user: User) {
   const startedAt = Date.now();
   const member = await memberContext(db, user);
@@ -2282,11 +2300,11 @@ async function listSignals(request: Request, db: Database, user: User) {
       ? await createSignalBacklogCursor(query, { createdAt: last.created_at, signalId: last.signal_id })
       : null;
     const outcome = items.length ? "success" : "empty";
-    await Promise.all([
-      recordSignalTelemetry(db, "steer_signal_backlog_request_total", "outcome", outcome),
-      recordSignalTelemetry(db, "steer_signal_backlog_page_total", "kind", query.cursorProvided ? "continuation" : "first"),
-      recordSignalTelemetry(db, "steer_signal_backlog_returned_total", "", "", items.length),
-      recordSignalLatency(db, "steer_signal_backlog_request_latency_ms", startedAt),
+    await recordSignalBacklogTelemetry(db, [
+      { metricName: "steer_signal_backlog_request_total", labelName: "outcome", labelValue: outcome },
+      { metricName: "steer_signal_backlog_page_total", labelName: "kind", labelValue: query.cursorProvided ? "continuation" : "first" },
+      { metricName: "steer_signal_backlog_returned_total", value: items.length },
+      { metricName: "steer_signal_backlog_request_latency_ms", value: Math.max(0, Math.min(60_000, Date.now() - startedAt)) },
     ]);
     return json({
       ok: true,
@@ -2299,18 +2317,18 @@ async function listSignals(request: Request, db: Database, user: User) {
   } catch (error) {
     if (error instanceof SignalBacklogContractError) {
       const outcome = error.status >= 500 ? "contract_error" : "validation";
-      await Promise.all([
-        recordSignalTelemetry(db, "steer_signal_backlog_request_total", "outcome", outcome),
+      await recordSignalBacklogTelemetry(db, [
+        { metricName: "steer_signal_backlog_request_total", labelName: "outcome", labelValue: outcome },
         error.status >= 500
-          ? recordSignalTelemetry(db, "steer_signal_backlog_contract_violation_total", "reason_code", "STATE")
-          : recordSignalTelemetry(db, "steer_signal_backlog_validation_total", "reason_code", signalBacklogValidationReason(error.code)),
-        recordSignalLatency(db, "steer_signal_backlog_request_latency_ms", startedAt),
+          ? { metricName: "steer_signal_backlog_contract_violation_total", labelName: "reason_code", labelValue: "STATE" }
+          : { metricName: "steer_signal_backlog_validation_total", labelName: "reason_code", labelValue: signalBacklogValidationReason(error.code) },
+        { metricName: "steer_signal_backlog_request_latency_ms", value: Math.max(0, Math.min(60_000, Date.now() - startedAt)) },
       ]);
       return json({ error: error.message, code: error.code, retryable: false }, error.status);
     }
-    await Promise.all([
-      recordSignalTelemetry(db, "steer_signal_backlog_request_total", "outcome", "storage_error"),
-      recordSignalLatency(db, "steer_signal_backlog_request_latency_ms", startedAt),
+    await recordSignalBacklogTelemetry(db, [
+      { metricName: "steer_signal_backlog_request_total", labelName: "outcome", labelValue: "storage_error" },
+      { metricName: "steer_signal_backlog_request_latency_ms", value: Math.max(0, Math.min(60_000, Date.now() - startedAt)) },
     ]);
     throw error;
   }

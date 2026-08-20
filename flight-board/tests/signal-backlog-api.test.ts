@@ -18,8 +18,10 @@ class D1Statement {
 
 class D1Database {
   readonly sqlite = new DatabaseSync(":memory:");
+  readonly batchSizes: number[] = [];
   prepare(sql: string) { return new D1Statement(this.sqlite, sql); }
   async batch(statements: D1Statement[]) {
+    this.batchSizes.push(statements.length);
     this.sqlite.exec("BEGIN IMMEDIATE");
     try { const results = statements.map((statement) => statement.runSync()); this.sqlite.exec("COMMIT"); return results; }
     catch (error) { this.sqlite.exec("ROLLBACK"); throw error; }
@@ -100,6 +102,7 @@ test("SB-02/SB-03 returns the complete stable 31-signal register exactly once", 
 
 test("SB-05/SB-06 filters using server counts and closed lifecycle mapping", async () => {
   const { db } = await seed();
+  db.batchSizes.length = 0;
   const ready = await get(db, "/api/signals?limit=25&group=READY_FOR_REVIEW");
   assert.equal(ready.response.status, 200);
   assert.equal(ready.body.items.length, 6);
@@ -108,6 +111,7 @@ test("SB-05/SB-06 filters using server counts and closed lifecycle mapping", asy
   assert.equal(attention.body.items.length, 12);
   assert.equal(attention.body.items.filter((item) => item.attention_reason === "PROVIDER_TIMEOUT").length, 6);
   assert.equal(attention.body.items.filter((item) => item.attention_reason === "SOURCE_CHANGED").length, 6);
+  assert.deepEqual(db.batchSizes, [2, 4, 2, 4], "each read uses one D1 read batch and one bounded telemetry batch");
 });
 
 test("SB-07/SB-08 treats search literally and rejects malformed requests without echo", async () => {
