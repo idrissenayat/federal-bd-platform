@@ -119,8 +119,23 @@ async function runFlow(definition) {
   const idempotencyKey = uuidV7();
   assert.match(idempotencyKey, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   steps.intent = await humanCall(itemId, "INTENT", { package_id: steps.package.body.package.package_id, decision: "APPROVED",
-    final_reasoning: "The exact issue #74 hosted candidate satisfies the recorded release controls.", decision_session_id: steps.session.body.session_id, idempotency_key: idempotencyKey });
-  const intentId = steps.intent.body.intent?.intent_id ?? steps.intent.body.intent_id; assert.ok(intentId);
+    final_reasoning: "The exact issue #74 hosted candidate satisfies the recorded release controls.", decision_session_id: steps.session.body.session_id, idempotency_key: idempotencyKey }, [200, 201, 409]);
+  const intentId = steps.intent.body.intent?.intent_id ?? steps.intent.body.intent_id ?? null;
+  if (!intentId) {
+    assert.equal(steps.intent.status, 409);
+    assert.equal(definition.finalStatus, 409);
+    assert.equal(definition.drift, null, `${definition.case_id} must reach an intent before drift is injected.`);
+    steps.readiness = await humanCall(itemId, "READINESS");
+    assert.equal(steps.readiness.body.status, definition.readiness);
+    steps.projection = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "PROJECT", item_id: itemId } });
+    const stepRecord = Object.fromEntries(Object.entries(steps).map(([name, value]) => [name, Array.isArray(value)
+      ? value.map((entry) => ({ status: entry.status, latency_ms: entry.latency_ms, body: entry.body }))
+      : { status: value.status, latency_ms: value.latency_ms, attempts: value.attempts, body: value.body }]));
+    return { case_id: definition.case_id, item_id: itemId, snapshot_id: snapshotId, intent_id: null, packet,
+      oracle: { tier: definition.tier, readiness: definition.readiness, intent_http: 409, finalize_http: null, gate_effects: 0 },
+      projection_sha256: steps.projection.body.projection_sha256, projection: steps.projection.body.projection, steps: stepRecord,
+      latency_ms: Object.values(steps).flatMap((value) => Array.isArray(value) ? value.map((entry) => entry.latency_ms) : [value.latency_ms]), pass: true };
+  }
   steps.proof = await call(`/api/decision-intents/${intentId}/issuer-proof`, { service: true, body: {} });
   if (definition.drift === "VERIFICATION_RECEIPT") steps.drift = await receipt(itemId, builderId, submitterId, definition, `${definition.case_id}:changed`);
   else if (definition.drift) steps.drift = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "MUTATE", item_id: itemId, field: definition.drift } });
