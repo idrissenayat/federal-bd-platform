@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const members = sqliteTable(
@@ -79,6 +80,7 @@ export const signals = sqliteTable(
   (table) => [
     uniqueIndex("uq_signals_pod_idempotency").on(table.podId, table.idempotencyKey),
     index("idx_signals_pod_created").on(table.podId, table.createdAt),
+    index("idx_signals_pod_created_id").on(table.podId, sql`${table.createdAt} DESC`, sql`${table.signalId} DESC`),
   ],
 );
 

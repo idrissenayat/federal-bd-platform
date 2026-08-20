@@ -31,7 +31,7 @@ const approvedSoloPolicyRulingSha256 = "4f18e737f943b34ddeb9c50b6f679675211b0d84
 const approvedReadinessRulingUrl = "https://github.com/idrissenayat/federal-bd-platform/blob/1b8ad059a8ee2a4a94c7828bc617d4909a52813c/steer/exams/0074-risk-based-gate3-readiness.md";
 const approvedReadinessRulingSha256 = "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6";
 
-type View = "my-work" | "overview" | "board" | "backlog" | "decisions" | "verification" | "team";
+type View = "my-work" | "overview" | "board" | "signals" | "backlog" | "decisions" | "verification" | "team";
 type RoleContext = "product" | "tech" | "design" | "platform" | "security" | "contributor";
 
 type WorkItem = {
@@ -298,6 +298,30 @@ type SignalSummary = {
   updated_at: string;
 };
 
+export type SignalBacklogItem = {
+  signal_id: string;
+  lifecycle_state: SignalSummary["lifecycle_state"];
+  presentation_group: "NEW" | "SCREENING" | "READY_FOR_REVIEW" | "NEEDS_ATTENTION";
+  presentation_label: string;
+  excerpt: string;
+  current_proposal_version: number;
+  attention_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SignalBacklogResponse = {
+  ok: true;
+  generated_at: string;
+  query: { group: SignalBacklogGroup; q: string | null; limit: number; snapshot_at: string };
+  counts: { total: number; new: number; screening: number; ready_for_review: number; needs_attention: number };
+  items: SignalBacklogItem[];
+  page: { has_more: boolean; next_cursor: string | null; returned: number };
+};
+
+type SignalBacklogGroup = "ALL" | "NEW" | "SCREENING" | "READY_FOR_REVIEW" | "NEEDS_ATTENTION";
+type SignalBacklogLoading = "initial" | "query" | "append" | "refresh" | null;
+
 type SignalStatement = { text: string; sourceIds: string[] };
 type SignalProposalValue = {
   schemaVersion: string;
@@ -376,7 +400,6 @@ type Bootstrap = {
   release_readiness: ReleaseReadiness[];
   verification_release_readiness: ReleaseReadiness[];
   decision_receipts: DecisionReceipt[];
-  signals: SignalSummary[];
   verification_decision_receipts: DecisionReceipt[];
 };
 
@@ -421,7 +444,8 @@ const navigation: { id: View; label: string; icon: string }[] = [
   { id: "my-work", label: "My Work", icon: "✦" },
   { id: "overview", label: "Overview", icon: "◫" },
   { id: "board", label: "Flight Board", icon: "▥" },
-  { id: "backlog", label: "Backlog", icon: "≡" },
+  { id: "signals", label: "Signal Backlog", icon: "⌁" },
+  { id: "backlog", label: "Product Backlog", icon: "≡" },
   { id: "decisions", label: "Human Decisions", icon: "◆" },
   { id: "verification", label: "Verification Evidence", icon: "◈" },
   { id: "team", label: "Team & Agents", icon: "◎" },
@@ -1051,6 +1075,14 @@ export default function Home() {
   const [signalLoading, setSignalLoading] = useState(false);
   const [signalGenerating, setSignalGenerating] = useState(false);
   const [signalIntakeError, setSignalIntakeError] = useState<string | null>(null);
+  const [signalBacklogResponse, setSignalBacklogResponse] = useState<SignalBacklogResponse | null>(null);
+  const [signalBacklogItems, setSignalBacklogItems] = useState<SignalBacklogItem[]>([]);
+  const [signalBacklogGroup, setSignalBacklogGroup] = useState<SignalBacklogGroup>("ALL");
+  const [signalBacklogSearch, setSignalBacklogSearch] = useState("");
+  const [signalBacklogAppliedSearch, setSignalBacklogAppliedSearch] = useState("");
+  const [signalBacklogLoading, setSignalBacklogLoading] = useState<SignalBacklogLoading>(null);
+  const [signalBacklogError, setSignalBacklogError] = useState<string | null>(null);
+  const [signalBacklogStatus, setSignalBacklogStatus] = useState("Signal Backlog has not been loaded yet.");
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1087,6 +1119,8 @@ export default function Home() {
   const [mergeConfirmation, setMergeConfirmation] = useState("");
   const [itemFeedback, setItemFeedback] = useState<Record<number, ActionFeedback>>({});
   const loadSequence = useRef(0);
+  const signalBacklogSequence = useRef(0);
+  const signalBacklogAbort = useRef<AbortController | null>(null);
   const mutationSequence = useRef(0);
   const latestMutation = useRef(new Map<number, number>());
   const drawerRef = useRef<HTMLDialogElement>(null);
@@ -1125,6 +1159,66 @@ export default function Home() {
       return false;
     } finally {
       if (sequence === loadSequence.current) setLoading(false);
+    }
+  }
+
+  async function loadSignalBacklog(options: {
+    kind: Exclude<SignalBacklogLoading, null>;
+    cursor?: string | null;
+    group?: SignalBacklogGroup;
+    q?: string;
+  }) {
+    const group = options.group ?? signalBacklogGroup;
+    const q = options.q ?? signalBacklogAppliedSearch;
+    const sequence = ++signalBacklogSequence.current;
+    signalBacklogAbort.current?.abort();
+    const controller = new AbortController();
+    signalBacklogAbort.current = controller;
+    const startedAt = feedbackClock();
+    setSignalBacklogLoading(options.kind);
+    setSignalBacklogError(null);
+    setSignalBacklogStatus(options.kind === "append" ? "Loading the next authoritative page." : options.kind === "refresh" ? "Refreshing the authoritative Signal Backlog." : "Loading the authoritative Signal Backlog.");
+    const params = new URLSearchParams({ limit: "25", group });
+    if (q.trim()) params.set("q", q.trim());
+    if (options.cursor) params.set("cursor", options.cursor);
+    try {
+      const payload = await api(`/api/signals?${params.toString()}`, { signal: controller.signal }) as SignalBacklogResponse;
+      if (sequence !== signalBacklogSequence.current) {
+        emitTelemetry({ metric_name: "steer_signal_backlog_stale_response_total", value: 1 });
+        return false;
+      }
+      if (options.kind === "append") {
+        const existing = new Set(signalBacklogItems.map((item) => item.signal_id));
+        if (payload.items.some((item) => existing.has(item.signal_id))) {
+          setSignalBacklogError("The next page overlapped the current snapshot. Nothing was appended; refresh to start a new authoritative snapshot.");
+          setSignalBacklogStatus("The next page was rejected because it repeated an existing signal.");
+          emitTelemetry({ metric_name: "steer_signal_backlog_duplicate_row_total", value: 1 });
+          return false;
+        }
+        setSignalBacklogItems((current) => [...current, ...payload.items]);
+        setSignalBacklogStatus(`Added ${payload.items.length} signal${payload.items.length === 1 ? "" : "s"}. ${payload.page.has_more ? "More signals remain in this snapshot." : "The complete snapshot is now visible."}`);
+      } else {
+        setSignalBacklogItems(payload.items);
+        setSignalBacklogStatus(payload.counts.total === 0
+          ? q.trim() ? "No signals match the applied search." : "No signals have been captured in this POD."
+          : `Loaded ${payload.items.length} of ${payload.counts.total} signal${payload.counts.total === 1 ? "" : "s"} in this snapshot.`);
+      }
+      setSignalBacklogResponse(payload);
+      requestAnimationFrame(() => emitTelemetry({ metric_name: "steer_signal_backlog_visible_latency_ms", value: Math.max(0, Math.round(feedbackClock() - startedAt)) }));
+      if (options.kind === "refresh") emitTelemetry({ metric_name: "steer_signal_backlog_page_total", label_name: "kind", label_value: "refresh", value: 1 });
+      return true;
+    } catch (caught) {
+      if (caught instanceof DOMException && caught.name === "AbortError") return false;
+      if (sequence === signalBacklogSequence.current) {
+        const message = caught instanceof Error ? caught.message : "The Signal Backlog could not be loaded.";
+        setSignalBacklogError(message);
+        setSignalBacklogStatus(signalBacklogItems.length
+          ? "Refresh failed. The previously completed result remains visible and may be stale."
+          : "Signal Backlog loading failed. No complete result is available.");
+      }
+      return false;
+    } finally {
+      if (sequence === signalBacklogSequence.current) setSignalBacklogLoading(null);
     }
   }
 
@@ -1345,20 +1439,12 @@ export default function Home() {
     }
   }
 
-  function reconcileSignal(summary: SignalSummary) {
-    setData((current) => current ? {
-      ...current,
-      signals: [summary, ...current.signals.filter((candidate) => candidate.signal_id !== summary.signal_id)],
-    } : current);
-  }
-
   async function signalMutation(path: string) {
     const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     const payload = await response.json() as SignalWorkspace & { error?: string; code?: string };
     if (payload.signal) {
       setSignalWorkspace(payload);
       setSelectedSignalId(payload.signal.signal_id);
-      reconcileSignal(payload.signal);
     }
     if (!response.ok) throw new ApiRequestError(payload.error ?? "Platform AI could not prepare the proposal.", response.status);
     return payload;
@@ -1377,9 +1463,9 @@ export default function Home() {
       }) as SignalWorkspace & { ok: true };
       setSignalWorkspace(captured);
       setSelectedSignalId(captured.signal.signal_id);
-      reconcileSignal(captured.signal);
       setCreateOpen(false);
-      setView("backlog");
+      setView("signals");
+      void loadSignalBacklog({ kind: "refresh" });
       setSignalGenerating(true);
       try {
         await signalMutation(`/api/signals/${captured.signal.signal_id}/generate`);
@@ -1388,6 +1474,7 @@ export default function Home() {
       } finally {
         setSignalGenerating(false);
         void load({ quiet: true });
+        void loadSignalBacklog({ kind: "refresh" });
       }
     } catch (caught) {
       setSignalIntakeError(caught instanceof Error ? caught.message : "The signal could not be captured.");
@@ -1408,7 +1495,7 @@ export default function Home() {
     requestAnimationFrame(() => signalReturnFocus.current?.focus());
   }
 
-  async function openSignal(signal: SignalSummary) {
+  async function openSignal(signal: { signal_id: string }) {
     signalReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSelectedSignalId(signal.signal_id);
     setSignalLoading(true);
@@ -1416,7 +1503,6 @@ export default function Home() {
     try {
       const workspace = await signalMutation(`/api/signals/${signal.signal_id}/reconcile`);
       setSignalWorkspace(workspace);
-      reconcileSignal(workspace.signal);
     } catch (caught) {
       setSignalWorkspace(null);
       setError(caught instanceof Error ? caught.message : "The signal could not be loaded.");
@@ -1808,6 +1894,28 @@ export default function Home() {
   function navigateTo(nextView: View) {
     setView(nextView);
     setMobileNav(false);
+    if (nextView === "signals" && !signalBacklogResponse && !signalBacklogLoading) {
+      void loadSignalBacklog({ kind: "initial" });
+    }
+  }
+
+  function applySignalBacklogGroup(group: SignalBacklogGroup) {
+    if (group === signalBacklogGroup && signalBacklogResponse) return;
+    setSignalBacklogGroup(group);
+    void loadSignalBacklog({ kind: "query", group });
+  }
+
+  function submitSignalBacklogSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const q = signalBacklogSearch.trim();
+    setSignalBacklogAppliedSearch(q);
+    void loadSignalBacklog({ kind: "query", q });
+  }
+
+  function clearSignalBacklogSearch() {
+    setSignalBacklogSearch("");
+    setSignalBacklogAppliedSearch("");
+    void loadSignalBacklog({ kind: "query", q: "" });
   }
 
   function openItem(item: WorkItem) {
@@ -1959,6 +2067,7 @@ export default function Home() {
             <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => navigateTo(item.id)}>
               <span aria-hidden="true">{item.icon}</span>{item.label}
               {item.id === "decisions" && decisionItems.length > 0 && <b>{decisionItems.length}</b>}
+              {item.id === "signals" && signalBacklogResponse && <b>{signalBacklogResponse.counts.total}</b>}
               {item.id === "verification" && data.verification_fixtures.length > 0 && <b>{data.verification_fixtures.length}</b>}
             </button>
           ))}
@@ -2035,7 +2144,25 @@ export default function Home() {
             />
           )}
           {view === "board" && <FlightBoard items={filteredItems} onOpen={openItem} onMove={updateItem} saving={saving} />}
-          {view === "backlog" && <Backlog items={filteredItems} signals={data.signals} onOpen={openItem} onOpenSignal={openSignal} onCreate={openSignalIntake} />}
+          {view === "signals" && <SignalBacklog
+            response={signalBacklogResponse}
+            items={signalBacklogItems}
+            group={signalBacklogGroup}
+            search={signalBacklogSearch}
+            appliedSearch={signalBacklogAppliedSearch}
+            loading={signalBacklogLoading}
+            error={signalBacklogError}
+            status={signalBacklogStatus}
+            onGroup={applySignalBacklogGroup}
+            onSearch={setSignalBacklogSearch}
+            onSubmitSearch={submitSignalBacklogSearch}
+            onClearSearch={clearSignalBacklogSearch}
+            onRefresh={() => void loadSignalBacklog({ kind: "refresh" })}
+            onLoadMore={() => void loadSignalBacklog({ kind: "append", cursor: signalBacklogResponse?.page.next_cursor })}
+            onOpen={openSignal}
+            onCreate={openSignalIntake}
+          />}
+          {view === "backlog" && <Backlog items={filteredItems} onOpen={openItem} />}
           {view === "decisions" && <DecisionInbox items={decisionItems} decisions={data.decisions} reviews={data.reviews} reviewingIds={reviewingIds} onOpen={openDecisionWorkspace} />}
           {view === "verification" && data.deployment_environment === "staging" && <VerificationEvidence items={filteredVerificationFixtures} total={data.verification_fixtures.length} onOpen={openItem} />}
           {view === "team" && <Team
@@ -2552,7 +2679,76 @@ function FlightBoard({ items, onOpen, onMove, saving }: { items: WorkItem[]; onO
   </>;
 }
 
-function Backlog({ items, signals, onOpen, onOpenSignal, onCreate }: { items: WorkItem[]; signals: SignalSummary[]; onOpen: (item: WorkItem) => void; onOpenSignal: (signal: SignalSummary) => void; onCreate: () => void }) {
+export function SignalBacklog({ response, items, group, search, appliedSearch, loading, error, status, onGroup, onSearch, onSubmitSearch, onClearSearch, onRefresh, onLoadMore, onOpen, onCreate }: {
+  response: SignalBacklogResponse | null;
+  items: SignalBacklogItem[];
+  group: SignalBacklogGroup;
+  search: string;
+  appliedSearch: string;
+  loading: SignalBacklogLoading;
+  error: string | null;
+  status: string;
+  onGroup: (group: SignalBacklogGroup) => void;
+  onSearch: (value: string) => void;
+  onSubmitSearch: (event: FormEvent<HTMLFormElement>) => void;
+  onClearSearch: () => void;
+  onRefresh: () => void;
+  onLoadMore: () => void;
+  onOpen: (signal: SignalBacklogItem) => void;
+  onCreate: () => void;
+}) {
+  const counts = response?.counts ?? { total: 0, new: 0, screening: 0, ready_for_review: 0, needs_attention: 0 };
+  const groups: Array<{ id: SignalBacklogGroup; label: string; count: number; copy: string }> = [
+    { id: "ALL", label: "All signals", count: counts.total, copy: "Complete retained register" },
+    { id: "NEW", label: "New", count: counts.new, copy: "Captured, not yet screened" },
+    { id: "SCREENING", label: "Screening", count: counts.screening, copy: "Platform AI is preparing analysis" },
+    { id: "READY_FOR_REVIEW", label: "Ready for review", count: counts.ready_for_review, copy: "Advisory proposal available" },
+    { id: "NEEDS_ATTENTION", label: "Needs attention", count: counts.needs_attention, copy: "Stale or safely stopped" },
+  ];
+  const busy = loading !== null;
+  return <>
+    <PageHeading
+      eyebrow="Pre-admission system of record"
+      title="Signal Backlog"
+      copy="Signals are observations and requests awaiting platform screening. They are not delivery work until a governed admission creates a work item."
+      actions={<div className="signal-backlog-heading-actions"><button type="button" className="secondary-button" disabled={busy} onClick={onRefresh}>{loading === "refresh" ? "Refreshing…" : "Refresh"}</button><button type="button" className="primary-button compact" onClick={onCreate}>＋ Submit a signal</button></div>}
+    />
+
+    <section className="signal-backlog-boundary" aria-label="Signal authority boundary">
+      <span aria-hidden="true">⌁</span><div><strong>Captured does not mean committed.</strong><p>Platform AI may screen and prepare an advisory proposal here. No row in this queue changes priority, WIP, a Gate, assignment, dispatch, or Product Backlog.</p></div>
+    </section>
+
+    <section className="signal-backlog-groups" aria-label="Filter signals by lifecycle group">
+      {groups.map((option) => <button type="button" key={option.id} className={group === option.id ? "active" : ""} aria-pressed={group === option.id} aria-controls="signal-backlog-results" disabled={busy && group === option.id} onClick={() => onGroup(option.id)}><span>{option.label}</span><strong>{response ? option.count : "—"}</strong><small>{option.copy}</small></button>)}
+    </section>
+
+    <section className="panel signal-backlog-panel" aria-labelledby="signal-backlog-register-title">
+      <header className="signal-backlog-toolbar">
+        <div><span className="panel-eyebrow">Authoritative POD register</span><h2 id="signal-backlog-register-title">Find a captured signal</h2></div>
+        <form role="search" aria-label="Search the Signal Backlog" onSubmit={onSubmitSearch}>
+          <label htmlFor="signal-backlog-search">Signal ID or words from the original</label>
+          <div><input id="signal-backlog-search" type="search" maxLength={100} value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search captured signals" /><button type="submit" disabled={busy}>Search</button>{appliedSearch && <button type="button" onClick={onClearSearch} disabled={busy}>Clear</button>}</div>
+        </form>
+      </header>
+
+      <div className="signal-backlog-status" role="status" aria-live="polite" aria-atomic="true" aria-label="Signal Backlog status">{status}</div>
+      {error && <div className="signal-backlog-error" role="alert"><div><strong>Signal Backlog needs attention</strong><p>{error}</p><small>{items.length ? "The prior completed result remains visible below and may be stale." : "No complete result is being presented."}</small></div><button type="button" onClick={onRefresh} disabled={busy}>Try again</button></div>}
+
+      <div id="signal-backlog-results" className={`signal-backlog-results ${busy ? "is-loading" : ""}`} role="region" aria-label="Signal Backlog results" aria-busy={busy}>
+        {loading === "initial" && !response ? <div className="signal-backlog-loading"><span aria-hidden="true">◇</span><strong>Loading the authoritative signal register</strong><p>Confirming your POD and the first bounded page…</p></div> : items.length ? <ol>
+          {items.map((signal) => <li key={signal.signal_id}><button type="button" onClick={() => onOpen(signal)}><div className="signal-backlog-row-state"><span className={`signal-group signal-group-${signal.presentation_group.toLowerCase().replaceAll("_", "-")}`}>{signal.presentation_label}</span><code>{signal.signal_id}</code></div><strong>{signal.excerpt}</strong><div className="signal-backlog-row-meta"><span>Submitted <time dateTime={signal.created_at}>{formatDate(signal.created_at)}</time></span><span>Proposal v{signal.current_proposal_version}</span>{signal.attention_reason && <span className="signal-attention-reason">{signal.attention_reason.replaceAll("_", " ").toLowerCase()}</span>}</div><b aria-hidden="true">→</b></button></li>)}
+        </ol> : response && !error ? <Empty title={appliedSearch ? "No signals match this search" : group === "ALL" ? "No signals captured yet" : `No ${groups.find((option) => option.id === group)?.label.toLowerCase()} signals`} copy={appliedSearch ? "Clear the search or use different literal words. No signal was deleted or hidden by a client-side subset." : "Submit an imperfect observation or need. It will be preserved here without creating a work item."} /> : null}
+      </div>
+
+      <footer className="signal-backlog-footer">
+        <div>{response ? <><strong>{items.length} visible</strong><span>Snapshot {formatDate(response.query.snapshot_at)} · {response.page.has_more ? "more available" : "complete for this query"}</span></> : <span>Waiting for an authoritative result.</span>}</div>
+        {response?.page.has_more && <button type="button" onClick={onLoadMore} disabled={busy || !response.page.next_cursor}>{loading === "append" ? "Loading more…" : "Load more signals"}</button>}
+      </footer>
+    </section>
+  </>;
+}
+
+function Backlog({ items, onOpen }: { items: WorkItem[]; onOpen: (item: WorkItem) => void }) {
   const [scope, setScope] = useState<BacklogScope>("all");
   const [dateField, setDateField] = useState<BacklogDateField>("created_at");
   const [dateFrom, setDateFrom] = useState("");
@@ -2561,17 +2757,7 @@ function Backlog({ items, signals, onOpen, onOpenSignal, onCreate }: { items: Wo
   const closed = items.filter((item) => item.state === "complete");
   const visibleItems = backlogItemsForDateRange(backlogItemsForScope(items, scope), dateField, dateFrom, dateTo);
   return <>
-    <PageHeading eyebrow="Complete work register" title="Product backlog" copy="Review preserved contributor signals separately from admitted work. Platform AI may prepare a proposal, but only governed human authority can admit it to this backlog." actions={<button className="primary-button compact" onClick={onCreate}>＋ Submit a signal</button>} />
-    <section className="panel signal-register" aria-labelledby="signal-register-title">
-      <header>
-        <div><span className="panel-eyebrow">Pre-admission register</span><h2 id="signal-register-title">Recent contributor signals</h2></div>
-        <b>{signals.length}</b>
-      </header>
-      <p>These records are not work items. Open one to inspect the exact original, AI proposal, uncertainty, evidence classification, and provenance.</p>
-      <div>
-        {signals.length ? signals.slice(0, 8).map((signal) => <button key={signal.signal_id} onClick={() => onOpenSignal(signal)}><span className="signal-register-state">{signal.lifecycle_state.replaceAll("_", " ")}</span><strong>{signal.original_text}</strong><small>Submitted {formatDate(signal.created_at)} · proposal v{signal.current_proposal_version || 0}</small><b aria-hidden="true">→</b></button>) : <Empty title="No contributor signals captured" copy="Submit an imperfect observation or need; Platform AI will prepare an advisory proposal without creating a work item." />}
-      </div>
-    </section>
+    <PageHeading eyebrow="Admitted delivery register" title="Product backlog" copy="Only governed work items appear here. Contributor signals remain in Signal Backlog until a separately authorized admission creates delivery work." />
     <section className="panel backlog-panel">
       <header className="table-toolbar">
         <div className="backlog-summary"><strong>{items.length} total items</strong><span>{open.length} open · {closed.length} closed · {open.filter((item) => item.workflow === "Unassigned").length} require workflow allocation</span></div>

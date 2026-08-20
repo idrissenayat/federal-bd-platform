@@ -34,6 +34,16 @@ import {
   SIGNAL_PROPOSAL_SCHEMA_VERSION,
   SIGNAL_TIMEOUT_MS,
 } from "../lib/signal-proposal";
+import {
+  createSignalBacklogCursor,
+  escapeSignalSearch,
+  lifecycleStatesForGroup,
+  parseSignalBacklogQuery,
+  presentationForSignalState,
+  signalAttentionReason,
+  signalExcerpt,
+  SignalBacklogContractError,
+} from "../lib/signal-backlog";
 import { classifyVerificationFixture, isIssue74VerificationMember } from "../lib/verification-fixtures";
 import { buildInitialQueuedEvent, ensureDispatchServiceSigner, handleDispatchServiceApi, type DispatchServiceEnv } from "./dispatch";
 
@@ -803,6 +813,7 @@ async function ensureSchema(db: Database) {
       UNIQUE(pod_id, idempotency_key)
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_signals_pod_created ON signals (pod_id, created_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_signals_pod_created_id ON signals (pod_id, created_at DESC, signal_id DESC)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS signal_events (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL, signal_id text NOT NULL, event_version integer NOT NULL,
       event_type text NOT NULL, actor_id text NOT NULL, detail_json text NOT NULL,
@@ -1582,10 +1593,6 @@ async function bootstrap(db: Database, user: User, env: Env) {
     FROM decision_intents i JOIN work_items w ON w.id = i.item_id
     WHERE i.pod_id = ?${excludeFixtureWorkItems} ORDER BY i.created_at DESC LIMIT 80`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").all<Record<string, unknown>>();
-  const recentSignals = await db.prepare(`SELECT signal_id, submitter_id, original_text, original_sha256,
-      lifecycle_state, current_proposal_version, terminal_disposition_at, retention_delete_after, created_at, updated_at
-    FROM signals WHERE pod_id = ? ORDER BY created_at DESC LIMIT 20`)
-    .bind(currentMember?.pod_id ?? "steer-flight-team").all<Record<string, unknown>>();
   const mappedDecisionReceipts = (decisionReceipts.results ?? []).map((receipt) => {
     const intent = JSON.parse(String(receipt.intent_json)) as DecisionIntentPayload;
     return {
@@ -1632,7 +1639,6 @@ async function bootstrap(db: Database, user: User, env: Env) {
     deployment_environment: deploymentEnvironment,
     release_readiness: releaseReadiness,
     verification_release_readiness: [],
-    signals: recentSignals.results ?? [],
     decision_receipts: mappedDecisionReceipts,
     verification_decision_receipts: [],
   };
@@ -2066,6 +2072,18 @@ const telemetryContract: Record<string, { labelName: string; values: string[]; h
   steer_signal_provider_estimated_cost_micros_total: { labelName: "", values: [], measureMaximum: SIGNAL_MAX_COST_MICROS },
   steer_signal_unsupported_fact_total: { labelName: "", values: [], measureMaximum: 20 },
   steer_signal_work_item_side_effect_total: { labelName: "", values: [], measureMaximum: 100 },
+  steer_signal_backlog_request_total: { labelName: "outcome", values: ["success", "empty", "validation", "auth_denied", "contract_error", "storage_error"] },
+  steer_signal_backlog_request_latency_ms: { labelName: "", values: [], histogram: true },
+  steer_signal_backlog_visible_latency_ms: { labelName: "", values: [], histogram: true },
+  steer_signal_backlog_page_total: { labelName: "kind", values: ["first", "continuation", "refresh"] },
+  steer_signal_backlog_returned_total: { labelName: "", values: [], measureMaximum: 50 },
+  steer_signal_backlog_validation_total: { labelName: "reason_code", values: ["PAGE_LIMIT", "GROUP", "QUERY", "CURSOR", "PARAMETER"] },
+  steer_signal_backlog_stale_response_total: { labelName: "", values: [], measureMaximum: 100 },
+  steer_signal_backlog_contract_violation_total: { labelName: "reason_code", values: ["STATE", "RESPONSE"] },
+  steer_signal_backlog_cross_pod_disclosure_total: { labelName: "", values: [], measureMaximum: 100 },
+  steer_signal_backlog_work_item_side_effect_total: { labelName: "", values: [], measureMaximum: 100 },
+  steer_signal_backlog_duplicate_row_total: { labelName: "", values: [], measureMaximum: 100 },
+  steer_signal_backlog_missing_row_total: { labelName: "", values: [], measureMaximum: 100 },
   steer_release_risk_classification_total: { labelName: "tier", values: ["DEFAULT_OPEN", "ELEVATED", "DEFAULT_CLOSED"] },
   steer_release_readiness_outcome_total: { labelName: "outcome", values: ["READY", "NOT_READY", "INVALIDATED"] },
   steer_release_readiness_invalidation_total: { labelName: "reason", values: [
@@ -2180,6 +2198,122 @@ async function scopedSignal(db: Database, user: User, signalId: string) {
   return db.prepare(`SELECT s.* FROM signals s
     JOIN members actor ON actor.id = ? AND actor.pod_id = s.pod_id AND actor.status IN ('available', 'enrolled')
     WHERE s.signal_id = ?`).bind(user.id, signalId).first<SignalRow>();
+}
+
+type SignalBacklogRow = Pick<SignalRow, "signal_id" | "original_text" | "lifecycle_state" | "current_proposal_version" | "created_at" | "updated_at"> & {
+  latest_error_code: string | null;
+};
+
+function signalBacklogValidationReason(code: string) {
+  if (code.includes("PAGE_LIMIT")) return "PAGE_LIMIT";
+  if (code.includes("GROUP")) return "GROUP";
+  if (code.includes("QUERY")) return "QUERY";
+  if (code.includes("CURSOR")) return "CURSOR";
+  return "PARAMETER";
+}
+
+async function listSignals(request: Request, db: Database, user: User) {
+  const startedAt = Date.now();
+  const member = await memberContext(db, user);
+  if (!member?.pod_id || !["available", "enrolled", "busy"].includes(member.status)) {
+    await recordSignalTelemetry(db, "steer_signal_backlog_request_total", "outcome", "auth_denied");
+    return json({ error: "Signal Backlog access requires an enrolled POD identity.", code: "SIGNAL_BACKLOG_ACCESS_DENIED", retryable: false }, 403);
+  }
+
+  try {
+    const query = await parseSignalBacklogQuery(new URL(request.url));
+    const commonWhere = ["s.pod_id = ?", "s.created_at <= ?"];
+    const commonBindings: unknown[] = [member.pod_id, query.snapshotAt];
+    if (query.q) {
+      const literalPattern = `%${escapeSignalSearch(query.q)}%`;
+      commonWhere.push("(s.signal_id LIKE ? ESCAPE '\\' COLLATE NOCASE OR s.original_text LIKE ? ESCAPE '\\' COLLATE NOCASE)");
+      commonBindings.push(literalPattern, literalPattern);
+    }
+
+    const states = lifecycleStatesForGroup(query.group);
+    const itemWhere = [...commonWhere, `s.lifecycle_state IN (${states.map(() => "?").join(",")})`];
+    const itemBindings = [...commonBindings, ...states];
+    if (query.after) {
+      itemWhere.push("(s.created_at < ? OR (s.created_at = ? AND s.signal_id < ?))");
+      itemBindings.push(query.after.createdAt, query.after.createdAt, query.after.signalId);
+    }
+
+    const [countResult, itemResult] = await db.batch([
+      db.prepare(`SELECT s.lifecycle_state, COUNT(*) AS count FROM signals s
+        WHERE ${commonWhere.join(" AND ")} GROUP BY s.lifecycle_state`).bind(...commonBindings),
+      db.prepare(`SELECT s.signal_id, s.original_text, s.lifecycle_state, s.current_proposal_version,
+          s.created_at, s.updated_at,
+          (SELECT attempt.error_code FROM signal_generation_attempts attempt
+            WHERE attempt.signal_id = s.signal_id ORDER BY attempt.attempt_number DESC LIMIT 1) AS latest_error_code
+        FROM signals s WHERE ${itemWhere.join(" AND ")}
+        ORDER BY s.created_at DESC, s.signal_id DESC LIMIT ?`).bind(...itemBindings, query.limit + 1),
+    ]) as Array<D1Result<Record<string, unknown>>>;
+
+    const counts = { total: 0, new: 0, screening: 0, ready_for_review: 0, needs_attention: 0 };
+    for (const row of countResult?.results ?? []) {
+      const presentation = presentationForSignalState(String(row.lifecycle_state));
+      const count = Number(row.count ?? 0);
+      counts.total += count;
+      if (presentation.group === "NEW") counts.new += count;
+      if (presentation.group === "SCREENING") counts.screening += count;
+      if (presentation.group === "READY_FOR_REVIEW") counts.ready_for_review += count;
+      if (presentation.group === "NEEDS_ATTENTION") counts.needs_attention += count;
+    }
+
+    const rows = (itemResult?.results ?? []) as SignalBacklogRow[];
+    const hasMore = rows.length > query.limit;
+    const visibleRows = rows.slice(0, query.limit);
+    const items = visibleRows.map((row) => {
+      const presentation = presentationForSignalState(row.lifecycle_state);
+      return {
+        signal_id: row.signal_id,
+        lifecycle_state: row.lifecycle_state,
+        presentation_group: presentation.group,
+        presentation_label: presentation.label,
+        excerpt: signalExcerpt(row.original_text),
+        current_proposal_version: Number(row.current_proposal_version),
+        attention_reason: signalAttentionReason(row.lifecycle_state, row.latest_error_code),
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      };
+    });
+    const last = items.at(-1);
+    const nextCursor = hasMore && last
+      ? await createSignalBacklogCursor(query, { createdAt: last.created_at, signalId: last.signal_id })
+      : null;
+    const outcome = items.length ? "success" : "empty";
+    await Promise.all([
+      recordSignalTelemetry(db, "steer_signal_backlog_request_total", "outcome", outcome),
+      recordSignalTelemetry(db, "steer_signal_backlog_page_total", "kind", query.cursorProvided ? "continuation" : "first"),
+      recordSignalTelemetry(db, "steer_signal_backlog_returned_total", "", "", items.length),
+      recordSignalLatency(db, "steer_signal_backlog_request_latency_ms", startedAt),
+    ]);
+    return json({
+      ok: true,
+      generated_at: new Date().toISOString(),
+      query: { group: query.group, q: query.q, limit: query.limit, snapshot_at: query.snapshotAt },
+      counts,
+      items,
+      page: { has_more: hasMore, next_cursor: nextCursor, returned: items.length },
+    });
+  } catch (error) {
+    if (error instanceof SignalBacklogContractError) {
+      const outcome = error.status >= 500 ? "contract_error" : "validation";
+      await Promise.all([
+        recordSignalTelemetry(db, "steer_signal_backlog_request_total", "outcome", outcome),
+        error.status >= 500
+          ? recordSignalTelemetry(db, "steer_signal_backlog_contract_violation_total", "reason_code", "STATE")
+          : recordSignalTelemetry(db, "steer_signal_backlog_validation_total", "reason_code", signalBacklogValidationReason(error.code)),
+        recordSignalLatency(db, "steer_signal_backlog_request_latency_ms", startedAt),
+      ]);
+      return json({ error: error.message, code: error.code, retryable: false }, error.status);
+    }
+    await Promise.all([
+      recordSignalTelemetry(db, "steer_signal_backlog_request_total", "outcome", "storage_error"),
+      recordSignalLatency(db, "steer_signal_backlog_request_latency_ms", startedAt),
+    ]);
+    throw error;
+  }
 }
 
 async function signalSnapshot(db: Database, user: User, signalId: string) {
@@ -5622,6 +5756,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "POST" && url.pathname === "/api/decision-signers/activate") return activateDecisionIssuer(request, env.DB, user);
     if (request.method === "POST" && url.pathname === "/api/decision-signer-policies/activate") return activateDecisionSignerPolicy(request, env.DB, user);
     if (request.method === "POST" && url.pathname === "/api/decision-readiness-policies/activate") return activateDecisionReadinessPolicy(request, env.DB, user);
+    if (request.method === "GET" && url.pathname === "/api/signals") return listSignals(request, env.DB, user);
     if (request.method === "POST" && url.pathname === "/api/signals") return createSignal(request, env.DB, user);
     const signalMatch = url.pathname.match(/^\/api\/signals\/([0-9a-f-]{36})$/);
     if (request.method === "GET" && signalMatch) return getSignal(env.DB, user, signalMatch[1]);

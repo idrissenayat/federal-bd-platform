@@ -748,6 +748,82 @@ body { font-size: 14px; }
 .decision-effect-note { background: #f2f5f4; border-radius: 8px; color: #3f5148; font-size: 11px; line-height: 1.55; margin: 13px 0 0; padding: 10px 11px; }
 .decision-modal fieldset:disabled .radio-card { cursor: default; opacity: .58; }
 
+/* Issue #78: complete, server-authoritative Signal Backlog. */
+.signal-backlog-heading-actions { align-items: center; display: flex; gap: 8px; }
+.signal-backlog-heading-actions button { min-height: 40px; }
+.signal-backlog-boundary { align-items: flex-start; background: #f0f7f3; border: 1px solid #a9c8b5; border-left: 5px solid #2f6849; border-radius: 12px; color: #273c30; display: flex; gap: 12px; margin-bottom: 16px; padding: 14px 16px; }
+.signal-backlog-boundary > span { align-items: center; background: #dceee3; border-radius: 9px; color: #2f5f45; display: flex; flex: 0 0 auto; font-size: 18px; height: 34px; justify-content: center; width: 34px; }
+.signal-backlog-boundary strong { display: block; font-size: 13px; line-height: 1.45; }
+.signal-backlog-boundary p { color: #40564a; font-size: 11px; line-height: 1.55; margin: 3px 0 0; }
+.signal-backlog-groups { display: grid; gap: 9px; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-bottom: 16px; }
+.signal-backlog-groups button { background: #fffefa; border: 1px solid #cfd8d2; border-radius: 11px; color: #27342d; cursor: pointer; display: grid; gap: 3px; min-height: 95px; padding: 13px; text-align: left; }
+.signal-backlog-groups button:hover { background: #f5faf7; border-color: #7da58c; }
+.signal-backlog-groups button:focus-visible, .signal-backlog-panel button:focus-visible, .signal-backlog-panel input:focus-visible { outline: 3px solid #2f6849; outline-offset: 2px; }
+.signal-backlog-groups button.active { background: #eaf4ee; border-color: #47795b; box-shadow: inset 0 0 0 1px #47795b; }
+.signal-backlog-groups button:disabled { cursor: wait; opacity: .7; }
+.signal-backlog-groups button > span { color: #315541; font-size: 10px; font-weight: 850; line-height: 1.4; }
+.signal-backlog-groups button > strong { font-size: 25px; line-height: 1.15; }
+.signal-backlog-groups button > small { color: #4d5d54; font-size: 9px; line-height: 1.4; }
+.signal-backlog-panel { overflow: hidden; padding: 0; }
+.signal-backlog-toolbar { align-items: end; border-bottom: 1px solid #d8ded9; display: flex; gap: 24px; justify-content: space-between; padding: 18px 20px; }
+.signal-backlog-toolbar h2 { font-size: 16px; margin: 5px 0 0; }
+.signal-backlog-toolbar form { display: grid; gap: 5px; min-width: min(100%, 470px); }
+.signal-backlog-toolbar label { color: #3c4f44; font-size: 10px; font-weight: 750; }
+.signal-backlog-toolbar form > div { display: flex; gap: 6px; }
+.signal-backlog-toolbar input { background: #fff; border: 1px solid #aebbb3; border-radius: 8px; color: #213129; flex: 1; font-size: 12px; min-height: 40px; min-width: 0; padding: 8px 10px; }
+.signal-backlog-toolbar button, .signal-backlog-footer button, .signal-backlog-error button { background: #28553d; border: 0; border-radius: 8px; color: #fff; cursor: pointer; font-size: 11px; font-weight: 800; min-height: 40px; padding: 9px 13px; }
+.signal-backlog-toolbar button[type="button"] { background: #e8eeea; color: #2f493b; }
+.signal-backlog-toolbar button:disabled, .signal-backlog-footer button:disabled, .signal-backlog-error button:disabled { cursor: wait; opacity: .58; }
+.signal-backlog-status { background: #f5f8f6; border-bottom: 1px solid #d8ded9; color: #3d5146; font-size: 10px; line-height: 1.5; min-height: 18px; padding: 9px 20px; }
+.signal-backlog-error { align-items: center; background: #fff0f1; border-bottom: 1px solid #d99ca4; color: #65252d; display: flex; gap: 16px; justify-content: space-between; padding: 13px 20px; }
+.signal-backlog-error strong { font-size: 12px; }
+.signal-backlog-error p, .signal-backlog-error small { display: block; font-size: 10px; line-height: 1.5; margin: 3px 0 0; }
+.signal-backlog-error button { background: #74313a; flex: 0 0 auto; }
+.signal-backlog-results { min-height: 180px; position: relative; }
+.signal-backlog-results.is-loading::after { background: rgba(255, 254, 250, .58); content: ""; inset: 0; pointer-events: none; position: absolute; }
+.signal-backlog-results ol { list-style: none; margin: 0; padding: 0; }
+.signal-backlog-results li + li { border-top: 1px solid #dfe4e0; }
+.signal-backlog-results li > button { align-items: center; background: #fffefa; border: 0; color: #26342c; cursor: pointer; display: grid; gap: 13px; grid-template-columns: 180px minmax(0, 1fr) 250px 20px; min-height: 82px; padding: 13px 20px; text-align: left; width: 100%; }
+.signal-backlog-results li > button:hover { background: #f4f8f5; }
+.signal-backlog-row-state { align-items: flex-start; display: grid; gap: 6px; min-width: 0; }
+.signal-backlog-row-state code { color: #4b5b52; font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.signal-group { border-radius: 999px; display: inline-flex; font-size: 9px; font-weight: 850; letter-spacing: .04em; line-height: 1.35; padding: 5px 8px; width: fit-content; }
+.signal-group-new { background: #e8f4ed; color: #285c40; }
+.signal-group-screening { background: #fff3d8; color: #72500d; }
+.signal-group-ready-for-review { background: #f4e9f3; color: #673c63; }
+.signal-group-needs-attention { background: #ffe9ec; color: #782f38; }
+.signal-backlog-results li > button > strong { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.signal-backlog-row-meta { color: #495a50; display: grid; font-size: 10px; gap: 4px; line-height: 1.4; }
+.signal-attention-reason { color: #722c35; font-weight: 780; text-transform: capitalize; }
+.signal-backlog-results li > button > b { color: #355d46; font-size: 16px; }
+.signal-backlog-loading { align-items: center; color: #35493e; display: flex; flex-direction: column; justify-content: center; min-height: 210px; padding: 28px; text-align: center; }
+.signal-backlog-loading > span { color: #3d7657; font-size: 27px; }
+.signal-backlog-loading strong { font-size: 14px; margin-top: 8px; }
+.signal-backlog-loading p { color: #4b5b52; font-size: 11px; line-height: 1.5; margin: 5px 0 0; }
+.signal-backlog-results .empty-panel { border: 0; min-height: 210px; }
+.signal-backlog-footer { align-items: center; background: #f7f9f7; border-top: 1px solid #d8ded9; display: flex; justify-content: space-between; min-height: 64px; padding: 11px 20px; }
+.signal-backlog-footer > div { display: grid; gap: 3px; }
+.signal-backlog-footer strong { color: #2d4035; font-size: 11px; }
+.signal-backlog-footer span { color: #4e5e55; font-size: 9px; line-height: 1.45; }
+
+@media (max-width: 1000px) {
+  .signal-backlog-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .signal-backlog-groups button:first-child { grid-column: 1 / -1; min-height: 80px; }
+  .signal-backlog-results li > button { grid-template-columns: 145px minmax(0, 1fr) 180px 16px; }
+}
+@media (max-width: 680px) {
+  .signal-backlog-heading-actions, .signal-backlog-toolbar, .signal-backlog-error, .signal-backlog-footer { align-items: stretch; flex-direction: column; }
+  .signal-backlog-heading-actions button, .signal-backlog-toolbar form { width: 100%; }
+  .signal-backlog-groups { grid-template-columns: 1fr; }
+  .signal-backlog-groups button:first-child { grid-column: auto; }
+  .signal-backlog-toolbar form > div { flex-wrap: wrap; }
+  .signal-backlog-toolbar input { flex-basis: 100%; }
+  .signal-backlog-results li > button { align-items: start; grid-template-columns: minmax(0, 1fr) 18px; }
+  .signal-backlog-row-state, .signal-backlog-results li > button > strong, .signal-backlog-row-meta { grid-column: 1; }
+  .signal-backlog-results li > button > b { grid-column: 2; grid-row: 1 / span 3; }
+  .signal-backlog-footer button { width: 100%; }
+}
+
 /* Issue #70: governed signal capture and advisory proposal workspace. */
 .signal-intake-modal { max-width: 680px; }
 .signal-intake-dialog-shell { background: transparent; border: 0; margin: 0; max-height: none; max-width: none; padding: 0; position: static; }
