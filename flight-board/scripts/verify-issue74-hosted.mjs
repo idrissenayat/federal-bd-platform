@@ -93,6 +93,24 @@ async function receipt(itemId, builderId, submitterId, definition, salt = defini
 const humanCall = (itemId, operation, payload, accepted = [200, 201]) => call("/api/staging-release-readiness-fixtures", {
   service: true, accepted, body: { action: "HUMAN", item_id: itemId, operation, ...(payload === undefined ? {} : { payload }) } });
 
+function assertCaseTelemetry(definition, projection) {
+  const telemetry = projection.telemetry;
+  assert.ok(Array.isArray(telemetry) && telemetry.length >= 3, `${definition.case_id} must expose real case-bound telemetry.`);
+  assert.ok(telemetry.every((row) => row.case_id === definition.case_id), `${definition.case_id} telemetry must retain the exact case identity.`);
+  const metrics = new Set(telemetry.map((row) => row.metric_name));
+  assert.ok(metrics.has("steer_release_risk_classification_total"));
+  assert.ok(metrics.has("steer_release_snapshot_creation_latency_ms"));
+  assert.ok(metrics.has("steer_release_readiness_outcome_total"));
+  if (definition.signatures.length) assert.ok(metrics.has("steer_release_countersignature_total"));
+  if (definition.drift) {
+    assert.ok(telemetry.some((row) => row.metric_name === "steer_release_readiness_invalidation_total" && row.label_value === definition.drift));
+  }
+  if (definition.finalStatus === 201 && !definition.stopAfterIntent) {
+    assert.ok(telemetry.some((row) => row.metric_name === "steer_release_finalization_total" && row.label_value === "effective"));
+  }
+  return telemetry;
+}
+
 async function runFlow(definition) {
   const steps = {};
   steps.fixture = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "CREATE", run_id: runId,
@@ -133,6 +151,7 @@ async function runFlow(definition) {
     steps.readiness = await humanCall(itemId, "READINESS");
     assert.equal(steps.readiness.body.status, definition.readiness);
     steps.projection = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "PROJECT", item_id: itemId } });
+    assertCaseTelemetry(definition, steps.projection.body.projection);
     const stepRecord = Object.fromEntries(Object.entries(steps).map(([name, value]) => [name, Array.isArray(value)
       ? value.map((entry) => ({ status: entry.status, latency_ms: entry.latency_ms, body: entry.body }))
       : { status: value.status, latency_ms: value.latency_ms, attempts: value.attempts, body: value.body }]));
@@ -144,6 +163,7 @@ async function runFlow(definition) {
   if (definition.stopAfterIntent) {
     steps.readiness = await humanCall(itemId, "READINESS");
     steps.projection = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "PROJECT", item_id: itemId } });
+    assertCaseTelemetry(definition, steps.projection.body.projection);
     const effectCount = steps.projection.body.projection.decisions.filter((row) => row.decision_intent_id === intentId).length;
     assert.equal(effectCount, 0);
     const stepRecord = Object.fromEntries(Object.entries(steps).map(([name, value]) => [name, Array.isArray(value)
@@ -162,6 +182,7 @@ async function runFlow(definition) {
   const boundaryReadiness = steps.finalize.body.readiness?.status ?? steps.readiness.body.status;
   assert.equal(boundaryReadiness, definition.readiness);
   steps.projection = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "PROJECT", item_id: itemId } });
+  assertCaseTelemetry(definition, steps.projection.body.projection);
   const effectCount = steps.projection.body.projection.decisions.filter((row) => row.decision_intent_id === intentId).length;
   assert.equal(effectCount, definition.finalStatus === 201 ? 1 : 0);
   const stepRecord = Object.fromEntries(Object.entries(steps).map(([name, value]) => [name, Array.isArray(value)
@@ -233,7 +254,8 @@ for (let index = 0; index < 100; index += 10) {
 assert.equal(new Set(concurrent.map((row) => row.snapshot_id)).size, 100); assert.equal(new Set(concurrent.map((row) => row.intent_id)).size, 100);
 assert.equal(concurrent.reduce((sum, row) => sum + row.oracle.gate_effects, 0), 100);
 observations.push({ case_id: "RR74-CONCURRENCY-100", identity_count: 100, distinct_snapshots: 100, distinct_intents: 100, gate_effects: 100,
-  identities: concurrent.map((row) => ({ item_id: row.item_id, snapshot_id: row.snapshot_id, intent_id: row.intent_id, projection_sha256: row.projection_sha256 })),
+  identities: concurrent.map((row) => ({ item_id: row.item_id, snapshot_id: row.snapshot_id, intent_id: row.intent_id,
+    projection_sha256: row.projection_sha256, telemetry: row.projection.telemetry })),
   latency_ms: concurrent.flatMap((row) => row.latency_ms), pass: true });
 
 const denied = await call("/api/staging-release-readiness-fixtures", { service: true, token: "invalid-service-token-that-is-long-enough-0000", accepted: [401], body: { action: "PROJECT", item_id: observations[0].item_id } });
@@ -244,10 +266,15 @@ assert.equal(observations.length, 27);
 
 const latencies = observations.flatMap((row) => row.latency_ms ?? []).sort((a, b) => a - b);
 const p95 = latencies[Math.max(0, Math.ceil(latencies.length * 0.95) - 1)];
+const telemetry = [...observations.flatMap((row) => row.projection?.telemetry ?? []), ...concurrent.flatMap((row) => row.projection.telemetry)];
+assert.equal(new Set(telemetry.map((row) => row.case_id)).size, 125);
 const ledger = { schema: "steer.issue74-real-hosted-ledger/v2", run_id: runId, generated_at: new Date().toISOString(),
   target: { staging_url: baseUrl, ...runtime, ...target, brief, exam, case_contract_sha256: cfg.ISSUE74_CASE_CONTRACT_SHA256 },
   denominator: 30, real_hosted_cases: 27, rollback_cases_reserved: ["RR74-ROLLBACK-LEGACY", "RR74-ROLLBACK-INERT", "RR74-RESTORE-NO-DUPLICATE"],
   concurrency: { identity_count: 100, lifecycle: "fixture→receipt→snapshot→package→session→intent→proof→finalization→D1 projection" },
-  latency: { observation_count: latencies.length, p95_ms: p95 }, observations };
+  latency: { observation_count: latencies.length, p95_ms: p95 },
+  telemetry: { row_count: telemetry.length, case_identity_count: new Set(telemetry.map((row) => row.case_id)).size,
+    metric_names: [...new Set(telemetry.map((row) => row.metric_name))].sort(), all_rows_case_bound: telemetry.every((row) => row.case_id) },
+  observations };
 await writeFile(cfg.ISSUE74_LEDGER_PATH, `${JSON.stringify(ledger, null, 2)}\n`);
 console.log(JSON.stringify({ run_id: runId, cases: observations.length, concurrency_identities: 100, p95_ms: p95, output: cfg.ISSUE74_LEDGER_PATH }));

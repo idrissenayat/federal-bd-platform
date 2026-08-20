@@ -1738,13 +1738,21 @@ const telemetryContract: Record<string, { labelName: string; values: string[]; h
   steer_release_snapshot_creation_latency_ms: { labelName: "outcome", values: ["created", "replay"], histogram: true },
 };
 
-async function recordSystemTelemetry(db: Database, metricName: string, labelName: string, labelValue: string, value: number) {
+async function releaseReadinessTelemetryCaseId(db: Database, itemId?: number) {
+  if (!Number.isSafeInteger(itemId) || Number(itemId) < 1) return null;
+  const item = await db.prepare("SELECT github_url FROM work_items WHERE id = ?").bind(Number(itemId)).first<{ github_url: string | null }>();
+  const match = /^https:\/\/staging\.test\/issue-74\/[a-z0-9][a-z0-9._:-]{2,79}\/(RR74-[A-Z0-9-]{3,50})$/.exec(String(item?.github_url ?? ""));
+  return match?.[1] ?? null;
+}
+
+async function recordSystemTelemetry(db: Database, metricName: string, labelName: string, labelValue: string, value: number, itemId?: number) {
   const contract = telemetryContract[metricName];
   if (!contract || contract.labelName !== labelName || (contract.values.length ? !contract.values.includes(labelValue) : labelValue !== "")) return;
   if (!Number.isInteger(value) || value < 0 || (contract.histogram ? value > 60_000 : value !== 1)) return;
+  const caseId = await releaseReadinessTelemetryCaseId(db, itemId);
   await db.prepare(`INSERT INTO steer_telemetry
-    (metric_name, label_name, label_value, value, case_id, observed_at) VALUES (?, ?, ?, ?, NULL, ?)`)
-    .bind(metricName, labelName, labelValue, value, new Date().toISOString()).run();
+    (metric_name, label_name, label_value, value, case_id, observed_at) VALUES (?, ?, ?, ?, ?, ?)`)
+    .bind(metricName, labelName, labelValue, value, caseId, new Date().toISOString()).run();
 }
 
 async function recordBoundedTelemetry(request: Request, db: Database, env: Env) {
@@ -3391,15 +3399,15 @@ async function releaseReadinessView(db: Database, row: Record<string, unknown>, 
   const changes = (await Promise.all(checks.map(([field, before, after]) => readinessDrift(field, before, after)))).filter((change): change is ReadinessDrift => change !== null);
   if (changes.length) {
     const invalidation = await invalidateReleaseReadiness(db, row, snapshot, changes, now);
-    await recordSystemTelemetry(db, "steer_release_readiness_outcome_total", "outcome", "INVALIDATED", 1);
-    for (const change of changes) await recordSystemTelemetry(db, "steer_release_readiness_invalidation_total", "reason", change.field, 1);
-    await recordSystemTelemetry(db, "steer_release_readiness_latency_ms", "", "", Math.min(60_000, Math.round(performance.now() - startedAt)));
+    await recordSystemTelemetry(db, "steer_release_readiness_outcome_total", "outcome", "INVALIDATED", 1, snapshot.work_item_id);
+    for (const change of changes) await recordSystemTelemetry(db, "steer_release_readiness_invalidation_total", "reason", change.field, 1, snapshot.work_item_id);
+    await recordSystemTelemetry(db, "steer_release_readiness_latency_ms", "", "", Math.min(60_000, Math.round(performance.now() - startedAt)), snapshot.work_item_id);
     return { snapshot, snapshot_sha256: String(row.snapshot_sha256), status: "INVALIDATED" as const, reason: "AUTHORITY_DRIFT", invalidation, missing_roles: snapshot.required_roles, completed_controls: [], signatures: signatures.results ?? [], server_now: now };
   }
   const evaluated = readinessStatus({ snapshot, now, currentCandidateSha256: String(review?.evidence_sha256 ?? ""), currentCriticReviewId: Number(review?.id ?? 0), signatures: signatures.results ?? [] });
-  await recordSystemTelemetry(db, "steer_release_readiness_outcome_total", "outcome", evaluated.status, 1);
-  if (evaluated.status === "INVALIDATED") await recordSystemTelemetry(db, "steer_release_readiness_invalidation_total", "reason", "CANDIDATE_OR_CRITIC_DRIFT", 1);
-  await recordSystemTelemetry(db, "steer_release_readiness_latency_ms", "", "", Math.min(60_000, Math.round(performance.now() - startedAt)));
+  await recordSystemTelemetry(db, "steer_release_readiness_outcome_total", "outcome", evaluated.status, 1, snapshot.work_item_id);
+  if (evaluated.status === "INVALIDATED") await recordSystemTelemetry(db, "steer_release_readiness_invalidation_total", "reason", "CANDIDATE_OR_CRITIC_DRIFT", 1, snapshot.work_item_id);
+  await recordSystemTelemetry(db, "steer_release_readiness_latency_ms", "", "", Math.min(60_000, Math.round(performance.now() - startedAt)), snapshot.work_item_id);
   const completedControls = ["Exact candidate", "Signed staging verification", "Passing signed Critic", "Risk policy v1"];
   if (evaluated.status === "READY") completedControls.push(snapshot.satisfaction_path === "TIME" ? "Time separation" : "Qualified human separation");
   return { snapshot, snapshot_sha256: String(row.snapshot_sha256), ...evaluated, signatures: signatures.results ?? [], completed_controls: completedControls, server_now: now };
@@ -3560,7 +3568,7 @@ async function createReleaseReadinessSnapshot(request: Request, db: Database, en
   const existing = await db.prepare("SELECT * FROM decision_readiness_snapshots WHERE snapshot_id = ? AND pod_id = ?")
     .bind(snapshotId, String(item.pod_id)).first<Record<string, unknown>>();
   if (existing) {
-    await recordSystemTelemetry(db, "steer_release_snapshot_creation_latency_ms", "outcome", "replay", Math.min(60_000, Math.round(performance.now() - startedAt)));
+    await recordSystemTelemetry(db, "steer_release_snapshot_creation_latency_ms", "outcome", "replay", Math.min(60_000, Math.round(performance.now() - startedAt)), itemId);
     return json({ ...(await releaseReadinessView(db, existing, env)), replay: true });
   }
   const predecessor = await db.prepare("SELECT * FROM decision_readiness_snapshots WHERE item_id = ? AND pod_id = ? AND current_state = 'ACTIVE' ORDER BY created_at DESC LIMIT 1")
@@ -3614,14 +3622,14 @@ async function createReleaseReadinessSnapshot(request: Request, db: Database, en
     const raced = await db.prepare("SELECT * FROM decision_readiness_snapshots WHERE snapshot_id = ? AND pod_id = ?")
       .bind(snapshotId, String(item.pod_id)).first<Record<string, unknown>>();
     if (raced && raced.snapshot_sha256 === snapshotSha256) {
-      await recordSystemTelemetry(db, "steer_release_snapshot_creation_latency_ms", "outcome", "replay", Math.min(60_000, Math.round(performance.now() - startedAt)));
+      await recordSystemTelemetry(db, "steer_release_snapshot_creation_latency_ms", "outcome", "replay", Math.min(60_000, Math.round(performance.now() - startedAt)), itemId);
       return json({ ...(await releaseReadinessView(db, raced, env)), replay: true });
     }
     throw error;
   }
   const stored = await db.prepare("SELECT * FROM decision_readiness_snapshots WHERE snapshot_id = ?").bind(snapshotId).first<Record<string, unknown>>();
-  await recordSystemTelemetry(db, "steer_release_risk_classification_total", "tier", snapshot.tier, 1);
-  await recordSystemTelemetry(db, "steer_release_snapshot_creation_latency_ms", "outcome", "created", Math.min(60_000, Math.round(performance.now() - startedAt)));
+  await recordSystemTelemetry(db, "steer_release_risk_classification_total", "tier", snapshot.tier, 1, itemId);
+  await recordSystemTelemetry(db, "steer_release_snapshot_creation_latency_ms", "outcome", "created", Math.min(60_000, Math.round(performance.now() - startedAt)), itemId);
   return json({ ...(await releaseReadinessView(db, stored!, env)), replay: false }, 201);
 }
 
@@ -3639,12 +3647,12 @@ async function countersignReleaseReadiness(request: Request, db: Database, env: 
   if (!row) return json({ error: "Release readiness snapshot not found." }, 404);
   const snapshot = JSON.parse(String(row.snapshot_json)) as ReleaseReadinessSnapshot;
   if (!member || member.kind !== "human" || member.status !== "available" || member.pod_id !== snapshot.pod_id) {
-    await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "rejected_authority", 1);
+    await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "rejected_authority", 1, snapshot.work_item_id);
     return json({ error: "A current enrolled human in the same POD is required." }, 403);
   }
   if (snapshot.satisfaction_path === "TIME") return json({ error: "This snapshot uses the time-separation path." }, 409);
   if (snapshot.intended_submitter_id === user.id || snapshot.candidate_builder_id === user.id) {
-    await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "rejected_authority", 1);
+    await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "rejected_authority", 1, snapshot.work_item_id);
     return json({ error: "The submitter or Builder cannot satisfy an independent-human slot." }, 403);
   }
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
@@ -3652,12 +3660,12 @@ async function countersignReleaseReadiness(request: Request, db: Database, env: 
   const role = String(body?.role ?? "");
   const reason = String(body?.reason ?? "").trim();
   if (!snapshot.required_roles.includes(role) || !member.role.includes(role) || reason.length < 12 || reason.length > 500) {
-    await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "rejected_role", 1);
+    await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "rejected_role", 1, snapshot.work_item_id);
     return json({ error: "Choose one currently held required role and record concise reasoning." }, 400);
   }
   const existingMember = await db.prepare("SELECT * FROM decision_readiness_countersignatures WHERE snapshot_id = ? AND member_id = ?").bind(snapshotId, user.id).first<Record<string, unknown>>();
   if (existingMember) {
-    await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "replay", 1);
+    await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "replay", 1, snapshot.work_item_id);
     return json({ ...(await releaseReadinessView(db, row, env)), replay: true });
   }
   const now = new Date().toISOString();
@@ -3676,7 +3684,7 @@ async function countersignReleaseReadiness(request: Request, db: Database, env: 
     if (raced?.proof_sha256 === proofSha256) return json({ ...(await releaseReadinessView(db, row, env)), replay: true });
     throw error;
   }
-  await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "accepted", 1);
+  await recordSystemTelemetry(db, "steer_release_countersignature_total", "outcome", "accepted", 1, snapshot.work_item_id);
   return json({ ...(await releaseReadinessView(db, row, env)), replay: false }, 201);
 }
 
@@ -3802,9 +3810,9 @@ async function finalizeDecisionIntent(request: Request, db: Database, env: Env, 
     readinessAtFinalization = await releaseReadinessView(db, readinessRow, env, now);
     if (readinessAtFinalization.status !== "READY") {
       const blockedSnapshot = readinessAtFinalization.snapshot as ReleaseReadinessSnapshot;
-      await recordSystemTelemetry(db, "steer_release_finalization_total", "outcome", "blocked_readiness", 1);
+      await recordSystemTelemetry(db, "steer_release_finalization_total", "outcome", "blocked_readiness", 1, Number(row.item_id));
       if (blockedSnapshot.satisfaction_path === "TIME" && readinessAtFinalization.status === "NOT_READY") {
-        await recordSystemTelemetry(db, "steer_release_readiness_boundary_rejection_total", "tier", blockedSnapshot.tier, 1);
+        await recordSystemTelemetry(db, "steer_release_readiness_boundary_rejection_total", "tier", blockedSnapshot.tier, 1, Number(row.item_id));
       }
       return json({ error: `Release readiness is ${readinessAtFinalization.status}: ${readinessAtFinalization.reason}. No Gate effect was created.`, readiness: readinessAtFinalization }, 409);
     }
@@ -3958,7 +3966,7 @@ async function finalizeDecisionIntent(request: Request, db: Database, env: Env, 
   const persisted = await db.prepare("SELECT current_state, current_event_sha256 FROM decision_intents WHERE intent_id = ?").bind(intentId).first<Record<string, unknown>>();
   if (persisted?.current_state !== "EFFECTIVE") return json({ error: "The work item changed during finalization; no effective decision was recorded." }, 409);
   await requireMaterialReforecast(db, row, Number(row.item_id), { id: intent.submitter_principal, email: submitter?.email ?? null, name: intent.submitter_principal }, `Gate decision ${intent.decision.toLowerCase()} changed execution expectations.`, now, transition.state === "blocked");
-  if (intent.readiness_snapshot_sha256) await recordSystemTelemetry(db, "steer_release_finalization_total", "outcome", "effective", 1);
+  if (intent.readiness_snapshot_sha256) await recordSystemTelemetry(db, "steer_release_finalization_total", "outcome", "effective", 1, Number(row.item_id));
   if (intent.decision === "CHANGES_REQUESTED") {
     const recipient = transition.assigneeId
       ? await db.prepare("SELECT role FROM members WHERE id = ?").bind(transition.assigneeId).first<{ role: string }>()
@@ -4061,7 +4069,7 @@ async function runIssue74StagingFixture(request: Request, db: Database, env: Env
   const itemId = Number(body.item_id ?? 0);
   if (action !== "CREATE") {
     if (!Number.isSafeInteger(itemId) || itemId < 1) return json({ error: "A fixture work item is required." }, 400);
-    const item = await db.prepare("SELECT id, pod_id, created_by FROM work_items WHERE id = ? AND workflow = 'Setup / excluded' AND github_url LIKE 'https://staging.test/issue-74/%'")
+    const item = await db.prepare("SELECT id, pod_id, created_by, github_url FROM work_items WHERE id = ? AND workflow = 'Setup / excluded' AND github_url LIKE 'https://staging.test/issue-74/%'")
       .bind(itemId).first<Record<string, unknown>>();
     if (!item) return json({ error: "The bounded issue #74 fixture item was not found." }, 404);
     if (action === "HUMAN") {
@@ -4086,7 +4094,8 @@ async function runIssue74StagingFixture(request: Request, db: Database, env: Env
       return getReleaseReadiness(db, env, user, itemId);
     }
     if (action === "PROJECT") {
-      const [snapshots, readinessEvents, countersignatures, intents, proofEvents, decisions, activity] = await Promise.all([
+      const fixtureCaseId = String(item.github_url).split("/").at(-1) ?? "";
+      const [snapshots, readinessEvents, countersignatures, intents, proofEvents, decisions, activity, telemetry] = await Promise.all([
         db.prepare("SELECT snapshot_id, snapshot_sha256, current_state, invalidation_reason, created_at FROM decision_readiness_snapshots WHERE item_id = ? ORDER BY created_at, snapshot_id").bind(itemId).all(),
         db.prepare("SELECT e.snapshot_id, e.event_type, e.event_sha256, e.created_at FROM decision_readiness_events e JOIN decision_readiness_snapshots s ON s.snapshot_id = e.snapshot_id WHERE s.item_id = ? ORDER BY e.created_at, e.event_sha256").bind(itemId).all(),
         db.prepare("SELECT c.snapshot_id, c.member_id, c.role, c.status, c.proof_sha256, c.created_at FROM decision_readiness_countersignatures c JOIN decision_readiness_snapshots s ON s.snapshot_id = c.snapshot_id WHERE s.item_id = ? ORDER BY c.created_at, c.member_id").bind(itemId).all(),
@@ -4094,10 +4103,12 @@ async function runIssue74StagingFixture(request: Request, db: Database, env: Env
         db.prepare("SELECT e.intent_id, e.sequence, e.event_type, e.resulting_state, e.event_sha256, e.created_at FROM decision_proof_events e JOIN decision_intents i ON i.intent_id = e.intent_id WHERE i.item_id = ? ORDER BY e.intent_id, e.sequence").bind(itemId).all(),
         db.prepare("SELECT gate, decision, evidence_revision, evidence_sha256, decision_intent_id, created_at FROM decisions WHERE item_id = ? ORDER BY id").bind(itemId).all(),
         db.prepare("SELECT action, detail, created_at FROM activity WHERE item_id = ? ORDER BY id").bind(itemId).all(),
+        db.prepare("SELECT metric_name, label_name, label_value, value, case_id, observed_at FROM steer_telemetry WHERE case_id = ? ORDER BY id").bind(fixtureCaseId).all(),
       ]);
-      const projection = { schema: "steer.issue74-real-lifecycle-projection/v1", item_id: itemId,
+      const projection = { schema: "steer.issue74-real-lifecycle-projection/v2", item_id: itemId,
         snapshots: snapshots.results ?? [], readiness_events: readinessEvents.results ?? [], countersignatures: countersignatures.results ?? [],
-        intents: intents.results ?? [], proof_events: proofEvents.results ?? [], decisions: decisions.results ?? [], activity: activity.results ?? [] };
+        intents: intents.results ?? [], proof_events: proofEvents.results ?? [], decisions: decisions.results ?? [], activity: activity.results ?? [],
+        telemetry: telemetry.results ?? [] };
       return json({ projection, projection_sha256: await releaseReadinessDigest(projection) });
     }
     if (action === "COUNTERSIGN") {
