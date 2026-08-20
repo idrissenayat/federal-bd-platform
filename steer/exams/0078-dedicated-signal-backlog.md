@@ -6,7 +6,9 @@
 
 **Guardrails in force:** CORE-01..11, SEC-01..05, PRIV-01..03, A11Y-01..03, REL-01..04, LEGAL-01..02, DES-01..02, SRC-01..04, REV-01..02, HUM-01..02, DATA-01..02, EXT-01
 
-**Status:** draft — Gate 2 pending
+**Status:** Gate 2 amendment pending — original Gate 2 remains recorded below
+
+**Amendment boundary:** This revision changes only SB-19 and its regression evidence rule. It does not change the delivery boundary, API, persistence, UI, accessibility, performance, concurrency, rollback, staging-only authority, or any production prohibition.
 
 ## Frozen delivery boundary
 
@@ -110,7 +112,7 @@ Successful response status is `200` with this closed JSON shape:
 16. **SB-16 Accessibility.** The complete eight-state hosted matrix—initial loading, populated/all groups, selected group, no-match, appended page, permission failure, network/retry failure, and empty POD—passes automated axe plus agent-operated keyboard, focus, screen-reader, contrast, 320 CSS-pixel, and true 200% browser-zoom checks. Status/count changes are announced once; focus remains predictable after filter, refresh, append, workspace close, and error retry; no control relies on color alone.
 17. **SB-17 Performance and bounds.** Thirty real owner-only staging requests spanning first page, each group, search, continuation, and refresh have p95 server response at most 750 ms and p95 visible result at most 1,500 ms. Maximum response is 128 KiB, maximum returned rows is 50, query count is bounded, and the required D1 index/query plan is recorded.
 18. **SB-18 Concurrency.** One hundred concurrent hosted reads across at least 100 request identities and the frozen mix of queries return internally consistent snapshot/count/page contracts; they create zero database rows/events, emit bounded telemetry, and do not cause an unbounded retry or request loop.
-19. **SB-19 Reconciled regression.** From the exact implementation target containing issue #70 and #77 revisions, build, typecheck, lint, dependency/security checks, complete repository tests, issue #70 signal suite, and issue #77 fixture-isolation suite pass repeatedly with no shared-fixture mutation or order dependence.
+19. **SB-19 Signal-scoped reconciled regression.** From the exact implementation target containing issue #70 and #77 revisions, build, typecheck, lint, dependency/security checks, the complete issue #70 signal suite, issue #77 fixture-isolation suite, and issue #78 Signal Backlog suite pass repeatedly with no shared-fixture mutation or order dependence. The complete repository suite must still run and its exact result must be recorded, but a failing test outside the signal, Signal Backlog, or verification-fixture paths does not block issue #78 only when all of the following are true: the same failure reproduces in isolation on the approved predecessor or is otherwise proven pre-existing; it has a separately governed work item; the #78 changed-file and dependency analysis shows no affected path; every signal-scoped suite remains green; and the evidence reports the exception explicitly rather than claiming a fully green repository suite. Issue #76 is the presently identified candidate exception and receives no implementation authority from this Exam.
 20. **SB-20 Rollback.** The exact staging target is deployed, an active continuation/search/workspace view is captured, the prior staging version is restored, and then the exact target is restored. While old code is live, the removed endpoint/UI fails honestly without data/authority mutation; after restoration, the same authorized records and counts return. Before/during/after table hashes, index/schema inventory, deployment IDs/statuses, client outcomes, and production non-mutation are durable.
 
 ## Edge cases and attacks
@@ -180,3 +182,9 @@ The Test and Critic agents perform all interaction, accessibility, security, per
 GATE 2: APPROVED — 2026-08-20T15:50:11Z — idrissenayat
 
 GATE 2 EVIDENCE: Product Lead/solo operator approval in the governed Codex task, bound to pre-signature Exam revision `6cc3aa9818a72b10995095e32a643c6784c94b65` and Exam SHA-256 `256b594ab0aa1465d4de04b1e4c67fa24452599e6c5d067acb921dceaf96f10e`. Authorized scope is implementation and owner-only staging verification against the approved Brief and Exam. This does not authorize merge, production deployment, Release, closure, or Gate 3.
+
+---
+
+GATE 2 AMENDMENT: PENDING — 2026-08-20
+
+The proposed amendment is limited to SB-19. It replaces a blanket all-repository green requirement with a signal-scoped regression boundary and a closed exception predicate for independently proven, separately governed predecessor failures. All other original Gate 2 controls remain unchanged. No additional implementation, merge, production deployment, Release, closure, or Gate 3 authority exists until the Product Lead approves the exact pre-signature amendment revision and SHA-256.
