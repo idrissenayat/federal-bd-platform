@@ -109,6 +109,7 @@ export function validateDecisionIntent(input: DecisionIntentPayload) {
     if (!authority || authority.schema !== "steer.gate-readiness-authority/v1" ||
         authority.snapshot_sha256 !== input.readiness_snapshot_sha256 ||
         authority.work_item_key !== input.item_key || authority.intended_submitter_id !== input.submitter_principal ||
+        authority.candidate_builder_eligible !== true || authority.candidate_builder_id === authority.intended_submitter_id ||
         authority.operating_mode !== input.operating_mode || authority.effective_not_before !== input.effective_not_before ||
         authority.risk_policy_version !== input.signer_policy_version ||
         ![authority.snapshot_sha256, authority.brief_sha256, authority.exam_sha256, authority.build_sha256,

@@ -77,11 +77,12 @@ test("risk-based Gate 3 intents bind a readiness snapshot without weakening lega
       risk_policy_version: 1, risk_policy_sha256: "8".repeat(64), tier: "DEFAULT_OPEN" as const,
       operating_mode: "SOLO_CALIBRATION" as const, satisfaction_path: "TIME" as const, delay_hours: 0 as const,
       verification_authority: "SIGNED_STAGING_RECEIPT" as const, effective_not_before: "2026-08-18T23:00:00Z",
-      required_roles: [], candidate_builder_id: "agent-builder", intended_submitter_id: "human-1",
+      required_roles: [], candidate_builder_id: "agent-builder", candidate_builder_eligible: true as const, intended_submitter_id: "human-1",
     },
   };
   assert.equal(validateDecisionIntent(readinessIntent), null);
   assert.match(validateDecisionIntent({ ...readinessIntent, readiness_snapshot_sha256: "bad" }) ?? "", /snapshot digest/);
+  assert.match(validateDecisionIntent({ ...readinessIntent, readiness_authority: { ...readinessIntent.readiness_authority, candidate_builder_eligible: false as true } }) ?? "", /complete immutable release-readiness authority/);
   const privateKey = "1".repeat(64);
   const envelope = await createDecisionIssuerEnvelope({ intent: readinessIntent, privateKeyHex: privateKey, keyId: "steer-decision-issuer", issuerPrincipal: "decision-proof-service", issuedAt: "2026-08-18T23:10:00Z" });
   assert.equal(envelope.payload.readiness_snapshot_sha256, readinessIntent.readiness_snapshot_sha256);

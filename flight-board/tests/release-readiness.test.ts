@@ -43,7 +43,7 @@ const baseSnapshot: ReleaseReadinessSnapshot = {
   declared_risk_codes: ["NONE"], derived_risk_codes: ["NONE"], resolved_risk_codes: ["NONE"],
   classification_errors: [], tier: "DEFAULT_OPEN", risk_policy_version: 1, risk_policy_sha256: "8".repeat(64),
   operating_mode: "SOLO_CALIBRATION", satisfaction_path: "TIME", delay_hours: 0,
-  required_roles: [], candidate_builder_id: "agent-builder", intended_submitter_id: "human-a",
+  required_roles: [], candidate_builder_id: "agent-builder", candidate_builder_eligible: true, intended_submitter_id: "human-a",
   effective_not_before: "2026-08-19T20:00:00.000Z",
   created_by: "human-a", created_at: "2026-08-19T20:01:00.000Z", predecessor_snapshot_sha256: null,
 };

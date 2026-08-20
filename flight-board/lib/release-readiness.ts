@@ -75,6 +75,7 @@ export type ReleaseReadinessAuthority = {
   effective_not_before: string;
   required_roles: string[];
   candidate_builder_id: string;
+  candidate_builder_eligible: true;
   intended_submitter_id: string;
 };
 
@@ -122,6 +123,7 @@ export type ReleaseReadinessSnapshot = {
   delay_hours: 0 | 4 | 24;
   required_roles: string[];
   candidate_builder_id: string;
+  candidate_builder_eligible: true;
   intended_submitter_id: string;
   effective_not_before: string;
   created_by: string;
@@ -225,6 +227,7 @@ export function releaseReadinessAuthority(snapshot: ReleaseReadinessSnapshot, sn
     effective_not_before: snapshot.effective_not_before,
     required_roles: [...snapshot.required_roles],
     candidate_builder_id: snapshot.candidate_builder_id,
+    candidate_builder_eligible: snapshot.candidate_builder_eligible,
     intended_submitter_id: snapshot.intended_submitter_id,
   };
 }

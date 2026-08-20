@@ -3381,7 +3381,7 @@ async function releaseReadinessView(db: Database, row: Record<string, unknown>, 
     ["RISK_POLICY", { version: snapshot.risk_policy_version, sha256: snapshot.risk_policy_sha256 }, policy ? { version: policy.policy_version, sha256: policy.policy_sha256 } : null],
     ["VERIFICATION_RECEIPT", { id: snapshot.verification_receipt_id, sha256: snapshot.verification_receipt_sha256 }, latestReceipt ? { id: latestReceipt.receipt_id, sha256: latestReceipt.receipt_sha256 } : null],
     ["OPERATING_MODE", snapshot.operating_mode, signerPolicy?.operating_mode ?? null],
-    ["CANDIDATE_BUILDER", { id: snapshot.candidate_builder_id, pod_id: snapshot.pod_id, builder: true }, builder ? { id: builder.id, pod_id: builder.pod_id, builder: String(builder.role).includes("Builder") || String(builder.role).includes("Implementation") || String(builder.display_name).includes("Builder") } : null],
+    ["CANDIDATE_BUILDER", { id: snapshot.candidate_builder_id, pod_id: snapshot.pod_id, builder: true, eligible: snapshot.candidate_builder_eligible }, builder ? { id: builder.id, pod_id: builder.pod_id, builder: String(builder.role).includes("Builder") || String(builder.role).includes("Implementation") || String(builder.display_name).includes("Builder"), eligible: ["available", "enrolled"].includes(String(builder.status)) } : null],
     ["INTENDED_SUBMITTER", { id: snapshot.intended_submitter_id, pod_id: snapshot.pod_id, kind: "human", available: true, product_lead: true }, submitter ? { id: submitter.id, pod_id: submitter.pod_id, kind: submitter.kind, available: submitter.status === "available", product_lead: String(submitter.role).includes("Product Lead") } : null],
   ];
   if (env?.STEER_SOURCE_REVISION) checks.push(["IMPLEMENTATION", snapshot.implementation_commit, env.STEER_SOURCE_REVISION]);
@@ -3511,8 +3511,17 @@ async function createReleaseReadinessSnapshot(request: Request, db: Database, en
   }
   const candidateBuilderId = String(verificationReceipt.candidate_builder_id ?? "");
   const intendedSubmitterId = String(verificationReceipt.intended_submitter_id ?? "");
+  if (candidateBuilderId === intendedSubmitterId) {
+    return json({ error: "The intended submitter must remain independent from the frozen Builder." }, 409);
+  }
   if (intendedSubmitterId !== user.id) {
     return json({ error: "The snapshot must freeze the exact intended human submitter." }, 409);
+  }
+  const candidateBuilder = await db.prepare("SELECT id, display_name, role, status, pod_id FROM members WHERE id = ?")
+    .bind(candidateBuilderId).first<Record<string, unknown>>();
+  if (!candidateBuilder || candidateBuilder.pod_id !== item.pod_id || !["available", "enrolled"].includes(String(candidateBuilder.status)) ||
+      !(String(candidateBuilder.role).includes("Builder") || String(candidateBuilder.role).includes("Implementation") || String(candidateBuilder.display_name).includes("Builder"))) {
+    return json({ error: "The signed verification receipt must bind one currently eligible Builder in this POD." }, 409);
   }
   const verificationCompletedAt = String(verificationReceipt.completed_at ?? "");
   if (!Number.isFinite(Date.parse(verificationCompletedAt)) || Date.parse(verificationCompletedAt) > Date.now() + 5 * 60 * 1000) return json({ error: "The authoritative verification time is invalid." }, 409);
@@ -3573,7 +3582,7 @@ async function createReleaseReadinessSnapshot(request: Request, db: Database, en
     classification_errors: classification.errors, tier: classification.tier, risk_policy_version: 1,
     risk_policy_sha256: String(policy.policy_sha256),
     operating_mode: operatingMode, satisfaction_path: satisfactionPath, delay_hours: classification.delay_hours,
-    required_roles: roles, candidate_builder_id: candidateBuilderId, intended_submitter_id: intendedSubmitterId,
+    required_roles: roles, candidate_builder_id: candidateBuilderId, candidate_builder_eligible: true, intended_submitter_id: intendedSubmitterId,
     effective_not_before: earliest, created_by: user.id, created_at: authorityFrozenAt,
     predecessor_snapshot_sha256: predecessor ? String(predecessor.snapshot_sha256) : null,
   };
