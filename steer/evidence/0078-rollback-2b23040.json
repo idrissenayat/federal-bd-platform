@@ -1,0 +1,43 @@
+{
+  "issue": 78,
+  "acceptance": "SB-20",
+  "site": "steer-flight-board-staging",
+  "environment_revision": 28,
+  "target": {
+    "version_number": 44,
+    "version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_e750a98aa0d48191aec84140bad67b4f",
+    "source_revision": "2b2304035c8ab2efa5698c983d067baf330e9e91"
+  },
+  "rollback": {
+    "version_number": 42,
+    "version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_731519c3617c819184fffbbb33e749d4",
+    "source_revision": "bfb2178cfee32d3667c7a188209f4c7d83db5d65",
+    "deployment_id": "appgdep_6a8730c648788191b72b17ee4a2c72ec",
+    "status": "succeeded",
+    "completed_at": "2026-08-20T16:52:32.218859Z",
+    "client_result": "The pre-#78 application loaded normally with My Work, Overview, Flight Board, and Backlog; Signal Backlog navigation was absent."
+  },
+  "restore": {
+    "deployment_id": "appgdep_6a873115a5548191916bc0d983d449f6",
+    "status": "succeeded",
+    "completed_at": "2026-08-20T16:53:48.946947Z",
+    "client_result": "Signal Backlog returned with the authority boundary and Loaded 25 of 70 signals in this snapshot."
+  },
+  "bounded_signal_table_comparison": [
+    {"table":"signals","before_count":70,"after_count":70,"before_fingerprint":"ead8ecf7ea34e4c8","after_fingerprint":"ead8ecf7ea34e4c8","exact_equal":true},
+    {"table":"signal_sources","before_count":66,"after_count":66,"before_fingerprint":"6291d48bad66bcdc","after_fingerprint":"6291d48bad66bcdc","exact_equal":true},
+    {"table":"signal_events","before_count":212,"after_count":212,"before_fingerprint":"a9b2259e041c14eb","after_fingerprint":"a9b2259e041c14eb","exact_equal":true},
+    {"table":"signal_proposals","before_count":66,"after_count":66,"before_fingerprint":"033c263c528ed5c3","after_fingerprint":"033c263c528ed5c3","exact_equal":true},
+    {"table":"signal_rejections","before_count":22,"after_count":22,"before_fingerprint":"76da285ab41a683d","after_fingerprint":"76da285ab41a683d","exact_equal":true}
+  ],
+  "production_boundary": {
+    "version_number": 36,
+    "source_revision": "8aa6e634c4b04f2198ec0941a7e8d5c7bee88d4f",
+    "unchanged": true
+  },
+  "open_evidence": [
+    "The frozen Exam asks for SHA-256 projections of every signal and protected work/authority table before, during, and after rollback. This bounded pass recorded exact before/after equality for five principal signal tables, not every protected table and not a during-rollback projection."
+  ],
+  "result": "PARTIAL",
+  "gate_3_ready": false
+}

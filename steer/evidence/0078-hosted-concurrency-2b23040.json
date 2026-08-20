@@ -1,0 +1,49 @@
+{
+  "issue": 78,
+  "acceptance": "SB-18",
+  "captured_at": "2026-08-20T16:45:00Z",
+  "environment": {
+    "site": "steer-flight-board-staging",
+    "access": "owner-only",
+    "version_number": 44,
+    "source_revision": "2b2304035c8ab2efa5698c983d067baf330e9e91",
+    "environment_revision": 28
+  },
+  "execution": {
+    "transport": "authenticated same-origin browser requests",
+    "endpoint": "GET /api/signals",
+    "request_identity_scheme": "SB18-001 through SB18-100",
+    "request_identity_count": 100,
+    "query_classes": {
+      "groups": ["ALL", "NEW", "SCREENING", "READY", "NEEDS_ATTENTION"],
+      "limits": [1, 7, 25, 50]
+    },
+    "count": 100,
+    "passed": 100,
+    "failed": 0,
+    "http_statuses": [200],
+    "observed_totals": [70],
+    "response_digest_count": 100,
+    "elapsed_ms": 2162,
+    "p95_individual_client_ms": 2142,
+    "max_individual_client_ms": 2156
+  },
+  "oracles": {
+    "unique_request_identities": true,
+    "status_contract": true,
+    "snapshot_count_contract": true,
+    "group_membership_contract": true,
+    "page_bound_contract": true,
+    "unique_rows_within_each_page": true,
+    "unbounded_retry_observed": false
+  },
+  "privacy": {
+    "signal_text_recorded": false,
+    "search_bytes_recorded": false,
+    "cursor_bytes_recorded": false,
+    "identity_or_pod_values_recorded": false,
+    "individual_response_digests_published": false,
+    "note": "The browser console retained the complete 15.1 KiB content-free per-case result during execution. This repository artifact records its aggregate and identity/digest cardinalities without publishing signal identifiers or response projections."
+  },
+  "result": "PASS"
+}
