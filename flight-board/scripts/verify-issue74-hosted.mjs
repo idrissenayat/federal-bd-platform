@@ -59,7 +59,7 @@ async function call(path, { service = false, body, controlledNow, accepted = [20
 
 const define = (caseId, extra = {}) => ({ case_id: caseId, declared: ["NONE"], derived: ["NONE"], mode: "SOLO_CALIBRATION",
   path: "TIME", verified: iso(baseClock), controlled: iso(baseClock), signatures: [], drift: null,
-  tier: "DEFAULT_OPEN", readiness: "READY", finalStatus: 201, ...extra });
+  tier: "DEFAULT_OPEN", readiness: "READY", finalStatus: 201, snapshotReplay: false, ...extra });
 const cases = [
   define("RR74-CLASS-OPEN"),
   define("RR74-CLASS-ELEVATED", { declared: ["SECURITY_NON_AUTH"], derived: ["SECURITY_NON_AUTH"], tier: "ELEVATED", readiness: "NOT_READY", finalStatus: 409 }),
@@ -109,6 +109,11 @@ async function runFlow(definition) {
   steps.snapshot = await humanCall(itemId, "SNAPSHOT", packet);
   assert.equal(steps.snapshot.body.snapshot.tier, definition.tier);
   const snapshotId = steps.snapshot.body.snapshot.snapshot_id;
+  if (definition.snapshotReplay) {
+    steps.snapshot_replay = await humanCall(itemId, "SNAPSHOT", packet);
+    assert.equal(steps.snapshot_replay.body.replay, true);
+    assert.equal(steps.snapshot_replay.body.snapshot.snapshot_id, snapshotId);
+  }
   steps.signatures = [];
   for (const [identity, role, status] of definition.signatures) {
     const memberId = identity === "SUBMITTER" ? submitterId : identity === "BUILDER" ? builderId : identity;
@@ -156,14 +161,21 @@ async function runFlow(definition) {
 }
 
 const observations = [];
-for (const definition of cases) observations.push(await runFlow(definition));
-const replay = await runFlow(define("RR74-REPLAY-IDEMPOTENT"));
-const replayCall = await humanCall(replay.item_id, "SNAPSHOT", replay.packet);
-assert.equal(replayCall.body.replay, true); replay.replay = { status: replayCall.status, snapshot_sha256: replayCall.body.snapshot_sha256 }; observations.push(replay);
+for (const definition of cases) {
+  console.error(`START ${definition.case_id}`);
+  observations.push(await runFlow(definition));
+  console.error(`PASS ${definition.case_id}`);
+}
+const replay = await runFlow(define("RR74-REPLAY-IDEMPOTENT", { snapshotReplay: true }));
+observations.push(replay);
+console.error("PASS RR74-REPLAY-IDEMPOTENT");
 
 const concurrent = [];
 const concurrencyCases = Array.from({ length: 100 }, (_, index) => define(`RR74-C100-${String(index + 1).padStart(3, "0")}`));
-for (let index = 0; index < 100; index += 10) concurrent.push(...await Promise.all(concurrencyCases.slice(index, index + 10).map(runFlow)));
+for (let index = 0; index < 100; index += 10) {
+  concurrent.push(...await Promise.all(concurrencyCases.slice(index, index + 10).map(runFlow)));
+  console.error(`PASS RR74-CONCURRENCY ${index + 10}/100`);
+}
 assert.equal(new Set(concurrent.map((row) => row.snapshot_id)).size, 100); assert.equal(new Set(concurrent.map((row) => row.intent_id)).size, 100);
 assert.equal(concurrent.reduce((sum, row) => sum + row.oracle.gate_effects, 0), 100);
 observations.push({ case_id: "RR74-CONCURRENCY-100", identity_count: 100, distinct_snapshots: 100, distinct_intents: 100, gate_effects: 100,
