@@ -1,6 +1,6 @@
 # Intent Brief — Issue 77 Verification fixture isolation
 
-**Status:** draft — Gate 1 pending
+**Status:** Gate 1 approved — Gate 2 Exam in preparation
 
 **Delivery candidate:** GitHub issue #77
 
@@ -97,4 +97,6 @@ Issue #77 is based on the exact issue #74 staging lifecycle that created the gov
 
 ---
 
-GATE 1: PENDING — Product Lead approval required against the exact pre-signature revision and SHA-256.
+GATE 1: APPROVED — 2026-08-20T13:43:21Z — Idriss Enayat, Product Lead
+
+GATE 1 EVIDENCE: Authenticated Product Lead approval in [issue #77](https://github.com/idrissenayat/federal-bd-platform/issues/77#issuecomment-5356725069), bound to pre-signature Brief revision `6a0c6efec80e788c86ed90b9da2f31202d39e26e` and SHA-256 `958f75721c610f5e21f80a4d1892fc802bc98952abadcf1911660838c3502386`. The approval authorizes preparation of the Gate 2 Exam only.
