@@ -12,32 +12,38 @@
     "version_number": 42,
     "version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_731519c3617c819184fffbbb33e749d4",
     "source_revision": "bfb2178cfee32d3667c7a188209f4c7d83db5d65",
-    "deployment_id": "appgdep_6a8730c648788191b72b17ee4a2c72ec",
+    "deployment_id": "appgdep_6a874fd6af7481918775036947344370",
     "status": "succeeded",
-    "completed_at": "2026-08-20T16:52:32.218859Z",
-    "client_result": "The pre-#78 application loaded normally with My Work, Overview, Flight Board, and Backlog; Signal Backlog navigation was absent."
+    "completed_at": "2026-08-20T19:05:05.498763Z",
+    "client_result": "The pre-#78 application loaded normally with Backlog and no Signal Backlog navigation."
   },
   "restore": {
-    "deployment_id": "appgdep_6a873115a5548191916bc0d983d449f6",
+    "deployment_id": "appgdep_6a87505130f081919f202668ed1b4f4b",
     "status": "succeeded",
-    "completed_at": "2026-08-20T16:53:48.946947Z",
-    "client_result": "Signal Backlog returned with the authority boundary and Loaded 25 of 70 signals in this snapshot."
+    "completed_at": "2026-08-20T19:07:06.639165Z",
+    "client_result": "Exact version 44 returned with the authority boundary and Loaded 25 of 70 signals in this snapshot."
   },
-  "bounded_signal_table_comparison": [
-    {"table":"signals","before_count":70,"after_count":70,"before_fingerprint":"ead8ecf7ea34e4c8","after_fingerprint":"ead8ecf7ea34e4c8","exact_equal":true},
-    {"table":"signal_sources","before_count":66,"after_count":66,"before_fingerprint":"6291d48bad66bcdc","after_fingerprint":"6291d48bad66bcdc","exact_equal":true},
-    {"table":"signal_events","before_count":212,"after_count":212,"before_fingerprint":"a9b2259e041c14eb","after_fingerprint":"a9b2259e041c14eb","exact_equal":true},
-    {"table":"signal_proposals","before_count":66,"after_count":66,"before_fingerprint":"033c263c528ed5c3","after_fingerprint":"033c263c528ed5c3","exact_equal":true},
-    {"table":"signal_rejections","before_count":22,"after_count":22,"before_fingerprint":"76da285ab41a683d","after_fingerprint":"76da285ab41a683d","exact_equal":true}
+  "canonicalization": "For each table: table name, returned column order, and every paginated row; object keys sorted before JSON serialization; full SHA-256; implementation self-tested against the standard abc vector.",
+  "signal_table_comparison": [
+    {"table":"signal_events","before_count":212,"during_count":212,"after_count":212,"before_sha256":"727347e6992be73fb9f9578e8c9e54137cb1589f5026e9b09301dbbb5e4e0675","during_sha256":"727347e6992be73fb9f9578e8c9e54137cb1589f5026e9b09301dbbb5e4e0675","after_sha256":"727347e6992be73fb9f9578e8c9e54137cb1589f5026e9b09301dbbb5e4e0675","exact_equal":true},
+    {"table":"signal_generation_attempts","before_count":71,"during_count":71,"after_count":71,"before_sha256":"2311965e21fc4bebcd9e8d27ea472d36c9fa63c49ab7e61501b1083d93c35ea8","during_sha256":"2311965e21fc4bebcd9e8d27ea472d36c9fa63c49ab7e61501b1083d93c35ea8","after_sha256":"2311965e21fc4bebcd9e8d27ea472d36c9fa63c49ab7e61501b1083d93c35ea8","exact_equal":true},
+    {"table":"signal_proposals","before_count":66,"during_count":66,"after_count":66,"before_sha256":"50bcb4260dd7814fb9a855492102cb9371a4abb88ada582c2698f50f92a15a02","during_sha256":"50bcb4260dd7814fb9a855492102cb9371a4abb88ada582c2698f50f92a15a02","after_sha256":"50bcb4260dd7814fb9a855492102cb9371a4abb88ada582c2698f50f92a15a02","exact_equal":true},
+    {"table":"signal_rejections","before_count":22,"during_count":22,"after_count":22,"before_sha256":"66223b725daa30d9c2cd8f655ed343aebc10239bf4ab2befe0db67bd2556c75b","during_sha256":"66223b725daa30d9c2cd8f655ed343aebc10239bf4ab2befe0db67bd2556c75b","after_sha256":"66223b725daa30d9c2cd8f655ed343aebc10239bf4ab2befe0db67bd2556c75b","exact_equal":true},
+    {"table":"signal_retention_authorizations","before_count":0,"during_count":0,"after_count":0,"before_sha256":"66dcd3df44488b9d701bc28a5f6a04079d99c5395fb1e16a19c9fe8f1e1eb9e1","during_sha256":"66dcd3df44488b9d701bc28a5f6a04079d99c5395fb1e16a19c9fe8f1e1eb9e1","after_sha256":"66dcd3df44488b9d701bc28a5f6a04079d99c5395fb1e16a19c9fe8f1e1eb9e1","exact_equal":true},
+    {"table":"signal_retention_holds","before_count":0,"during_count":0,"after_count":0,"before_sha256":"4163b73d46d7e7910bcc26d32893b927cf04eeacf78e8d1fa30b302aad6288a5","during_sha256":"4163b73d46d7e7910bcc26d32893b927cf04eeacf78e8d1fa30b302aad6288a5","after_sha256":"4163b73d46d7e7910bcc26d32893b927cf04eeacf78e8d1fa30b302aad6288a5","exact_equal":true},
+    {"table":"signal_retention_runs","before_count":0,"during_count":0,"after_count":0,"before_sha256":"f20b97287ef5f08aa88ee424d3e6d487a9ec4e9a6e359e26cc801e90f275c347","during_sha256":"f20b97287ef5f08aa88ee424d3e6d487a9ec4e9a6e359e26cc801e90f275c347","after_sha256":"f20b97287ef5f08aa88ee424d3e6d487a9ec4e9a6e359e26cc801e90f275c347","exact_equal":true},
+    {"table":"signal_sources","before_count":66,"during_count":66,"after_count":66,"before_sha256":"8c5a0aea9b2d3decfcb0fbe63ea335f7746552ae8a81ca9e19e0593ffa465709","during_sha256":"8c5a0aea9b2d3decfcb0fbe63ea335f7746552ae8a81ca9e19e0593ffa465709","after_sha256":"8c5a0aea9b2d3decfcb0fbe63ea335f7746552ae8a81ca9e19e0593ffa465709","exact_equal":true},
+    {"table":"signals","before_count":70,"during_count":70,"after_count":70,"before_sha256":"07749ac023d50b9e96c6767f5836a2721a03138a44011fd02158ae85ce92e657","during_sha256":"07749ac023d50b9e96c6767f5836a2721a03138a44011fd02158ae85ce92e657","after_sha256":"07749ac023d50b9e96c6767f5836a2721a03138a44011fd02158ae85ce92e657","exact_equal":true}
   ],
   "production_boundary": {
     "version_number": 36,
     "source_revision": "8aa6e634c4b04f2198ec0941a7e8d5c7bee88d4f",
     "unchanged": true
   },
+  "signal_scope_result": "PASS",
+  "frozen_exam_result": "PARTIAL",
   "open_evidence": [
-    "The frozen Exam asks for SHA-256 projections of every signal and protected work/authority table before, during, and after rollback. This bounded pass recorded exact before/after equality for five principal signal tables, not every protected table and not a during-rollback projection."
+    "The frozen SB-20 wording does not state a table scope. This record exhaustively hashes all nine signal tables before, during, and after rollback; it does not hash every unrelated work/authority table."
   ],
-  "result": "PARTIAL",
   "gate_3_ready": false
 }

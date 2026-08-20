@@ -65,9 +65,10 @@
     "axe_and_contract_result": "PASS"
   },
   "hosted_matrix_gaps": [
-    "permission failure was verified only in the isolated browser fixture because the owner identity is enrolled",
-    "network/retry failure was verified only in the isolated browser fixture because canonical staging was not fault-injected",
-    "empty POD was verified only in the isolated browser fixture because the owner POD contains 70 retained signals"
+    "permission failure is covered by the exact API/D1 authorization contract plus isolated hosted-source UI rendering; the sole owner-only staging identity is enrolled",
+    "network/retry failure is covered by the exact client contract plus isolated hosted-source UI rendering; canonical staging has no authorized fault injector",
+    "empty POD is covered by the exact empty-data API contract plus isolated hosted-source UI rendering; the sole owner POD contains 70 retained signals",
+    "no hidden staging fault-injection or identity-bypass path was added to manufacture these states"
   ],
   "result": "PARTIAL",
   "gate_3_ready": false

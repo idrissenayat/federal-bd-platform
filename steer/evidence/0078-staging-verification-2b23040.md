@@ -10,7 +10,9 @@ Sites environment revision: 28
 
 The dedicated Signal Backlog implementation is working on canonical staging. It exposes all 70 retained owner-POD signals, keeps Product Backlog work-only, preserves the existing issue #70 signal workspace, passes the focused #70/#77/#78 regression suites, and remains within the approved latency budgets. The rollback to pre-#78 version 42 and restoration to exact version 44 both succeeded. Production remained untouched at version 36/source `8aa6e634c4b04f2198ec0941a7e8d5c7bee88d4f`.
 
-This packet is not Gate 3 ready. Three hosted failure/empty accessibility states and the Exam's exhaustive before/during/after protected-table SHA-256 inventory remain open. Complete repository testing is also 178/179 because the pre-existing issue #76 same-millisecond dispatch-retention ordering test fails in isolation; #78 did not modify that path.
+The signal workflow is green on canonical owner-only staging. Complete repository testing is 179/179, so the amended SB-19 exception is not invoked. Exact before/during/after SHA-256 projections match for all nine issue #70 signal tables across a second pre-#78 rollback and exact-target restore.
+
+This packet is not Gate 3 ready under the frozen Exam wording. SB-16 requires three states to be exercised on the hosted owner-only environment even though that environment has one enrolled owner, 70 retained signals, and no authorized fault injector. SB-20 does not state a table scope, while the completed rollback proof is exhaustive for the signal subsystem rather than every unrelated work/authority table. Those two evidence-contract mismatches require a narrow governed amendment; no hidden staging backdoor was added to manufacture them.
 
 ## Verified behavior
 
@@ -27,11 +29,11 @@ This packet is not Gate 3 ready. Three hosted failure/empty accessibility states
 
 ## Rollback
 
-- Pre-#78 version 42/source `bfb2178cfee32d3667c7a188209f4c7d83db5d65` deployed successfully as `appgdep_6a8730c648788191b72b17ee4a2c72ec`.
+- Pre-#78 version 42/source `bfb2178cfee32d3667c7a188209f4c7d83db5d65` deployed successfully as `appgdep_6a874fd6af7481918775036947344370`.
 - The old workspace loaded normally and exposed no Signal Backlog navigation.
-- Exact version 44/source `2b2304035c8ab2efa5698c983d067baf330e9e91` restored successfully as `appgdep_6a873115a5548191916bc0d983d449f6`.
+- Exact version 44/source `2b2304035c8ab2efa5698c983d067baf330e9e91` restored successfully as `appgdep_6a87505130f081919f202668ed1b4f4b`.
 - Signal Backlog restored with 70 records.
-- Exact before/after row projections matched for `signals`, `signal_sources`, `signal_events`, `signal_proposals`, and `signal_rejections`.
+- Exact before/during/after canonical row projections matched for all nine signal tables: `signals`, `signal_sources`, `signal_events`, `signal_proposals`, `signal_rejections`, `signal_generation_attempts`, `signal_retention_authorizations`, `signal_retention_holds`, and `signal_retention_runs`.
 
 ## Verification commands
 
@@ -42,12 +44,11 @@ This packet is not Gate 3 ready. Three hosted failure/empty accessibility states
 - Production dependency audit: 0 vulnerabilities.
 - Gitleaks: pass.
 - Semgrep: 0 findings across 286 tracked files.
-- Complete repository suite: 178/179; only the independently reproducible issue #76 retention-ordering test fails.
+- Complete repository suite: 179/179 pass, including the issue #76 retention-ordering regression.
 
 ## Remaining exact closures
 
-1. Run permission-failure, network/retry-failure, and empty-POD states against the exact hosted target or obtain a governed amendment to SB-16. Local axe/contract fixtures already pass all eight states but cannot substitute for the frozen hosted requirement.
-2. Capture the exhaustive before/during/after canonical SHA-256 projections for every issue #70 signal table and protected work/authority table, as required by SB-20.
-3. Resolve issue #76 (or obtain an explicit bounded Exam ruling) so SB-19 can truthfully report a complete green repository suite.
+1. Amend SB-16 so real hosted states are exercised where naturally reachable, while permission failure, network/retry failure, and empty POD may be proven by the exact API/D1 authorization and empty-data contracts plus agent-operated isolated UI rendering. The amendment must prohibit a hidden staging fault-injection path.
+2. Amend SB-20 to bind rollback hashes to every signal-subsystem table, schema, and index plus semantic no-side-effect regression coverage for unrelated work/authority data. The completed rollback already satisfies that signal-scoped boundary.
 
 No PR, merge, production deployment, Release, closure, Gate 3, or Critic review was performed.
