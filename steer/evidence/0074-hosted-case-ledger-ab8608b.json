@@ -1,0 +1,1917 @@
+{
+  "schema": "steer.issue74-hosted-ledger/v2",
+  "run_id": "rr74-20260819214559621",
+  "generated_at": "2026-08-19T21:46:41.893Z",
+  "target": {
+    "staging_url": "https://steer-flight-board-staging.idriss-enayat.chatgpt.site",
+    "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+    "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+    "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+    "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f"
+  },
+  "denominator": 30,
+  "hosted_api_cases": 27,
+  "rollback_cases_reserved": [
+    "RR74-ROLLBACK-LEGACY",
+    "RR74-ROLLBACK-INERT",
+    "RR74-RESTORE-NO-DUPLICATE"
+  ],
+  "latency": {
+    "observation_count": 125,
+    "p95_ms": 11088.86
+  },
+  "observations": [
+    {
+      "case_id": "RR74-CLASS-OPEN",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-CLASS-OPEN",
+        "declared_risk_codes": [
+          "NONE"
+        ],
+        "derived_risk_codes": [
+          "NONE"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-CLASS-OPEN",
+        "request_sha256": "09f6a961fbe8cff3465f25784fc624080723d224df5caaa86e1ca2e7254e39a5",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_OPEN",
+          "codes": [
+            "NONE"
+          ],
+          "errors": [],
+          "delay_hours": 0
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "READY",
+          "reason": "TIME_PATH_SATISFIED",
+          "missing_roles": []
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "6a5bdacf5def68728d1ff6e8c0ad5cad4a9bbd45a25d5cfdf68dc0c44921d52a",
+      "service_signature": "a6bd0118592e820a3ba33abf5e4fd17fcfa2a2dd4bac05bc7defef4c11da4c4851c47414765157fe80a979c5762db180c4ba25fc07021a7fe0fb464cdc148101",
+      "latency_ms": 6656.55,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 6656.55
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_OPEN",
+        "status": "READY",
+        "reason": "TIME_PATH_SATISFIED"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-CLASS-ELEVATED",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-CLASS-ELEVATED",
+        "declared_risk_codes": [
+          "SECURITY_NON_AUTH"
+        ],
+        "derived_risk_codes": [
+          "SECURITY_NON_AUTH"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T23:00:00.000Z",
+        "signatures": [],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-CLASS-ELEVATED",
+        "request_sha256": "99f551e231a0f3135142d13bf6129df7cdb3926048dfcda2101a4d5132f4012d",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "ELEVATED",
+          "codes": [
+            "SECURITY_NON_AUTH"
+          ],
+          "errors": [],
+          "delay_hours": 4
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-20T00:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "NOT_READY",
+          "reason": "COOLING_PERIOD_ACTIVE",
+          "missing_roles": []
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "d8de49b6c5bd7ff113c216660e60f17231c8351093fe1fe3d6df4223c2cd7bad",
+      "service_signature": "f29ad3ff1a71716e100885f072a464ae1c39c00794185e5224fe03203e4c2c76c8255f7a458238b81280aa4e582e0008080c5cb04da0e12a826c010ba174e409",
+      "latency_ms": 902.53,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 902.53
+        }
+      ],
+      "oracle": {
+        "tier": "ELEVATED",
+        "status": "NOT_READY",
+        "reason": "COOLING_PERIOD_ACTIVE"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-CLASS-CLOSED",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-CLASS-CLOSED",
+        "declared_risk_codes": [
+          "GOVERNANCE_CONTROL"
+        ],
+        "derived_risk_codes": [
+          "GOVERNANCE_CONTROL"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-20T19:00:00.000Z",
+        "signatures": [],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-CLASS-CLOSED",
+        "request_sha256": "671d196feeb4ed09c18c800cac450292fea7fb1425ad7529352a791d808717b0",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_CLOSED",
+          "codes": [
+            "GOVERNANCE_CONTROL"
+          ],
+          "errors": [],
+          "delay_hours": 24
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-20T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "NOT_READY",
+          "reason": "COOLING_PERIOD_ACTIVE",
+          "missing_roles": []
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "df8648166a0e92d81b5e614b15f8d176df4f8ee7132a8e7f7a546e656a96e7ab",
+      "service_signature": "807489f50f2815fd33054dc9710371bbc527b2a27ecfca583f10846cde057b45933f466eb208f31f5b545439a1d269db9f160151e03fe7fe3e4b64cf4a064400",
+      "latency_ms": 861.29,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 861.29
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_CLOSED",
+        "status": "NOT_READY",
+        "reason": "COOLING_PERIOD_ACTIVE"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-CLASS-UNKNOWN",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-CLASS-UNKNOWN",
+        "declared_risk_codes": [
+          "UNKNOWN_CODE"
+        ],
+        "derived_risk_codes": [
+          "UNKNOWN_CODE"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-CLASS-UNKNOWN",
+        "request_sha256": "542cf416c32069583326bb1bdb1df69ad361f83e050c72e73ca3e329d3eab8d6",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_CLOSED",
+          "codes": [],
+          "errors": [
+            "RISK_CODE_UNKNOWN"
+          ],
+          "delay_hours": 24
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-20T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "NOT_READY",
+          "reason": "RISK_CODE_UNKNOWN",
+          "missing_roles": [
+            "Product Lead",
+            "Tech Lead"
+          ]
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "392229af2113349173a0e8ea7137277b996445aa522f330260f1f4004707eb63",
+      "service_signature": "fd0ad5c0941be27216a16af3a722b8f3dec241c72548ef6de2d721371e893a177b526b2c7ecf7ec64c47add48a9474bc33833aa7c124a853fba21ff4917b3d03",
+      "latency_ms": 765.65,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 765.65
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_CLOSED",
+        "status": "NOT_READY",
+        "reason": "RISK_CODE_UNKNOWN"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-TIME-OPEN-BEFORE",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-TIME-OPEN-BEFORE",
+        "declared_risk_codes": [
+          "NONE"
+        ],
+        "derived_risk_codes": [
+          "NONE"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T19:59:59.999Z",
+        "signatures": [],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-TIME-OPEN-BEFORE",
+        "request_sha256": "c23e6a98d36956c1ffe1814e8d5f2f12c3f1467b58dc9918c49b617b6da13b05",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_OPEN",
+          "codes": [
+            "NONE"
+          ],
+          "errors": [],
+          "delay_hours": 0
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "NOT_READY",
+          "reason": "COOLING_PERIOD_ACTIVE",
+          "missing_roles": []
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "7c47c19650d9134992bf711d8990c5cd621e421fdf71293803ae0a3ef803c6ea",
+      "service_signature": "58a8b9b1da3e23c79100c8c81c23f88f92f8708099a7b4a3b669aad44ac64ea5da1a8ba80b5094a3d14fe05a008570ecfa2946dab63adc38149080a42e12230b",
+      "latency_ms": 897.77,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 897.77
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_OPEN",
+        "status": "NOT_READY",
+        "reason": "COOLING_PERIOD_ACTIVE"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-TIME-OPEN-AT",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-TIME-OPEN-AT",
+        "declared_risk_codes": [
+          "NONE"
+        ],
+        "derived_risk_codes": [
+          "NONE"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-TIME-OPEN-AT",
+        "request_sha256": "58b762e61697987e1599a293681e0fc64fcf37be2cc1150fd82a0edddc2935f2",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_OPEN",
+          "codes": [
+            "NONE"
+          ],
+          "errors": [],
+          "delay_hours": 0
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "READY",
+          "reason": "TIME_PATH_SATISFIED",
+          "missing_roles": []
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "166e14317f1751034ba7932c55456f63cabb3822e86fa8cfcb5343b7bc6d259f",
+      "service_signature": "e3a4ba4bf45ce689a5b6b53a6081189e31efa74c139bf811f872f199113ca66781d56eca598837d4148b7def46a7bcbcab759843941ac21cbbd5a4fea53cd80d",
+      "latency_ms": 1079.66,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 1079.66
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_OPEN",
+        "status": "READY",
+        "reason": "TIME_PATH_SATISFIED"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-TIME-ELEVATED-BEFORE",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-TIME-ELEVATED-BEFORE",
+        "declared_risk_codes": [
+          "SECURITY_NON_AUTH"
+        ],
+        "derived_risk_codes": [
+          "SECURITY_NON_AUTH"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T23:59:59.999Z",
+        "signatures": [],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-TIME-ELEVATED-BEFORE",
+        "request_sha256": "c14081da019afdd880219050fb4d53e79c8d3be3e5051f083e5b00c9a5c97762",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "ELEVATED",
+          "codes": [
+            "SECURITY_NON_AUTH"
+          ],
+          "errors": [],
+          "delay_hours": 4
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-20T00:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "NOT_READY",
+          "reason": "COOLING_PERIOD_ACTIVE",
+          "missing_roles": []
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "dbbbdc514253e8e6d0305cb2491f0f06dd9689c6a9b64ea940f2decf4fd2d38e",
+      "service_signature": "e94e8ceb0afcc7719f1fba192b0b6fc12a7ba0af1a4d51ba300aaefb7a8ffd858445ff6ea7524d8eb58d49ed6028d8a21e732e89b3d98b5b98f0dc48a3983303",
+      "latency_ms": 869.48,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 869.48
+        }
+      ],
+      "oracle": {
+        "tier": "ELEVATED",
+        "status": "NOT_READY",
+        "reason": "COOLING_PERIOD_ACTIVE"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-TIME-ELEVATED-AT",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-TIME-ELEVATED-AT",
+        "declared_risk_codes": [
+          "SECURITY_NON_AUTH"
+        ],
+        "derived_risk_codes": [
+          "SECURITY_NON_AUTH"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-20T00:00:00.000Z",
+        "signatures": [],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-TIME-ELEVATED-AT",
+        "request_sha256": "e3f07a4def4b3fa592420e9e5e5d5ef328e39c456850fc381dc2f4dcde3be786",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "ELEVATED",
+          "codes": [
+            "SECURITY_NON_AUTH"
+          ],
+          "errors": [],
+          "delay_hours": 4
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-20T00:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "READY",
+          "reason": "TIME_PATH_SATISFIED",
+          "missing_roles": []
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "8d6df13b9ad75997ef5b0b27e2be4c0fda10abb0977c223154a185df40b00be1",
+      "service_signature": "6b80600e6f48274800da722e0a50a5fb8bcedd7ac45cf5b2842287ee5a81981b3fdc7faefa3ac5f4a0ec004dde35e155d6436047adf9e28599836faff3ff510d",
+      "latency_ms": 732.84,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 732.84
+        }
+      ],
+      "oracle": {
+        "tier": "ELEVATED",
+        "status": "READY",
+        "reason": "TIME_PATH_SATISFIED"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-TIME-CLOSED-BEFORE",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-TIME-CLOSED-BEFORE",
+        "declared_risk_codes": [
+          "GOVERNANCE_CONTROL"
+        ],
+        "derived_risk_codes": [
+          "GOVERNANCE_CONTROL"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-20T19:59:59.999Z",
+        "signatures": [],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-TIME-CLOSED-BEFORE",
+        "request_sha256": "c6cffe5fdbad71e1642267a1c6e0c73eb32b4c5cc0dfd457558e6068df775d4a",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_CLOSED",
+          "codes": [
+            "GOVERNANCE_CONTROL"
+          ],
+          "errors": [],
+          "delay_hours": 24
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-20T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "NOT_READY",
+          "reason": "COOLING_PERIOD_ACTIVE",
+          "missing_roles": []
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "3886959bf1d45801f7654ba43f81a4e39e6a03c1d125b86e076aec8047b2e594",
+      "service_signature": "8375731eb8a182cae0edb092f23176fa24421ad4955e2599490d2b3b5f09dcb9c513df7d10fcf048d91ccf686cf1469442965a88fa0f83426a514d43fe860a01",
+      "latency_ms": 886.82,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 886.82
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_CLOSED",
+        "status": "NOT_READY",
+        "reason": "COOLING_PERIOD_ACTIVE"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-TIME-CLOSED-AT",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-TIME-CLOSED-AT",
+        "declared_risk_codes": [
+          "GOVERNANCE_CONTROL"
+        ],
+        "derived_risk_codes": [
+          "GOVERNANCE_CONTROL"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-20T20:00:00.000Z",
+        "signatures": [],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-TIME-CLOSED-AT",
+        "request_sha256": "2554bd92e7a5b75a68b5bb917c25c4ba01cdc28467c3708cd95524f31968d785",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_CLOSED",
+          "codes": [
+            "GOVERNANCE_CONTROL"
+          ],
+          "errors": [],
+          "delay_hours": 24
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-20T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "READY",
+          "reason": "TIME_PATH_SATISFIED",
+          "missing_roles": []
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "b8a21bbc662fd41e12ab073210e98b6938a7ee3a0f8411a87acbcaa6062fd6d7",
+      "service_signature": "35407bf33a6277b9ef4c470467f13fbbd78a547b61173b6910d983b93b02631fd4e4c81873ceea55b49328929a416fe090c553eab7dbdcaa851ecf0c914f2907",
+      "latency_ms": 805.65,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 805.65
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_CLOSED",
+        "status": "READY",
+        "reason": "TIME_PATH_SATISFIED"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-SIGNER-ELEVATED-VALID",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-SIGNER-ELEVATED-VALID",
+        "declared_risk_codes": [
+          "ACCESSIBILITY_UI"
+        ],
+        "derived_risk_codes": [
+          "ACCESSIBILITY_UI"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "QUALIFIED_HUMAN",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [
+          {
+            "member_id": "human-design-1",
+            "role": "Product Designer",
+            "kind": "human",
+            "pod_id": "steer-flight-team",
+            "current_role": "Product Designer",
+            "status": "available",
+            "is_submitter": false,
+            "is_builder": false
+          }
+        ],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-SIGNER-ELEVATED-VALID",
+        "request_sha256": "51f2bd3c6ac36b280e0670a3923a861b60b66ae8e82a0b30fb11dd12a3a4c932",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "ELEVATED",
+          "codes": [
+            "ACCESSIBILITY_UI"
+          ],
+          "errors": [],
+          "delay_hours": 4
+        },
+        "selected_path": "QUALIFIED_HUMAN",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [
+          {
+            "member_id": "human-design-1",
+            "role": "Product Designer",
+            "status": "ACCEPTED"
+          }
+        ],
+        "result": {
+          "status": "READY",
+          "reason": "QUALIFIED_HUMAN_PATH_SATISFIED",
+          "missing_roles": []
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "cf8d16637a9bc768b43a62fda0d36819874270cb6aa92dd4b7e9642183709c13",
+      "service_signature": "ec30b40143fac2608cdf1e71ef661e11f54c32f4436e7a234b6d8fbdbc982049f6302bfa0731a2885fe64b91d887f815531942e166d248f479be3f78146d8f04",
+      "latency_ms": 749.91,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 749.91
+        }
+      ],
+      "oracle": {
+        "tier": "ELEVATED",
+        "status": "READY",
+        "reason": "QUALIFIED_HUMAN_PATH_SATISFIED"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-SIGNER-WRONG-DOMAIN",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-SIGNER-WRONG-DOMAIN",
+        "declared_risk_codes": [
+          "ACCESSIBILITY_UI"
+        ],
+        "derived_risk_codes": [
+          "ACCESSIBILITY_UI"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "QUALIFIED_HUMAN",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [
+          {
+            "member_id": "human-security-1",
+            "role": "Security Owner",
+            "kind": "human",
+            "pod_id": "steer-flight-team",
+            "current_role": "Security Owner",
+            "status": "available",
+            "is_submitter": false,
+            "is_builder": false
+          }
+        ],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-SIGNER-WRONG-DOMAIN",
+        "request_sha256": "98798e0cb6162e6892731a70d4279ea5b6b11382227ff069e267fe5dfd151593",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "ELEVATED",
+          "codes": [
+            "ACCESSIBILITY_UI"
+          ],
+          "errors": [],
+          "delay_hours": 4
+        },
+        "selected_path": "QUALIFIED_HUMAN",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [
+          {
+            "member_id": "human-security-1",
+            "role": "Security Owner",
+            "status": "ACCEPTED"
+          }
+        ],
+        "result": {
+          "status": "NOT_READY",
+          "reason": "QUALIFIED_HUMAN_REQUIRED",
+          "missing_roles": [
+            "Product Designer"
+          ]
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "0c1d733e9a58548bbfe9b0c686c627100c70f83791703ee0f8ba85a033260f98",
+      "service_signature": "92c0613af2fd311ce4a8be26f9c0e38b044182da59acdb680f4c5ad23319c72c371bf107cde307c90e04b2c64d0cfbb0dde49d4b51eaa06c37367a10a56f3907",
+      "latency_ms": 791.76,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 791.76
+        }
+      ],
+      "oracle": {
+        "tier": "ELEVATED",
+        "status": "NOT_READY",
+        "reason": "QUALIFIED_HUMAN_REQUIRED"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-SIGNER-SUBMITTER",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-SIGNER-SUBMITTER",
+        "declared_risk_codes": [
+          "ACCESSIBILITY_UI"
+        ],
+        "derived_risk_codes": [
+          "ACCESSIBILITY_UI"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "QUALIFIED_HUMAN",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [
+          {
+            "member_id": "human-design-1",
+            "role": "Product Designer",
+            "kind": "human",
+            "pod_id": "steer-flight-team",
+            "current_role": "Product Designer",
+            "status": "available",
+            "is_submitter": true,
+            "is_builder": false
+          }
+        ],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-SIGNER-SUBMITTER",
+        "request_sha256": "742819935ef5750caec1d1cebce9abdef46655ad4de97b0ab2ad6beb37d17bed",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "ELEVATED",
+          "codes": [
+            "ACCESSIBILITY_UI"
+          ],
+          "errors": [],
+          "delay_hours": 4
+        },
+        "selected_path": "QUALIFIED_HUMAN",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "NOT_READY",
+          "reason": "QUALIFIED_HUMAN_REQUIRED",
+          "missing_roles": [
+            "Product Designer"
+          ]
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "1ed296b85c4303116105ad01ad99231ea5ff13e49bb01f75930fa9571eb2e9bb",
+      "service_signature": "412969e4e949561f932f46e5fdf99d84c96d79d71aba9d3870659c54077e7f18daac1b9658ae075b455636a758aaced74ffc5e9f12435663324e8d587ae5e305",
+      "latency_ms": 948.42,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 948.42
+        }
+      ],
+      "oracle": {
+        "tier": "ELEVATED",
+        "status": "NOT_READY",
+        "reason": "QUALIFIED_HUMAN_REQUIRED"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-SIGNER-BUILDER",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-SIGNER-BUILDER",
+        "declared_risk_codes": [
+          "ACCESSIBILITY_UI"
+        ],
+        "derived_risk_codes": [
+          "ACCESSIBILITY_UI"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "QUALIFIED_HUMAN",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [
+          {
+            "member_id": "human-design-1",
+            "role": "Product Designer",
+            "kind": "human",
+            "pod_id": "steer-flight-team",
+            "current_role": "Product Designer",
+            "status": "available",
+            "is_submitter": false,
+            "is_builder": true
+          }
+        ],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-SIGNER-BUILDER",
+        "request_sha256": "80e15cc17ecd440549a180638421a0fde90c3f47c539940c76026fa6ab5ee31c",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "ELEVATED",
+          "codes": [
+            "ACCESSIBILITY_UI"
+          ],
+          "errors": [],
+          "delay_hours": 4
+        },
+        "selected_path": "QUALIFIED_HUMAN",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "NOT_READY",
+          "reason": "QUALIFIED_HUMAN_REQUIRED",
+          "missing_roles": [
+            "Product Designer"
+          ]
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "abc32a15c17129f957bb848a2ae1d6d871aa3d4618c36f53188fca35d6623368",
+      "service_signature": "cf112041dbd3dbdc2b12db32694417f9c8d87dd772581179c3a097835a9276933df94775393af7d24dbcd05e69b829fff44098f0a1e9878424c13164a4462b00",
+      "latency_ms": 918.22,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 918.22
+        }
+      ],
+      "oracle": {
+        "tier": "ELEVATED",
+        "status": "NOT_READY",
+        "reason": "QUALIFIED_HUMAN_REQUIRED"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-SIGNER-TEAM-COMPLETE",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-SIGNER-TEAM-COMPLETE",
+        "declared_risk_codes": [
+          "GOVERNANCE_CONTROL"
+        ],
+        "derived_risk_codes": [
+          "GOVERNANCE_CONTROL"
+        ],
+        "operating_mode": "TEAM",
+        "satisfaction_path": "QUALIFIED_TEAM",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [
+          {
+            "member_id": "human-product-1",
+            "role": "Product Lead",
+            "kind": "human",
+            "pod_id": "steer-flight-team",
+            "current_role": "Product Lead",
+            "status": "available",
+            "is_submitter": false,
+            "is_builder": false
+          },
+          {
+            "member_id": "human-tech-1",
+            "role": "Tech Lead",
+            "kind": "human",
+            "pod_id": "steer-flight-team",
+            "current_role": "Tech Lead",
+            "status": "available",
+            "is_submitter": false,
+            "is_builder": false
+          }
+        ],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-SIGNER-TEAM-COMPLETE",
+        "request_sha256": "ba28a0acbdde6fafa028cedecc657d52515a9ae8b0e5676db782eaa1936a165b",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_CLOSED",
+          "codes": [
+            "GOVERNANCE_CONTROL"
+          ],
+          "errors": [],
+          "delay_hours": 24
+        },
+        "selected_path": "QUALIFIED_TEAM",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [
+          {
+            "member_id": "human-product-1",
+            "role": "Product Lead",
+            "status": "ACCEPTED"
+          },
+          {
+            "member_id": "human-tech-1",
+            "role": "Tech Lead",
+            "status": "ACCEPTED"
+          }
+        ],
+        "result": {
+          "status": "READY",
+          "reason": "QUALIFIED_HUMAN_PATH_SATISFIED",
+          "missing_roles": []
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "e0118cee52e00b4d9ef04d9ebf27d0101f10afde77b0febc3f1fca0643992063",
+      "service_signature": "823da6bc88310efc609590c227d136fece2233d657879578cab2814ffe66fe2800fca6d5c68e05216e30d7b155cba8da1f133f0bbab0bc3cb38f9071fa4d4906",
+      "latency_ms": 1029.31,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 1029.31
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_CLOSED",
+        "status": "READY",
+        "reason": "QUALIFIED_HUMAN_PATH_SATISFIED"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-SIGNER-TEAM-DUPLICATE",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-SIGNER-TEAM-DUPLICATE",
+        "declared_risk_codes": [
+          "GOVERNANCE_CONTROL"
+        ],
+        "derived_risk_codes": [
+          "GOVERNANCE_CONTROL"
+        ],
+        "operating_mode": "TEAM",
+        "satisfaction_path": "QUALIFIED_TEAM",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [
+          {
+            "member_id": "human-stack-1",
+            "role": "Product Lead",
+            "kind": "human",
+            "pod_id": "steer-flight-team",
+            "current_role": "Product Lead Tech Lead",
+            "status": "available",
+            "is_submitter": false,
+            "is_builder": false
+          },
+          {
+            "member_id": "human-stack-1",
+            "role": "Tech Lead",
+            "kind": "human",
+            "pod_id": "steer-flight-team",
+            "current_role": "Product Lead Tech Lead",
+            "status": "available",
+            "is_submitter": false,
+            "is_builder": false
+          }
+        ],
+        "drift_field": "NONE"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-SIGNER-TEAM-DUPLICATE",
+        "request_sha256": "92da577ef1d52f84170fcde49bd6e70fde17ed900bd266f1b65c6e797be2b261",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_CLOSED",
+          "codes": [
+            "GOVERNANCE_CONTROL"
+          ],
+          "errors": [],
+          "delay_hours": 24
+        },
+        "selected_path": "QUALIFIED_TEAM",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [
+          {
+            "member_id": "human-stack-1",
+            "role": "Product Lead",
+            "status": "ACCEPTED"
+          },
+          {
+            "member_id": "human-stack-1",
+            "role": "Tech Lead",
+            "status": "ACCEPTED"
+          }
+        ],
+        "result": {
+          "status": "NOT_READY",
+          "reason": "QUALIFIED_HUMAN_REQUIRED",
+          "missing_roles": []
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "89f00d73775463efc6c9e6d94c859946054fa6aa36ca3890c9b340cf62d59198",
+      "service_signature": "2085ed1a697db49d49fcd2dc199f7ea1a55b2839446629042ce95f6894d60767d8709df18b1744e5f602bd1e6e4f6ea364f3e4566291b06a117da81dabf29e06",
+      "latency_ms": 817.26,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 817.26
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_CLOSED",
+        "status": "NOT_READY",
+        "reason": "QUALIFIED_HUMAN_REQUIRED"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-DRIFT-IMPLEMENTATION",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-IMPLEMENTATION",
+        "declared_risk_codes": [
+          "NONE"
+        ],
+        "derived_risk_codes": [
+          "NONE"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [],
+        "drift_field": "IMPLEMENTATION"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-IMPLEMENTATION",
+        "request_sha256": "02f870b1c42ce4257ddb947fa3149f2bd20e568db74c847733bef1bafd0244ca",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_OPEN",
+          "codes": [
+            "NONE"
+          ],
+          "errors": [],
+          "delay_hours": 0
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "INVALIDATED",
+          "reason": "IMPLEMENTATION_DRIFT",
+          "missing_roles": [
+            "Product Lead",
+            "Tech Lead"
+          ]
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "9b4671cf1e5611be63ad13f43b0a7fe5054443ec86d748510dafe4b3ac4c6470",
+      "service_signature": "b808f937dab4ac1f10cbc566250f70b137935fc9f52fee9460c6e703abc6510f6edf3cb70add507ba88977a32c7d6c85ef37d6b5fa42388d2ccd1fafeb456400",
+      "latency_ms": 909.79,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 909.79
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_OPEN",
+        "status": "INVALIDATED",
+        "reason": "IMPLEMENTATION_DRIFT"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-DRIFT-MIGRATION",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-MIGRATION",
+        "declared_risk_codes": [
+          "NONE"
+        ],
+        "derived_risk_codes": [
+          "NONE"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [],
+        "drift_field": "MIGRATION"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-MIGRATION",
+        "request_sha256": "2f66d86361887bc218a1242a8addfa37aae9f274ee83ce0cee417ab201b61f0e",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_OPEN",
+          "codes": [
+            "NONE"
+          ],
+          "errors": [],
+          "delay_hours": 0
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "INVALIDATED",
+          "reason": "MIGRATION_DRIFT",
+          "missing_roles": [
+            "Product Lead",
+            "Tech Lead"
+          ]
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "f113b444eed62d90e40eea1aa4a99672c099d8a48ec7b738de37e6bc5a241c17",
+      "service_signature": "71f9211c9365d3950c2a8047d3e2c38aded7ac62cc8fcb5e99daa7c98bfdec81d65d4b2a0dbfb1c35c3cb42a07d60e5a70fa338a9eb9b1b417c70df1f2f5f106",
+      "latency_ms": 865.94,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 865.94
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_OPEN",
+        "status": "INVALIDATED",
+        "reason": "MIGRATION_DRIFT"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-DRIFT-RUNTIME-POLICY",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-RUNTIME-POLICY",
+        "declared_risk_codes": [
+          "NONE"
+        ],
+        "derived_risk_codes": [
+          "NONE"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [],
+        "drift_field": "RUNTIME_POLICY"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-RUNTIME-POLICY",
+        "request_sha256": "111333f20ed51fab61c0e86f1fe96760686acd2da1554b2caf3c4364b997a4b4",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_OPEN",
+          "codes": [
+            "NONE"
+          ],
+          "errors": [],
+          "delay_hours": 0
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "INVALIDATED",
+          "reason": "RUNTIME_POLICY_DRIFT",
+          "missing_roles": [
+            "Product Lead",
+            "Tech Lead"
+          ]
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "d899c7b7c986151d281fff604f69dc94a84451ab0d494fff5e07084b165cca1b",
+      "service_signature": "17a76bae7b2448abf4b194f1234ae80055326533a0f8662de8b2ea687e20137d06c330c6e3c5edaff8c58dff91fc44e64fcce92f4f0fa977cc2164a8ddb0680d",
+      "latency_ms": 752.37,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 752.37
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_OPEN",
+        "status": "INVALIDATED",
+        "reason": "RUNTIME_POLICY_DRIFT"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-DRIFT-EXAM",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-EXAM",
+        "declared_risk_codes": [
+          "NONE"
+        ],
+        "derived_risk_codes": [
+          "NONE"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [],
+        "drift_field": "EXAM"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-EXAM",
+        "request_sha256": "5c2f042efb9804047d8df20050889b2f0bc228df46c1dda7d4dfea52c8ef9639",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_OPEN",
+          "codes": [
+            "NONE"
+          ],
+          "errors": [],
+          "delay_hours": 0
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "INVALIDATED",
+          "reason": "EXAM_DRIFT",
+          "missing_roles": [
+            "Product Lead",
+            "Tech Lead"
+          ]
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "72ec72d55a6e1e6da3763c907c74a0e901ee88fa31b40e21f074dfcb6f244007",
+      "service_signature": "61212ab3814e10dd6653763866b7cb4d0017827267461557d98bc91703932603e57598b23d5108ad99d1c983945af89561970f0f71d5069ba11cf595f7c7d503",
+      "latency_ms": 867.8,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 867.8
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_OPEN",
+        "status": "INVALIDATED",
+        "reason": "EXAM_DRIFT"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-DRIFT-VERIFICATION-RECEIPT",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-VERIFICATION-RECEIPT",
+        "declared_risk_codes": [
+          "NONE"
+        ],
+        "derived_risk_codes": [
+          "NONE"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [],
+        "drift_field": "VERIFICATION_RECEIPT"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-VERIFICATION-RECEIPT",
+        "request_sha256": "289a70a3252c36df094f069882c25131db51bc3c3e49dc6427f8baf4ff97ac28",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_OPEN",
+          "codes": [
+            "NONE"
+          ],
+          "errors": [],
+          "delay_hours": 0
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "INVALIDATED",
+          "reason": "VERIFICATION_RECEIPT_DRIFT",
+          "missing_roles": [
+            "Product Lead",
+            "Tech Lead"
+          ]
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "057bb6a7b453f0eb26b920453a617337c8aa8764225b51ac964e7c0d984f8b36",
+      "service_signature": "8d7e784d23d650823e7719261a93f73713bc6e4bceeb4b6e191906cc6f7e07e041e75bb4bacf137090175284b33954e28e8e08b2f03b8330b01be27c9a06c603",
+      "latency_ms": 822.09,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 822.09
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_OPEN",
+        "status": "INVALIDATED",
+        "reason": "VERIFICATION_RECEIPT_DRIFT"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-DRIFT-DERIVED-DOMAINS",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-DERIVED-DOMAINS",
+        "declared_risk_codes": [
+          "NONE"
+        ],
+        "derived_risk_codes": [
+          "NONE"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [],
+        "drift_field": "DERIVED_DOMAINS"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-DERIVED-DOMAINS",
+        "request_sha256": "3f48f07ee703414b2ea7ca9cb0ed59a7f0684ed83e59efab490ac1e8cb441d88",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_OPEN",
+          "codes": [
+            "NONE"
+          ],
+          "errors": [],
+          "delay_hours": 0
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "INVALIDATED",
+          "reason": "DERIVED_DOMAINS_DRIFT",
+          "missing_roles": [
+            "Product Lead",
+            "Tech Lead"
+          ]
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "27e6c24a569d168e035077495ec00e2df5c9469547a12b45cc2c58986f7bf14c",
+      "service_signature": "1d38a9deaaa2b3ed4779ab866acfe4739b0c565af3ccffe27ca1e72aa7a73ea045d7bb2909a4e9856514f2414ee988b7c67fadbb6fa8cf12d650a776effc390a",
+      "latency_ms": 956.29,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 956.29
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_OPEN",
+        "status": "INVALIDATED",
+        "reason": "DERIVED_DOMAINS_DRIFT"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-DRIFT-CRITIC-TARGET",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-CRITIC-TARGET",
+        "declared_risk_codes": [
+          "NONE"
+        ],
+        "derived_risk_codes": [
+          "NONE"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [],
+        "drift_field": "CRITIC_TARGET"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-CRITIC-TARGET",
+        "request_sha256": "4f72195bb809d0afdf45deb7072b2ba8b086494ed9f655496145c3ceb671b5cb",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_OPEN",
+          "codes": [
+            "NONE"
+          ],
+          "errors": [],
+          "delay_hours": 0
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "INVALIDATED",
+          "reason": "CRITIC_TARGET_DRIFT",
+          "missing_roles": [
+            "Product Lead",
+            "Tech Lead"
+          ]
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "2f035a30cb56e98cbaddc95a7b4b07f7651ef74ce92c7fe3f02fbbf873a98b13",
+      "service_signature": "eec932c767489451e703f2763f74b8cd4ee3985533c4dd8611b8d5e5544bb63ea8db6c9df3d6e9bd672e5c42fc7eac10ee126b72f5598fcc5904374f2bdc0c0e",
+      "latency_ms": 873.12,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 873.12
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_OPEN",
+        "status": "INVALIDATED",
+        "reason": "CRITIC_TARGET_DRIFT"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-DRIFT-RISK-POLICY",
+      "request": {
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-RISK-POLICY",
+        "declared_risk_codes": [
+          "NONE"
+        ],
+        "derived_risk_codes": [
+          "NONE"
+        ],
+        "operating_mode": "SOLO_CALIBRATION",
+        "satisfaction_path": "TIME",
+        "verification_completed_at": "2026-08-19T20:00:00.000Z",
+        "server_now": "2026-08-19T20:00:00.000Z",
+        "signatures": [],
+        "drift_field": "RISK_POLICY"
+      },
+      "http_status": 201,
+      "response": {
+        "schema": "steer.hosted-readiness-case-result/v1",
+        "run_id": "rr74-20260819214559621",
+        "case_id": "RR74-DRIFT-RISK-POLICY",
+        "request_sha256": "6b798cb8a03d2a9aa2dbef07329f9e824329dd4101f2881e99e6c8118be30cc0",
+        "source_revision": "ab8608b3bc9f6f1880c5b32dd3293b2ab7a1a3d5",
+        "build_sha256": "c8ae9688513d22877b354e7728eea1db425c2c51e822a99e10ce08c37c14bc3c",
+        "migration_set_sha256": "925f5e62a3d6d5750d04a5b713b25454dd106b161d2712495e25136cbb576b68",
+        "policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+        "classification": {
+          "tier": "DEFAULT_OPEN",
+          "codes": [
+            "NONE"
+          ],
+          "errors": [],
+          "delay_hours": 0
+        },
+        "selected_path": "TIME",
+        "effective_not_before": "2026-08-19T20:00:00.000Z",
+        "eligible_signatures": [],
+        "result": {
+          "status": "INVALIDATED",
+          "reason": "RISK_POLICY_DRIFT",
+          "missing_roles": [
+            "Product Lead",
+            "Tech Lead"
+          ]
+        },
+        "key_id": "staging-decision-v1",
+        "key_version": 1
+      },
+      "response_sha256": "1f74589bff1997a52b8d5c348fe5e5929338218658dcbf43cfc4dd875633120b",
+      "service_signature": "244d7ab265dedd6e4f0d24cdd96cac51d17b0637a4d68bb60983d5f8d0a9f84d2f36fe195ddcd6eecefdb8adfc1217883bc33c5f6e1478bc784e16121644590a",
+      "latency_ms": 837.95,
+      "transport_attempts": [
+        {
+          "status": 201,
+          "transport_failure": null,
+          "latency_ms": 837.95
+        }
+      ],
+      "oracle": {
+        "tier": "DEFAULT_OPEN",
+        "status": "INVALIDATED",
+        "reason": "RISK_POLICY_DRIFT"
+      },
+      "pass": true
+    },
+    {
+      "case_id": "RR74-REPLAY-IDEMPOTENT",
+      "first_http_status": 201,
+      "replay_http_status": 200,
+      "response_sha256": "1a68dc0232147be560817519fe446f2beeb212acb8e414b35ed4327dd8c5c4ea",
+      "replay": true,
+      "latency_ms": 714.18,
+      "pass": true
+    },
+    {
+      "case_id": "RR74-CONCURRENCY-100",
+      "initial_attempts": 100,
+      "initial_authoritative_responses": 98,
+      "initial_transport_failures": 2,
+      "created_responses": 1,
+      "reconciliation_replay_http_status": 200,
+      "one_authoritative_identity": true,
+      "response_sha256": "43d0e0899428257eff7b8c58edabb594f5e0bc45017c3c85c86059d53851b495",
+      "latencies_ms": [
+        1335.69,
+        1331.74,
+        11202.06,
+        1334.66,
+        10762.14,
+        10756.88,
+        10760.11,
+        10756.74,
+        10762.04,
+        10759.52,
+        10759.09,
+        10755.89,
+        1333.11,
+        10742.54,
+        10742.3,
+        10467.9,
+        10757.54,
+        10949.88,
+        11170.61,
+        10744.99,
+        10748.07,
+        11126.94,
+        10899.98,
+        11016.76,
+        10747.7,
+        10752.97,
+        10757.89,
+        10757.8,
+        10465.11,
+        10757.78,
+        10747.56,
+        1329.26,
+        10801.25,
+        10754.88,
+        10754.72,
+        1325.89,
+        10743.04,
+        10754.76,
+        10746.11,
+        10746.07,
+        10754.37,
+        10754.41,
+        10751.12,
+        10756.46,
+        1328.06,
+        10742.4,
+        10756.34,
+        10745.62,
+        10753.99,
+        10745.48,
+        10737.25,
+        10742.01,
+        10992.59,
+        10883.62,
+        10753.56,
+        10484.15,
+        10755.28,
+        10462.45,
+        10753.28,
+        10799.34,
+        10752.85,
+        10755.38,
+        10749.64,
+        10729.09,
+        11088.86,
+        10736.06,
+        10754.43,
+        1324.03,
+        10755.01,
+        10752.55,
+        10744.16,
+        10754.8,
+        10749.06,
+        10993.48,
+        10743.3,
+        11165.24,
+        10901.31,
+        11165.4,
+        10743.15,
+        10748.09,
+        10742.73,
+        10739.55,
+        10748.07,
+        10945.83,
+        10797.23,
+        10742.47,
+        10866.64,
+        10866.49,
+        10747.67,
+        10880.94,
+        10924.04,
+        11115.27,
+        10750.61,
+        1324.5,
+        10752.96,
+        1324.5,
+        1324.67,
+        10798.59,
+        10750.43,
+        10747.24
+      ],
+      "pass": true
+    },
+    {
+      "case_id": "RR74-FAULT-AUTH-RETRY",
+      "rejected_http_status": 401,
+      "retry_http_status": 201,
+      "response_sha256": "8d87966dbb10346e667adaa62f8610568e4d4e0f31227e00b868f29c0fe74305",
+      "pass": true
+    }
+  ],
+  "completed_cases": 30,
+  "passed_cases": 30,
+  "failed_cases": 0,
+  "rollback_observations": [
+    {
+      "case_id": "RR74-ROLLBACK-LEGACY",
+      "result": "PASS",
+      "rollback_deployment_id": "appgdep_6a86256df11081919a616df2b4625da8",
+      "rollback_version": 28,
+      "pre_table_count": 50,
+      "pre_row_count": 1938,
+      "pre_aggregate_sha256": "8fd15916a15feac46011dffc8e8ffc482a3311588f05abffbc573ad81ae01aad",
+      "during_aggregate_sha256": "8fd15916a15feac46011dffc8e8ffc482a3311588f05abffbc573ad81ae01aad",
+      "changed_tables": []
+    },
+    {
+      "case_id": "RR74-ROLLBACK-INERT",
+      "result": "PASS",
+      "observation": "While version 28 was live, the new staging readiness endpoint was unavailable and returned HTTP 401; readiness behavior remained disabled and all 50 table projections were unchanged.",
+      "in_flight_behavior": "fail_closed"
+    },
+    {
+      "case_id": "RR74-RESTORE-NO-DUPLICATE",
+      "result": "PASS",
+      "restore_deployment_id": "appgdep_6a86265ace64819181893e9611c27255",
+      "restored_version": 31,
+      "after_aggregate_sha256": "8fd15916a15feac46011dffc8e8ffc482a3311588f05abffbc573ad81ae01aad",
+      "changed_tables": [],
+      "replay_http_status": 200,
+      "replay": true,
+      "replay_response_sha256": "6a5bdacf5def68728d1ff6e8c0ad5cad4a9bbd45a25d5cfdf68dc0c44921d52a"
+    }
+  ],
+  "worker_timing": {
+    "sample_size": 100,
+    "cpu_p95_ms": 86,
+    "cpu_max_ms": 169,
+    "wall_p95_ms": 10301,
+    "wall_max_ms": 10331,
+    "calculation_budget_ms": 500,
+    "calculation_budget_result": "PASS",
+    "note": "CPU timing measures readiness computation; private Sites gateway wall time is disclosed separately as a capacity signal."
+  },
+  "environment": {
+    "project_id": "appgprj_6a83763dc1148191b439c0795aa86a1c",
+    "staging_version": 31,
+    "environment_revision": 20,
+    "source_wrapper_revision": "44d256c2a9cf55fb59d5eab69baad7bab6241b22",
+    "canonical_access": "owner-only"
+  },
+  "accessibility": {
+    "true_browser_zoom": {
+      "browser": "Google Chrome",
+      "zoom_percent": 200,
+      "url": "https://steer-flight-board-staging.idriss-enayat.chatgpt.site/?issue74_zoom=200",
+      "observed_at": "2026-08-19T23:36:53Z",
+      "result": "PASS",
+      "observations": [
+        "Release-authority heading, status, issuer, risk policy, and no-automatic-release explanation remained readable without clipping.",
+        "Responsive workspace navigation remained available through its intentional horizontal scroller.",
+        "No readiness action was enabled by the client or by elapsed display time."
+      ],
+      "keyboard_focus_trace": [
+        "My Work",
+        "Overview",
+        "Flight Board",
+        "Backlog",
+        "Human Decisions",
+        "Team & Agents",
+        "Search work",
+        "Create work item"
+      ]
+    }
+  }
+}

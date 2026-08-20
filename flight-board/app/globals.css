@@ -688,5 +688,11 @@ body { font-size: 14px; }
 .decision-receipt-status dt { color: #66675f; font-size: 10px; font-weight: 750; text-transform: uppercase; }
 .decision-receipt-status dd { font-family: var(--font-geist-mono); font-size: 11px; margin: 0; }
 .decision-receipt-status > button { background: #742929; border: 0; border-radius: 7px; color: #fff; cursor: pointer; font-size: 11px; font-weight: 800; margin-top: 11px; min-height: 38px; padding: 8px 11px; }
+.readiness-control-lists { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 12px; }
+.readiness-control-lists > div { background: rgba(255, 255, 255, .62); border: 1px solid #c8c5b8; border-radius: 8px; padding: 10px; }
+.readiness-control-lists b { color: #303833; display: block; font-size: 11px; line-height: 1.4; }
+.readiness-control-lists ul { color: #454b47; font-size: 11px; line-height: 1.55; list-style: none; margin: 5px 0 0; padding: 0; }
+.readiness-control-lists li { overflow-wrap: anywhere; }
+@media (max-width: 420px) { .readiness-control-lists { grid-template-columns: 1fr; } }
 .decision-effect-note { background: #f2f5f4; border-radius: 8px; color: #3f5148; font-size: 11px; line-height: 1.55; margin: 13px 0 0; padding: 10px 11px; }
 .decision-modal fieldset:disabled .radio-card { cursor: default; opacity: .58; }

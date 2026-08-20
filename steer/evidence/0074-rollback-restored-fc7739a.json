@@ -1,0 +1,463 @@
+{
+  "schema": "steer.issue74-rollback-restored/v1",
+  "run_id": "rr74-rb-v38-1787194640949",
+  "generated_at": "2026-08-20T03:02:48.123Z",
+  "target": {
+    "staging_url": "https://steer-flight-board-staging.idriss-enayat.chatgpt.site",
+    "source_revision": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+    "build_sha256": "ede408b3c2ac6f238829d35e5643a10419fddfa630b6b49793f6116f94f698a8",
+    "migration_set_sha256": "6ef5c16a1fabdad73ce952583f67d03b4f65012e90bc6307f255af49fab68511",
+    "runtime_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+    "path": "steer/evidence/0074-real-lifecycle-case-contract.md",
+    "sha256": "5b4bc63646fcb11ee494c507018b36cc95f8f2761da4eae76d551109bdab74d0",
+    "commit_object_sha256": "c62ac8388fe24fbf5b307ae6171e4dcaf17c55dae90153fbfaf321b6904e9378",
+    "brief": {
+      "path": "steer/briefs/0074-risk-based-gate3-readiness.md",
+      "commit": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+      "sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5"
+    },
+    "exam": {
+      "path": "steer/exams/0074-risk-based-gate3-readiness.md",
+      "commit": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+      "sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6"
+    },
+    "case_contract_sha256": "5b4bc63646fcb11ee494c507018b36cc95f8f2761da4eae76d551109bdab74d0"
+  },
+  "item_id": 478,
+  "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+  "before": {
+    "projection_sha256": "1c7d82e5ee9a7f9243fb47b3a9a9a102a955fa17367b34af36c84228989e82a4",
+    "intent": {
+      "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+      "intent_sha256": "581cd562ae04f9cc886b97f65ccb8cf1d3f34bf64623693b085b34d53ddfe128",
+      "current_state": "PENDING_PROOF",
+      "current_sequence": 1,
+      "current_event_sha256": "20ed7cd822e6b4dbb51304c17af6bfa2b6e88a72e7593fff306102ba4cfb75b6",
+      "readiness_snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+      "created_at": "2026-08-20T02:57:31.005Z",
+      "updated_at": "2026-08-20T02:57:31.005Z"
+    },
+    "decisions": [
+      {
+        "gate": "Gate 1 pending",
+        "decision": "APPROVED",
+        "evidence_revision": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+        "evidence_sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5",
+        "decision_intent_id": null,
+        "created_at": "2026-08-20T02:57:23.115Z"
+      },
+      {
+        "gate": "Gate 2 pending",
+        "decision": "APPROVED",
+        "evidence_revision": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+        "evidence_sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6",
+        "decision_intent_id": "01a01d1a-12e3-7d5a-b454-2fc477a56f03",
+        "created_at": "2026-08-20T02:57:23.115Z"
+      }
+    ]
+  },
+  "blocked": {
+    "status": 409,
+    "body": {
+      "error": "The intent is not awaiting finalization.",
+      "schema": "steer-gate-receipt-export/v1",
+      "intent": {
+        "schema": "steer-decision-intent/v1",
+        "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+        "receipt_id": "01a01d1a-338a-7483-8e25-18aaaa17b774",
+        "package_id": "01a01d1a-2a2f-78a6-aaac-fba385e91773",
+        "item_key": "RR74-B5E6E9A6B62B",
+        "decision_kind": "Gate 3 pending",
+        "decision": "APPROVED",
+        "final_reasoning": "The exact issue #74 hosted candidate satisfies the recorded release controls.",
+        "draft_sha256": "6b4d6f64052cf2f7cfa5502de40aa1d7687d90764b8bf2732fc81197720edc59",
+        "evidence_set_sha256": "993b560cbb2d322b08ab5886e57fc01c98c0b428d486dc7c006c0ce22521bcdd",
+        "target": {
+          "repository_uri": "https://github.com/idrissenayat/federal-bd-platform",
+          "commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+          "path": "steer/evidence/0074-real-lifecycle-case-contract.md",
+          "body_sha256": "5b4bc63646fcb11ee494c507018b36cc95f8f2761da4eae76d551109bdab74d0"
+        },
+        "submitter_principal": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA",
+        "submitter_role": "Product Lead · interim Tech Lead",
+        "decision_session_id": "01a01d1a-2dbb-7979-848a-0fcebf62e031",
+        "submitted_at": "2026-08-20T02:57:31.005Z",
+        "effective_not_before": "2026-08-20T02:56:22.186Z",
+        "operating_mode": "SOLO_CALIBRATION",
+        "signer_policy_version": 1,
+        "required_countersignatures": 0,
+        "readiness_snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+        "readiness_authority": {
+          "schema": "steer.gate-readiness-authority/v1",
+          "snapshot_id": "4271640aef20204d04991dcd376ee889b7532540bb517ee584633ca13f60a513",
+          "snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+          "work_item_id": 478,
+          "work_item_key": "RR74-B5E6E9A6B62B",
+          "pod_id": "steer-flight-team",
+          "brief_path": "steer/briefs/0074-risk-based-gate3-readiness.md",
+          "brief_commit": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+          "brief_sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5",
+          "exam_path": "steer/exams/0074-risk-based-gate3-readiness.md",
+          "exam_commit": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+          "exam_sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6",
+          "implementation_commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+          "build_sha256": "ede408b3c2ac6f238829d35e5643a10419fddfa630b6b49793f6116f94f698a8",
+          "migration_set_sha256": "6ef5c16a1fabdad73ce952583f67d03b4f65012e90bc6307f255af49fab68511",
+          "runtime_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+          "verification_receipt_id": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+          "verification_receipt_sha256": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+          "verification_completed_at": "2026-08-20T02:56:22.186Z",
+          "critic_assignment_id": "965bb19a61ab2661f2e46a083aaf9b3bb8ba42b193ab5645374ef395cfdf9a11",
+          "critic_review_id": 503,
+          "critic_target_revision": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+          "critic_recommendation": "PASS",
+          "evidence_set_sha256": "303eff67c44882225bb145d8fa7f15436bf495dd597e6567a06431de26e34807",
+          "declared_risk_codes": [
+            "NONE"
+          ],
+          "derived_risk_codes": [
+            "NONE"
+          ],
+          "resolved_risk_codes": [
+            "NONE"
+          ],
+          "classification_errors": [],
+          "risk_policy_version": 1,
+          "risk_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+          "tier": "DEFAULT_OPEN",
+          "operating_mode": "SOLO_CALIBRATION",
+          "satisfaction_path": "TIME",
+          "delay_hours": 0,
+          "verification_authority": "SIGNED_STAGING_RECEIPT",
+          "effective_not_before": "2026-08-20T02:56:22.186Z",
+          "required_roles": [
+            "Product Lead",
+            "Tech Lead"
+          ],
+          "candidate_builder_id": "rr74-builder-b5e6e9a6b62b4bb6",
+          "candidate_builder_eligible": true,
+          "intended_submitter_id": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA"
+        },
+        "idempotency_key": "01a01d1a-2e0a-7dca-b884-32bc433743ce",
+        "sequence": 1
+      },
+      "state": "PENDING_PROOF",
+      "effective": false,
+      "latest_event_sha256": "20ed7cd822e6b4dbb51304c17af6bfa2b6e88a72e7593fff306102ba4cfb75b6",
+      "notice": "Pending record only. This receipt has no Gate or RAT effect."
+    }
+  },
+  "proof": {
+    "status": 201,
+    "body": {
+      "schema": "steer-gate-receipt-export/v1",
+      "intent": {
+        "schema": "steer-decision-intent/v1",
+        "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+        "receipt_id": "01a01d1a-338a-7483-8e25-18aaaa17b774",
+        "package_id": "01a01d1a-2a2f-78a6-aaac-fba385e91773",
+        "item_key": "RR74-B5E6E9A6B62B",
+        "decision_kind": "Gate 3 pending",
+        "decision": "APPROVED",
+        "final_reasoning": "The exact issue #74 hosted candidate satisfies the recorded release controls.",
+        "draft_sha256": "6b4d6f64052cf2f7cfa5502de40aa1d7687d90764b8bf2732fc81197720edc59",
+        "evidence_set_sha256": "993b560cbb2d322b08ab5886e57fc01c98c0b428d486dc7c006c0ce22521bcdd",
+        "target": {
+          "repository_uri": "https://github.com/idrissenayat/federal-bd-platform",
+          "commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+          "path": "steer/evidence/0074-real-lifecycle-case-contract.md",
+          "body_sha256": "5b4bc63646fcb11ee494c507018b36cc95f8f2761da4eae76d551109bdab74d0"
+        },
+        "submitter_principal": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA",
+        "submitter_role": "Product Lead · interim Tech Lead",
+        "decision_session_id": "01a01d1a-2dbb-7979-848a-0fcebf62e031",
+        "submitted_at": "2026-08-20T02:57:31.005Z",
+        "effective_not_before": "2026-08-20T02:56:22.186Z",
+        "operating_mode": "SOLO_CALIBRATION",
+        "signer_policy_version": 1,
+        "required_countersignatures": 0,
+        "readiness_snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+        "readiness_authority": {
+          "schema": "steer.gate-readiness-authority/v1",
+          "snapshot_id": "4271640aef20204d04991dcd376ee889b7532540bb517ee584633ca13f60a513",
+          "snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+          "work_item_id": 478,
+          "work_item_key": "RR74-B5E6E9A6B62B",
+          "pod_id": "steer-flight-team",
+          "brief_path": "steer/briefs/0074-risk-based-gate3-readiness.md",
+          "brief_commit": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+          "brief_sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5",
+          "exam_path": "steer/exams/0074-risk-based-gate3-readiness.md",
+          "exam_commit": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+          "exam_sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6",
+          "implementation_commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+          "build_sha256": "ede408b3c2ac6f238829d35e5643a10419fddfa630b6b49793f6116f94f698a8",
+          "migration_set_sha256": "6ef5c16a1fabdad73ce952583f67d03b4f65012e90bc6307f255af49fab68511",
+          "runtime_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+          "verification_receipt_id": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+          "verification_receipt_sha256": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+          "verification_completed_at": "2026-08-20T02:56:22.186Z",
+          "critic_assignment_id": "965bb19a61ab2661f2e46a083aaf9b3bb8ba42b193ab5645374ef395cfdf9a11",
+          "critic_review_id": 503,
+          "critic_target_revision": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+          "critic_recommendation": "PASS",
+          "evidence_set_sha256": "303eff67c44882225bb145d8fa7f15436bf495dd597e6567a06431de26e34807",
+          "declared_risk_codes": [
+            "NONE"
+          ],
+          "derived_risk_codes": [
+            "NONE"
+          ],
+          "resolved_risk_codes": [
+            "NONE"
+          ],
+          "classification_errors": [],
+          "risk_policy_version": 1,
+          "risk_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+          "tier": "DEFAULT_OPEN",
+          "operating_mode": "SOLO_CALIBRATION",
+          "satisfaction_path": "TIME",
+          "delay_hours": 0,
+          "verification_authority": "SIGNED_STAGING_RECEIPT",
+          "effective_not_before": "2026-08-20T02:56:22.186Z",
+          "required_roles": [
+            "Product Lead",
+            "Tech Lead"
+          ],
+          "candidate_builder_id": "rr74-builder-b5e6e9a6b62b4bb6",
+          "candidate_builder_eligible": true,
+          "intended_submitter_id": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA"
+        },
+        "idempotency_key": "01a01d1a-2e0a-7dca-b884-32bc433743ce",
+        "sequence": 1
+      },
+      "state": "PENDING_COUNTERSIGNATURE",
+      "effective": false,
+      "latest_event_sha256": "aa9ea2356f83659efa32841d4976a5e9c3309548cb374d44f7fa1c781c2b2937",
+      "notice": "Pending record only. This receipt has no Gate or RAT effect.",
+      "issuer_envelope_sha256": "eee5084788b040897c19716ef3b9439868e2ed8bbefe0e9fe5e90b0f769ee0ee",
+      "replay": false
+    }
+  },
+  "finalized": {
+    "status": 201,
+    "body": {
+      "schema": "steer-gate-receipt-export/v1",
+      "intent": {
+        "schema": "steer-decision-intent/v1",
+        "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+        "receipt_id": "01a01d1a-338a-7483-8e25-18aaaa17b774",
+        "package_id": "01a01d1a-2a2f-78a6-aaac-fba385e91773",
+        "item_key": "RR74-B5E6E9A6B62B",
+        "decision_kind": "Gate 3 pending",
+        "decision": "APPROVED",
+        "final_reasoning": "The exact issue #74 hosted candidate satisfies the recorded release controls.",
+        "draft_sha256": "6b4d6f64052cf2f7cfa5502de40aa1d7687d90764b8bf2732fc81197720edc59",
+        "evidence_set_sha256": "993b560cbb2d322b08ab5886e57fc01c98c0b428d486dc7c006c0ce22521bcdd",
+        "target": {
+          "repository_uri": "https://github.com/idrissenayat/federal-bd-platform",
+          "commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+          "path": "steer/evidence/0074-real-lifecycle-case-contract.md",
+          "body_sha256": "5b4bc63646fcb11ee494c507018b36cc95f8f2761da4eae76d551109bdab74d0"
+        },
+        "submitter_principal": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA",
+        "submitter_role": "Product Lead · interim Tech Lead",
+        "decision_session_id": "01a01d1a-2dbb-7979-848a-0fcebf62e031",
+        "submitted_at": "2026-08-20T02:57:31.005Z",
+        "effective_not_before": "2026-08-20T02:56:22.186Z",
+        "operating_mode": "SOLO_CALIBRATION",
+        "signer_policy_version": 1,
+        "required_countersignatures": 0,
+        "readiness_snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+        "readiness_authority": {
+          "schema": "steer.gate-readiness-authority/v1",
+          "snapshot_id": "4271640aef20204d04991dcd376ee889b7532540bb517ee584633ca13f60a513",
+          "snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+          "work_item_id": 478,
+          "work_item_key": "RR74-B5E6E9A6B62B",
+          "pod_id": "steer-flight-team",
+          "brief_path": "steer/briefs/0074-risk-based-gate3-readiness.md",
+          "brief_commit": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+          "brief_sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5",
+          "exam_path": "steer/exams/0074-risk-based-gate3-readiness.md",
+          "exam_commit": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+          "exam_sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6",
+          "implementation_commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+          "build_sha256": "ede408b3c2ac6f238829d35e5643a10419fddfa630b6b49793f6116f94f698a8",
+          "migration_set_sha256": "6ef5c16a1fabdad73ce952583f67d03b4f65012e90bc6307f255af49fab68511",
+          "runtime_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+          "verification_receipt_id": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+          "verification_receipt_sha256": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+          "verification_completed_at": "2026-08-20T02:56:22.186Z",
+          "critic_assignment_id": "965bb19a61ab2661f2e46a083aaf9b3bb8ba42b193ab5645374ef395cfdf9a11",
+          "critic_review_id": 503,
+          "critic_target_revision": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+          "critic_recommendation": "PASS",
+          "evidence_set_sha256": "303eff67c44882225bb145d8fa7f15436bf495dd597e6567a06431de26e34807",
+          "declared_risk_codes": [
+            "NONE"
+          ],
+          "derived_risk_codes": [
+            "NONE"
+          ],
+          "resolved_risk_codes": [
+            "NONE"
+          ],
+          "classification_errors": [],
+          "risk_policy_version": 1,
+          "risk_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+          "tier": "DEFAULT_OPEN",
+          "operating_mode": "SOLO_CALIBRATION",
+          "satisfaction_path": "TIME",
+          "delay_hours": 0,
+          "verification_authority": "SIGNED_STAGING_RECEIPT",
+          "effective_not_before": "2026-08-20T02:56:22.186Z",
+          "required_roles": [
+            "Product Lead",
+            "Tech Lead"
+          ],
+          "candidate_builder_id": "rr74-builder-b5e6e9a6b62b4bb6",
+          "candidate_builder_eligible": true,
+          "intended_submitter_id": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA"
+        },
+        "idempotency_key": "01a01d1a-2e0a-7dca-b884-32bc433743ce",
+        "sequence": 1
+      },
+      "state": "EFFECTIVE",
+      "effective": true,
+      "latest_event_sha256": "95789ed050d6164382ebed9647b2951057aca8b257df232bf6ea80c0c1db558d",
+      "notice": "Verified effective human ruling."
+    }
+  },
+  "replay": {
+    "status": 200,
+    "body": {
+      "schema": "steer-gate-receipt-export/v1",
+      "intent": {
+        "schema": "steer-decision-intent/v1",
+        "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+        "receipt_id": "01a01d1a-338a-7483-8e25-18aaaa17b774",
+        "package_id": "01a01d1a-2a2f-78a6-aaac-fba385e91773",
+        "item_key": "RR74-B5E6E9A6B62B",
+        "decision_kind": "Gate 3 pending",
+        "decision": "APPROVED",
+        "final_reasoning": "The exact issue #74 hosted candidate satisfies the recorded release controls.",
+        "draft_sha256": "6b4d6f64052cf2f7cfa5502de40aa1d7687d90764b8bf2732fc81197720edc59",
+        "evidence_set_sha256": "993b560cbb2d322b08ab5886e57fc01c98c0b428d486dc7c006c0ce22521bcdd",
+        "target": {
+          "repository_uri": "https://github.com/idrissenayat/federal-bd-platform",
+          "commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+          "path": "steer/evidence/0074-real-lifecycle-case-contract.md",
+          "body_sha256": "5b4bc63646fcb11ee494c507018b36cc95f8f2761da4eae76d551109bdab74d0"
+        },
+        "submitter_principal": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA",
+        "submitter_role": "Product Lead · interim Tech Lead",
+        "decision_session_id": "01a01d1a-2dbb-7979-848a-0fcebf62e031",
+        "submitted_at": "2026-08-20T02:57:31.005Z",
+        "effective_not_before": "2026-08-20T02:56:22.186Z",
+        "operating_mode": "SOLO_CALIBRATION",
+        "signer_policy_version": 1,
+        "required_countersignatures": 0,
+        "readiness_snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+        "readiness_authority": {
+          "schema": "steer.gate-readiness-authority/v1",
+          "snapshot_id": "4271640aef20204d04991dcd376ee889b7532540bb517ee584633ca13f60a513",
+          "snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+          "work_item_id": 478,
+          "work_item_key": "RR74-B5E6E9A6B62B",
+          "pod_id": "steer-flight-team",
+          "brief_path": "steer/briefs/0074-risk-based-gate3-readiness.md",
+          "brief_commit": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+          "brief_sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5",
+          "exam_path": "steer/exams/0074-risk-based-gate3-readiness.md",
+          "exam_commit": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+          "exam_sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6",
+          "implementation_commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+          "build_sha256": "ede408b3c2ac6f238829d35e5643a10419fddfa630b6b49793f6116f94f698a8",
+          "migration_set_sha256": "6ef5c16a1fabdad73ce952583f67d03b4f65012e90bc6307f255af49fab68511",
+          "runtime_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+          "verification_receipt_id": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+          "verification_receipt_sha256": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+          "verification_completed_at": "2026-08-20T02:56:22.186Z",
+          "critic_assignment_id": "965bb19a61ab2661f2e46a083aaf9b3bb8ba42b193ab5645374ef395cfdf9a11",
+          "critic_review_id": 503,
+          "critic_target_revision": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+          "critic_recommendation": "PASS",
+          "evidence_set_sha256": "303eff67c44882225bb145d8fa7f15436bf495dd597e6567a06431de26e34807",
+          "declared_risk_codes": [
+            "NONE"
+          ],
+          "derived_risk_codes": [
+            "NONE"
+          ],
+          "resolved_risk_codes": [
+            "NONE"
+          ],
+          "classification_errors": [],
+          "risk_policy_version": 1,
+          "risk_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+          "tier": "DEFAULT_OPEN",
+          "operating_mode": "SOLO_CALIBRATION",
+          "satisfaction_path": "TIME",
+          "delay_hours": 0,
+          "verification_authority": "SIGNED_STAGING_RECEIPT",
+          "effective_not_before": "2026-08-20T02:56:22.186Z",
+          "required_roles": [
+            "Product Lead",
+            "Tech Lead"
+          ],
+          "candidate_builder_id": "rr74-builder-b5e6e9a6b62b4bb6",
+          "candidate_builder_eligible": true,
+          "intended_submitter_id": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA"
+        },
+        "idempotency_key": "01a01d1a-2e0a-7dca-b884-32bc433743ce",
+        "sequence": 1
+      },
+      "state": "EFFECTIVE",
+      "effective": true,
+      "latest_event_sha256": "95789ed050d6164382ebed9647b2951057aca8b257df232bf6ea80c0c1db558d",
+      "notice": "Verified effective human ruling.",
+      "replay": true
+    }
+  },
+  "after": {
+    "projection_sha256": "248022f83555d80f152b6f3bdd837a1250048c15368d5a219f514c736646ece3",
+    "intent": {
+      "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+      "intent_sha256": "581cd562ae04f9cc886b97f65ccb8cf1d3f34bf64623693b085b34d53ddfe128",
+      "current_state": "EFFECTIVE",
+      "current_sequence": 3,
+      "current_event_sha256": "95789ed050d6164382ebed9647b2951057aca8b257df232bf6ea80c0c1db558d",
+      "readiness_snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+      "created_at": "2026-08-20T02:57:31.005Z",
+      "updated_at": "2026-08-20T03:02:45.247Z"
+    },
+    "decisions": [
+      {
+        "gate": "Gate 1 pending",
+        "decision": "APPROVED",
+        "evidence_revision": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+        "evidence_sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5",
+        "decision_intent_id": null,
+        "created_at": "2026-08-20T02:57:23.115Z"
+      },
+      {
+        "gate": "Gate 2 pending",
+        "decision": "APPROVED",
+        "evidence_revision": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+        "evidence_sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6",
+        "decision_intent_id": "01a01d1a-12e3-7d5a-b454-2fc477a56f03",
+        "created_at": "2026-08-20T02:57:23.115Z"
+      },
+      {
+        "gate": "Gate 3 pending",
+        "decision": "APPROVED",
+        "evidence_revision": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+        "evidence_sha256": "5b4bc63646fcb11ee494c507018b36cc95f8f2761da4eae76d551109bdab74d0",
+        "decision_intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+        "created_at": "2026-08-20T03:02:45.247Z"
+      }
+    ],
+    "exact_gate_effects": 1
+  }
+}

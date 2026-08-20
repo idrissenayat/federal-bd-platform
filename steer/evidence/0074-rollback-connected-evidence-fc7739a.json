@@ -1,0 +1,101 @@
+{
+  "schema": "steer.issue74-connected-rollback-evidence/v3",
+  "generated_at": "2026-08-20T03:03:44.983Z",
+  "target": {
+    "source_revision": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+    "sites_source_wrapper": "9a70208f87e67ea83d6a182c9dcd59ffcee0dc7a",
+    "build_sha256": "ede408b3c2ac6f238829d35e5643a10419fddfa630b6b49793f6116f94f698a8",
+    "migration_set_sha256": "6ef5c16a1fabdad73ce952583f67d03b4f65012e90bc6307f255af49fab68511",
+    "runtime_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+    "staging_version": 38,
+    "staging_version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_17fba91296708191b81550aa894e7394"
+  },
+  "artifacts": {
+    "hosted_ledger": {
+      "path": "steer/evidence/0074-real-hosted-ledger-fc7739a.json",
+      "sha256": "b9ad1b5b936a1dcba2bbce99911503f92129796d1321880303b07636e7b36e10"
+    },
+    "pending_seed": {
+      "path": "steer/evidence/0074-rollback-pending-fc7739a.json",
+      "sha256": "9b0e815d966c4982729293b606bb0f9e26af0d67d4001facf6c9e6e3e9cc6c4c"
+    },
+    "restored_result": {
+      "path": "steer/evidence/0074-rollback-restored-fc7739a.json",
+      "sha256": "82df64cdb43a47ef45685195222c8f55885417a6c64ffb06cf99bf041582bcd6"
+    }
+  },
+  "rollback": {
+    "from_version": 38,
+    "to_version": 28,
+    "version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_091e0fe1d4f4819189f8ea219b44ca29",
+    "deployment_id": "appgdep_6a866d39d7ec8191a51df324bce40024",
+    "requested_at": "2026-08-20T02:58:00.068Z",
+    "succeeded_at": "2026-08-20T02:58:10.049441+00:00",
+    "rto_ms": 9981
+  },
+  "restore": {
+    "to_version": 38,
+    "deployment_id": "appgdep_6a866e10ab048191ae1fe2a2ad001a88",
+    "requested_at": "2026-08-20T03:01:35.022Z",
+    "succeeded_at": "2026-08-20T03:01:46.870499+00:00",
+    "rto_ms": 11848
+  },
+  "pending_before_rollback": {
+    "item_id": 478,
+    "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+    "snapshot_id": "4271640aef20204d04991dcd376ee889b7532540bb517ee584633ca13f60a513",
+    "projection_sha256": "1c7d82e5ee9a7f9243fb47b3a9a9a102a955fa17367b34af36c84228989e82a4",
+    "event_sha256": "20ed7cd822e6b4dbb51304c17af6bfa2b6e88a72e7593fff306102ba4cfb75b6",
+    "state": "PENDING_PROOF",
+    "sequence": 1
+  },
+  "while_version_28_live": {
+    "fixture_projection_http": 401,
+    "fixture_projection_response": {
+      "error": "Authentication required."
+    },
+    "finalization_http": 409,
+    "finalization_response_state": "PENDING_PROOF",
+    "direct_d1_projection": {
+      "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+      "current_state": "PENDING_PROOF",
+      "current_sequence": 1,
+      "current_event_sha256": "20ed7cd822e6b4dbb51304c17af6bfa2b6e88a72e7593fff306102ba4cfb75b6",
+      "readiness_snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+      "updated_at": "2026-08-20T02:57:31.005Z"
+    },
+    "exact_event_digest_preserved": true,
+    "no_gate_effect": true
+  },
+  "after_restore": {
+    "before_projection_sha256": "1c7d82e5ee9a7f9243fb47b3a9a9a102a955fa17367b34af36c84228989e82a4",
+    "before_state": "PENDING_PROOF",
+    "blocked_without_proof_http": 409,
+    "issuer_proof_http": 201,
+    "finalization_http": 201,
+    "replay_http": 200,
+    "replay_idempotent": true,
+    "after_projection_sha256": "248022f83555d80f152b6f3bdd837a1250048c15368d5a219f514c736646ece3",
+    "after_state": "EFFECTIVE",
+    "exact_gate_effects": 1
+  },
+  "frozen_cases": [
+    {
+      "case_id": "RR74-ROLLBACK-LEGACY",
+      "pass": true,
+      "oracle": "Previous version remained live and legacy behavior stayed available while the new fixture route was unavailable."
+    },
+    {
+      "case_id": "RR74-ROLLBACK-INERT",
+      "pass": true,
+      "oracle": "The exact pending intent stayed PENDING_PROOF at sequence 1 with the same event digest and no Gate effect."
+    },
+    {
+      "case_id": "RR74-RESTORE-NO-DUPLICATE",
+      "pass": true,
+      "oracle": "Restored v38 completed the exact pending intent once; replay returned 200 and one Gate effect remained."
+    }
+  ],
+  "production_mutated": false
+}
+
