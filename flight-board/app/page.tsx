@@ -31,7 +31,7 @@ const approvedSoloPolicyRulingSha256 = "4f18e737f943b34ddeb9c50b6f679675211b0d84
 const approvedReadinessRulingUrl = "https://github.com/idrissenayat/federal-bd-platform/blob/1b8ad059a8ee2a4a94c7828bc617d4909a52813c/steer/exams/0074-risk-based-gate3-readiness.md";
 const approvedReadinessRulingSha256 = "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6";
 
-type View = "my-work" | "overview" | "board" | "backlog" | "decisions" | "team";
+type View = "my-work" | "overview" | "board" | "backlog" | "decisions" | "verification" | "team";
 type RoleContext = "product" | "tech" | "design" | "platform" | "security" | "contributor";
 
 type WorkItem = {
@@ -66,6 +66,11 @@ type WorkItem = {
   dispatch_event_version?: number | null;
   dispatch_authorization_revision?: string | null;
   dispatch_updated_at?: string | null;
+  verification_classification: {
+    classifier_version: "steer.verification-fixture/v1";
+    kind: "ISSUE_74_HOSTED_LIFECYCLE" | "OPERATIONAL";
+    is_fixture: boolean;
+  };
 };
 
 type WorkEconomicsEvent = {
@@ -284,12 +289,19 @@ type Bootstrap = {
   generated_at: string;
   user: { id: string; email: string | null; name: string; role: string; authority: string; role_contexts: RoleContext[] };
   items: WorkItem[];
+  verification_fixtures: WorkItem[];
   members: Member[];
+  verification_members: Member[];
   activity: Activity[];
+  verification_activity: Activity[];
   decisions: Decision[];
+  verification_decisions: Decision[];
   reviews: AgentReview[];
+  verification_reviews: AgentReview[];
   notifications: Notification[];
+  verification_notifications: Notification[];
   work_economics_events: WorkEconomicsEvent[];
+  verification_work_economics_events: WorkEconomicsEvent[];
   pull_forecast: PullForecast;
   service_level_distributions: ServiceLevelDistribution[];
   privacy_policy: { policy_version: number; status: string; inventory_url: string; inventory_sha256: string; ruling_url: string | null; ruling_sha256: string | null; authorization_event_id: string | null; activation_receipt_sha256: string | null } | null;
@@ -298,7 +310,9 @@ type Bootstrap = {
   decision_issuer: { configured: boolean; key_id: string | null; key_version: number | null; public_key: string | null; status: "ACTIVE" | "INACTIVE" | "UNAVAILABLE" };
   deployment_environment: string;
   release_readiness: ReleaseReadiness[];
+  verification_release_readiness: ReleaseReadiness[];
   decision_receipts: DecisionReceipt[];
+  verification_decision_receipts: DecisionReceipt[];
 };
 
 type ItemMutationSnapshot = AuthoritativeItemSnapshot<WorkItem, Activity, WorkEconomicsEvent>;
@@ -344,6 +358,7 @@ const navigation: { id: View; label: string; icon: string }[] = [
   { id: "board", label: "Flight Board", icon: "▥" },
   { id: "backlog", label: "Backlog", icon: "≡" },
   { id: "decisions", label: "Human Decisions", icon: "◆" },
+  { id: "verification", label: "Verification Evidence", icon: "◈" },
   { id: "team", label: "Team & Agents", icon: "◎" },
 ];
 
@@ -832,13 +847,13 @@ export function AgentDispatchControl({ item, dispatching, copied, onDispatch }: 
   </section>;
 }
 
-function AgentReviewBrief({ item, review, reviewing, onReview, compact = false }: { item: WorkItem; review: AgentReview | null; reviewing: boolean; onReview: () => void; compact?: boolean }) {
+function AgentReviewBrief({ item, review, reviewing, onReview, compact = false, readOnly = false }: { item: WorkItem; review: AgentReview | null; reviewing: boolean; onReview: () => void; compact?: boolean; readOnly?: boolean }) {
   const stale = review ? review.reviewed_item_updated_at !== item.updated_at : false;
   if (!review) {
     return <section className={`agent-review agent-review-empty ${compact ? "agent-review-compact" : ""}`}>
       <div className="agent-review-heading"><span className="critic-mark">◇</span><div><span>AI review brief</span><strong>Get a fresh Critic perspective</strong></div></div>
       <p>The Critic Agent will surface up to three significant findings, dependencies, impact, and the fastest safe next actions. Its advice never replaces the human ruling.</p>
-      <button type="button" className="agent-review-button" disabled={reviewing} onClick={onReview}>{reviewing ? "Critic is reviewing…" : "Run Critic review"}</button>
+      {readOnly ? <small>No review record is present for this preserved fixture.</small> : <button type="button" className="agent-review-button" disabled={reviewing} onClick={onReview}>{reviewing ? "Critic is reviewing…" : "Run Critic review"}</button>}
     </section>;
   }
 
@@ -861,7 +876,7 @@ function AgentReviewBrief({ item, review, reviewing, onReview, compact = false }
       <div className="review-actions"><h4>What to do now</h4><ol>{review.actions.map((value) => <li key={value}>{value}</li>)}</ol></div>
     </>}
     {compact && review.findings[0] && <div className={`compact-finding finding-${review.findings[0].severity}`}><b>{review.findings[0].title}</b><span>{review.findings[0].action}</span></div>}
-    <footer><div><span>{review.confidence} confidence · {formatDate(review.created_at)}</span><small>{review.evidence_scope}</small></div><button type="button" disabled={reviewing} onClick={onReview}>{reviewing ? "Reviewing…" : stale ? "Refresh review" : "Run again"}</button></footer>
+    <footer><div><span>{review.confidence} confidence · {formatDate(review.created_at)}</span><small>{review.evidence_scope}</small></div>{readOnly ? <small>Preserved audit review · read only</small> : <button type="button" disabled={reviewing} onClick={onReview}>{reviewing ? "Reviewing…" : stale ? "Refresh review" : "Run again"}</button>}</footer>
   </section>;
 }
 
@@ -1067,10 +1082,18 @@ export default function Home() {
     return data.items.filter((item) => [item.key, item.title, item.description, item.assignee_name, item.phase, item.workflow, item.work_type].some((value) => value?.toLowerCase().includes(term)));
   }, [data, search]);
 
-  const selected = data?.items.find((item) => item.id === selectedId) ?? null;
-  const itemActivity = data?.activity.filter((event) => event.item_id === selectedId) ?? [];
-  const itemEconomicsEvents = data?.work_economics_events.filter((event) => event.item_id === selectedId) ?? [];
-  const selectedReview = data?.reviews.find((review) => review.item_id === selectedId) ?? null;
+  const filteredVerificationFixtures = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!data || !term) return data?.verification_fixtures ?? [];
+    return data.verification_fixtures.filter((item) => [item.key, item.title, item.description, item.phase, item.gate].some((value) => value?.toLowerCase().includes(term)));
+  }, [data, search]);
+
+  const selected = data ? [...data.items, ...data.verification_fixtures].find((item) => item.id === selectedId) ?? null : null;
+  const selectedIsVerificationFixture = Boolean(selected?.verification_classification.is_fixture);
+  const itemActivity = data ? (selectedIsVerificationFixture ? data.verification_activity : data.activity).filter((event) => event.item_id === selectedId) : [];
+  const itemEconomicsEvents = data ? (selectedIsVerificationFixture ? data.verification_work_economics_events : data.work_economics_events).filter((event) => event.item_id === selectedId) : [];
+  const itemDecisions = data ? (selectedIsVerificationFixture ? data.verification_decisions : data.decisions).filter((decision) => decision.item_id === selectedId) : [];
+  const selectedReview = data ? (selectedIsVerificationFixture ? data.verification_reviews : data.reviews).find((review) => review.item_id === selectedId) ?? null : null;
   const freshSelectedReview = selected && selectedReview?.reviewed_item_updated_at === selected.updated_at ? selectedReview : null;
   const changeRequestDraft = freshSelectedReview ? buildChangeRequestDraft(freshSelectedReview) : "";
   const approvalReasoningDraft = selected && freshSelectedReview ? buildApprovalReasoningDraft(selected, freshSelectedReview) : "";
@@ -1079,6 +1102,10 @@ export default function Home() {
   const approvalPrerequisiteMissing = decisionChoice === "APPROVED" && !gateOneValueReady;
   const activeDecisionDraft = decisionChoice === "APPROVED" ? approvalReasoningDraft : decisionChoice === "CHANGES_REQUESTED" ? changeRequestDraft : "";
   const decisionItems = data?.items.filter((item) => ["Needed now", "Resubmitted"].includes(item.decision_status)) ?? [];
+  const verificationPartitionInvalid = Boolean(data && (
+    data.items.some((item) => item.verification_classification.is_fixture) ||
+    data.verification_fixtures.some((item) => !item.verification_classification.is_fixture)
+  ));
   const decisionPolicyActive = Boolean(
     data?.decision_policy?.status === "ACTIVE" &&
     data.decision_policy.operating_mode === "SOLO_CALIBRATION" &&
@@ -1094,11 +1121,11 @@ export default function Home() {
     data.release_readiness_policy.ruling_url === approvedReadinessRulingUrl &&
     data.release_readiness_policy.ruling_sha256 === approvedReadinessRulingSha256,
   );
-  const selectedReleaseReadiness = data?.release_readiness.find((entry) => entry.snapshot.work_item_id === selectedId) ?? null;
+  const selectedReleaseReadiness = data ? (selectedIsVerificationFixture ? data.verification_release_readiness : data.release_readiness).find((entry) => entry.snapshot.work_item_id === selectedId) ?? null : null;
   const gatePolicyReady = isGateThreeDecision
     ? Boolean(releaseReadinessPolicyActive && selectedReleaseReadiness && selectedReleaseReadiness.status !== "INVALIDATED")
     : decisionPolicyActive;
-  const selectedDecisionReceipt = data?.decision_receipts.find((receipt) => receipt.item_id === selectedId) ?? null;
+  const selectedDecisionReceipt = data ? (selectedIsVerificationFixture ? data.verification_decision_receipts : data.decision_receipts).find((receipt) => receipt.item_id === selectedId) ?? null : null;
   const visibleDecisionReceipt = submittedDecision ? {
     intent_id: submittedDecision.intent.intent_id,
     receipt_id: submittedDecision.intent.receipt_id,
@@ -1113,6 +1140,20 @@ export default function Home() {
   const blockedItems = data?.items.filter((item) => item.state === "blocked") ?? [];
   const activeItems = data?.items.filter((item) => item.state === "active") ?? [];
   const activeDrawerId = selected?.id ?? null;
+
+  useEffect(() => {
+    if (!data) return;
+    emitTelemetryBatch([
+      { metric_name: "steer_verification_fixture_partition_size", label_name: "partition", label_value: "operational", value: data.items.length },
+      { metric_name: "steer_verification_fixture_partition_size", label_name: "partition", label_value: "verification", value: data.verification_fixtures.length },
+      { metric_name: "steer_verification_fixture_classifier_outcome_total", label_name: "outcome", label_value: verificationPartitionInvalid ? "mismatch" : "partitioned", value: 1 },
+    ]);
+  }, [data, verificationPartitionInvalid]);
+
+  useEffect(() => {
+    if (!data || view !== "verification") return;
+    emitTelemetry({ metric_name: "steer_verification_evidence_view_total", label_name: "outcome", label_value: verificationPartitionInvalid ? "warning" : data.verification_fixtures.length ? "populated" : "empty", value: 1 });
+  }, [data, verificationPartitionInvalid, view]);
 
   useEffect(() => {
     if (activeDrawerId === null || decisionOpen || codeReviewOpen || reviewTargetItemId) return;
@@ -1672,10 +1713,11 @@ export default function Home() {
 
         <nav className="side-nav" aria-label="Workspace navigation">
           <span className="nav-label">Workspace</span>
-          {navigation.map((item) => (
+          {navigation.filter((item) => item.id !== "verification" || data.deployment_environment === "staging").map((item) => (
             <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => navigateTo(item.id)}>
               <span aria-hidden="true">{item.icon}</span>{item.label}
               {item.id === "decisions" && decisionItems.length > 0 && <b>{decisionItems.length}</b>}
+              {item.id === "verification" && data.verification_fixtures.length > 0 && <b>{data.verification_fixtures.length}</b>}
             </button>
           ))}
         </nav>
@@ -1717,6 +1759,7 @@ export default function Home() {
         {error && <div className="action-feedback action-feedback-error" role="alert" aria-live="assertive"><div><strong>Action not completed</strong><span>{error}</span></div><button onClick={() => setError(null)}>Dismiss</button></div>}
         {reloadError && <div className="action-feedback action-feedback-error workspace-reload-error" role="alert" aria-live="assertive" aria-label="Workspace refresh failed"><div><strong>Workspace refresh failed</strong><span>{reloadError} The drawer still shows the last authoritative action result; retry the refresh without repeating the action.</span></div><button onClick={() => void load({ quiet: true })}>Try refresh again</button></div>}
         {notice && <div className="action-feedback action-feedback-success" role="status" aria-live="polite"><div><strong>Saved</strong><span>{notice}</span></div><button onClick={() => setNotice(null)}>Dismiss</button></div>}
+        {verificationPartitionInvalid && <div className="action-feedback action-feedback-error" role="alert" aria-live="assertive"><div><strong>Verification classification needs review</strong><span>The server returned an inconsistent partition. No evidence was deleted; treat the displayed operational counts as provisional until the next authoritative refresh.</span></div><button onClick={() => void load({ quiet: true })}>Refresh classification</button></div>}
 
         <div className="content-area">
           {view === "my-work" && (
@@ -1752,6 +1795,7 @@ export default function Home() {
           {view === "board" && <FlightBoard items={filteredItems} onOpen={openItem} onMove={updateItem} saving={saving} />}
           {view === "backlog" && <Backlog items={filteredItems} onOpen={openItem} onCreate={() => setCreateOpen(true)} />}
           {view === "decisions" && <DecisionInbox items={decisionItems} decisions={data.decisions} reviews={data.reviews} reviewingIds={reviewingIds} onOpen={openDecisionWorkspace} />}
+          {view === "verification" && data.deployment_environment === "staging" && <VerificationEvidence items={filteredVerificationFixtures} total={data.verification_fixtures.length} onOpen={openItem} />}
           {view === "team" && <Team
             members={data.members}
             items={data.items}
@@ -1778,14 +1822,20 @@ export default function Home() {
               <h2 id={`drawer-title-${selected.id}`}>{selected.title}</h2>
               <p className="drawer-description">{selected.description}</p>
 
-              {["Needed now", "Resubmitted"].includes(selected.decision_status) && (
+              {selectedIsVerificationFixture && <section className="verification-readonly" role="status" aria-live="polite">
+                <span>◈ Verification evidence · read only</span>
+                <strong>Excluded from operational work and human rulings</strong>
+                <p>This governed staging fixture remains stored for audit review. Nothing in this drawer can change its workflow, decision status, assignment, evidence, or lifecycle.</p>
+              </section>}
+
+              {!selectedIsVerificationFixture && ["Needed now", "Resubmitted"].includes(selected.decision_status) && (
                 <div className="decision-callout">
                   <div><span>◆ {selected.decision_status === "Resubmitted" ? "Rework resubmitted" : "Human ruling required"}</span><strong>{selected.gate}</strong><p>Authority: {selected.decision_authority}</p></div>
                   <button onClick={() => openDecisionWorkspace(selected)}>Review decision</button>
                 </div>
               )}
 
-              {["Changes requested", "Rework"].includes(selected.decision_status) && (
+              {!selectedIsVerificationFixture && ["Changes requested", "Rework"].includes(selected.decision_status) && (
                 <div className="rework-callout">
                   <div className="rework-callout-heading"><span>↺ {selected.decision_status}</span><StatusPill value={selected.assignee_name ?? "Unassigned"} kind="agent" /></div>
                   <strong>Return path is explicit</strong>
@@ -1794,9 +1844,9 @@ export default function Home() {
                 </div>
               )}
 
-              <AgentReviewBrief item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} onReview={() => { setReviewTargetItemId(selected.id); setReviewTargetJson(""); setError(null); }} />
+              <AgentReviewBrief item={selected} review={selectedReview} reviewing={reviewingIds.includes(selected.id)} readOnly={selectedIsVerificationFixture} onReview={() => { setReviewTargetItemId(selected.id); setReviewTargetJson(""); setError(null); }} />
 
-              <section className="detail-section">
+              {!selectedIsVerificationFixture ? <section className="detail-section">
                 <h3>Work controls</h3>
                 <div className="field-grid">
                   <label>Phase<select value={selected.phase} disabled={saving} onChange={(event) => void updateItem(selected.id, { phase: event.target.value })}>{phases.map((phase) => <option key={phase}>{phase}</option>)}</select></label>
@@ -1810,9 +1860,12 @@ export default function Home() {
                   <label className="span-two">Engineering record<input key={`github-${selected.id}`} defaultValue={selected.github_url ?? ""} disabled={saving} placeholder="https://github.com/idrissenayat/federal-bd-platform/issues/31" onBlur={(event) => { const value = event.target.value.trim(); if (value !== (selected.github_url ?? "")) void updateItem(selected.id, { githubUrl: value || null }); }} /></label>
                 </div>
                 <InlineActionFeedback feedback={itemFeedback[selected.id]?.scope === "controls" ? itemFeedback[selected.id] : null} />
-              </section>
+              </section> : <section className="detail-section verification-stored-fields">
+                <h3>Preserved work-item fields</h3>
+                <dl><div><dt>Phase</dt><dd>{selected.phase}</dd></div><div><dt>State</dt><dd>{selected.state}</dd></div><div><dt>Priority</dt><dd>{selected.priority}</dd></div><div><dt>Workflow</dt><dd>{selected.workflow}</dd></div><div><dt>Gate</dt><dd>{selected.gate}</dd></div><div><dt>Decision status</dt><dd>{selected.decision_status}</dd></div></dl>
+              </section>}
 
-              <WorkEconomicsPanel
+              {!selectedIsVerificationFixture && <><WorkEconomicsPanel
                 item={selected}
                 events={itemEconomicsEvents}
                 members={data.members}
@@ -1832,7 +1885,7 @@ export default function Home() {
                 saving={saving}
                 feedback={itemFeedback[selected.id]?.scope === "next-action" ? itemFeedback[selected.id] : null}
                 onSave={(value) => updateItem(selected.id, { nextAction: value }, "next-action", "Next action saved from the authoritative response.")}
-              />
+              /></>}
 
               <section className="detail-section">
                 <h3>Evidence & engineering record</h3>
@@ -1843,6 +1896,13 @@ export default function Home() {
                 </div>
                 {selectedReview?.evidence_sha256 && <div className="evidence-binding"><span>✓ Evidence bound</span><strong>{selectedReview.evidence_revision ? `Revision ${selectedReview.evidence_revision.slice(0, 12)}` : `SHA-256 ${selectedReview.evidence_sha256.slice(0, 12)}`}</strong><small>The Critic reviewed this exact content, not a moving branch label.</small></div>}
               </section>
+
+              {selectedIsVerificationFixture && <VerificationAuditEvidence
+                decisions={itemDecisions}
+                readiness={selectedReleaseReadiness}
+                receipt={selectedDecisionReceipt}
+                economicsEventCount={itemEconomicsEvents.length}
+              />}
 
               <section className="detail-section activity-section">
                 <h3>Activity</h3>
@@ -2223,6 +2283,46 @@ function Backlog({ items, onOpen, onCreate }: { items: WorkItem[]; onOpen: (item
       </div>
     </section>
   </>;
+}
+
+export function VerificationEvidence({ items, total, onOpen }: { items: WorkItem[]; total: number; onOpen: (item: WorkItem) => void }) {
+  return <>
+    <PageHeading eyebrow="Staging audit evidence" title="Verification evidence" copy="Governed hosted-test records remain fully inspectable here, but they are excluded from WIP, backlog, forecasts, team workload, and Human Decisions." actions={<div className="verification-total" role="status" aria-live="polite"><strong>{total}</strong><span>preserved fixtures</span></div>} />
+    <section className="verification-explanation" aria-label="How verification evidence is handled">
+      <div><span aria-hidden="true">◈</span><strong>Preserved, not operational</strong></div>
+      <p>The server identified these records from the complete governed issue #74 fixture identity. Nothing was deleted or rewritten. Open a record to inspect its authoritative evidence in read-only mode.</p>
+    </section>
+    <section className="panel verification-panel">
+      <header><div><span className="panel-eyebrow">Read-only evidence register</span><h2>{items.length === total ? "All verification fixtures" : "Filtered verification fixtures"}</h2></div><b>{items.length}</b></header>
+      <div className="verification-list">{items.length ? items.map((item) => <article key={item.id}>
+        <div className="verification-identity"><span>{item.key}</span><StatusPill value={item.verification_classification.kind.replaceAll("_", " ")} kind="ready" /></div>
+        <h3>{item.title}</h3>
+        <p>{item.description}</p>
+        <dl><div><dt>Gate state</dt><dd>{item.gate}</dd></div><div><dt>Decision status</dt><dd>{item.decision_status}</dd></div><div><dt>Stored state</dt><dd>{item.state}</dd></div></dl>
+        <button type="button" onClick={() => onOpen(item)}>Inspect authoritative evidence →</button>
+      </article>) : <Empty title="No verification evidence matches" copy={total ? "Clear the global search to return to the complete preserved evidence register." : "No governed staging fixture has been classified. Operational work remains visible in the normal workspace."} />}</div>
+    </section>
+  </>;
+}
+
+function VerificationAuditEvidence({ decisions, readiness, receipt, economicsEventCount }: {
+  decisions: Decision[];
+  readiness: ReleaseReadiness | null;
+  receipt: DecisionReceipt | null;
+  economicsEventCount: number;
+}) {
+  return <section className="detail-section verification-audit-evidence" aria-labelledby="verification-audit-heading">
+    <h3 id="verification-audit-heading">Preserved lifecycle evidence</h3>
+    <div className="verification-audit-summary">
+      <div><span>Decision history</span><strong>{decisions.length}</strong><small>immutable ruling record{decisions.length === 1 ? "" : "s"}</small></div>
+      <div><span>Readiness</span><strong>{readiness?.status.replaceAll("_", " ") ?? "Not recorded"}</strong><small>{readiness ? `snapshot ${readiness.snapshot_sha256.slice(0, 12)}` : "no snapshot attached"}</small></div>
+      <div><span>Decision receipt</span><strong>{receipt?.state.replaceAll("_", " ") ?? "Not recorded"}</strong><small>{receipt ? `receipt ${receipt.receipt_id.slice(0, 12)}` : "no intent receipt attached"}</small></div>
+      <div><span>Economics audit</span><strong>{economicsEventCount}</strong><small>preserved event{economicsEventCount === 1 ? "" : "s"}</small></div>
+    </div>
+    {decisions.length > 0 && <div className="verification-audit-list"><h4>Rulings</h4>{decisions.map((decision) => <article key={decision.id}><div><strong>{decision.gate} · {decision.decision}</strong><span>{formatDate(decision.created_at)}</span></div><p>{decision.reasoning}</p>{decision.evidence_sha256 && <small>Evidence SHA-256 {decision.evidence_sha256.slice(0, 16)}…</small>}</article>)}</div>}
+    {readiness && <div className="verification-audit-list"><h4>Release-readiness snapshot</h4><article><div><strong>{readiness.snapshot.tier.replaceAll("_", " ")} · {readiness.snapshot.satisfaction_path.replaceAll("_", " ")}</strong><span>{formatDate(readiness.snapshot.verification_completed_at)}</span></div><p>{readiness.reason}</p><small>Candidate {readiness.snapshot.implementation_commit.slice(0, 12)} · earliest {formatDate(readiness.snapshot.effective_not_before)}</small>{readiness.completed_controls.length > 0 && <ul>{readiness.completed_controls.map((control) => <li key={control}>✓ {control}</li>)}</ul>}</article></div>}
+    {receipt && <div className="verification-audit-list"><h4>Decision intent and receipt</h4><article><div><strong>{receipt.decision_kind} · {receipt.decision}</strong><span>{formatDate(receipt.submitted_at)}</span></div><p>Intent {receipt.intent_id} · sequence {receipt.sequence} · {receipt.operating_mode.replaceAll("_", " ")}</p><small>Latest event SHA-256 {receipt.latest_event_sha256}</small></article></div>}
+  </section>;
 }
 
 function DecisionInbox({ items, decisions, reviews, reviewingIds, onOpen }: { items: WorkItem[]; decisions: Decision[]; reviews: AgentReview[]; reviewingIds: number[]; onOpen: (item: WorkItem) => void }) {

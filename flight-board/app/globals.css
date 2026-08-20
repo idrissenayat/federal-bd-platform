@@ -191,6 +191,57 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (max-width: 620px) { .review-two-column { grid-template-columns: 1fr; }.agent-review-header, .agent-review > footer { align-items: flex-start; flex-direction: column; }.agent-review > footer button { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 
+.verification-total { align-items: center; background: #f2f7e8; border: 1px solid #c9d7ad; border-radius: 11px; display: flex; flex-direction: column; min-width: 126px; padding: 11px 14px; }
+.verification-total strong { color: #51672b; font-size: 20px; line-height: 1; }
+.verification-total span { color: #5f7041; font-size: 8px; font-weight: 750; margin-top: 5px; text-transform: uppercase; }
+.verification-explanation { align-items: center; background: #fff5d9; border: 1px solid #e6c978; border-radius: 12px; display: grid; gap: 12px 20px; grid-template-columns: 190px 1fr; margin-bottom: 18px; padding: 16px 18px; }
+.verification-explanation > div { align-items: center; color: #76500b; display: flex; gap: 9px; }
+.verification-explanation > div span { align-items: center; background: #f4d477; border-radius: 8px; display: flex; font-size: 17px; height: 31px; justify-content: center; width: 31px; }
+.verification-explanation strong { font-size: 10px; }
+.verification-explanation p { color: #684f26; font-size: 9px; line-height: 1.55; margin: 0; }
+.verification-panel { overflow: hidden; padding: 0; }
+.verification-panel > header { align-items: center; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; padding: 18px 20px; }
+.verification-panel > header h2 { font-size: 14px; margin: 4px 0 0; }
+.verification-panel > header > b { align-items: center; background: #eef5df; border-radius: 100px; color: #52662f; display: flex; font-size: 9px; height: 28px; justify-content: center; min-width: 28px; padding: 0 8px; }
+.verification-list { display: grid; gap: 1px; grid-template-columns: repeat(3, minmax(0, 1fr)); background: var(--line); }
+.verification-list > article { background: var(--panel); min-width: 0; padding: 18px; }
+.verification-identity { align-items: center; display: flex; gap: 9px; justify-content: space-between; }
+.verification-identity > span { color: #94506a; font-family: var(--font-geist-mono); font-size: 8px; font-weight: 750; }
+.verification-list h3 { font-size: 11px; line-height: 1.35; margin: 12px 0 6px; }
+.verification-list p { color: var(--muted); font-size: 8px; line-height: 1.5; margin: 0; }
+.verification-list dl { display: grid; gap: 7px; grid-template-columns: repeat(3, 1fr); margin: 14px 0; }
+.verification-list dl div { min-width: 0; }
+.verification-list dt { color: #77626b; font-size: 6px; font-weight: 750; text-transform: uppercase; }
+.verification-list dd { color: var(--ink); font-size: 7px; font-weight: 700; margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.verification-list article > button { background: #6a7e3e; border: 0; border-radius: 7px; color: #fff; cursor: pointer; font-size: 8px; font-weight: 800; padding: 9px 11px; }
+.verification-list article > button:focus-visible { outline: 3px solid #ad466b; outline-offset: 3px; }
+.verification-readonly { background: #fff5d9; border: 1px solid #e4c572; border-radius: 10px; display: flex; flex-direction: column; gap: 6px; margin: 16px 0; padding: 14px 15px; }
+.verification-readonly span { color: #76500b; font-size: 8px; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
+.verification-readonly strong { font-size: 11px; }
+.verification-readonly p { color: #684f26; font-size: 8px; line-height: 1.55; margin: 0; }
+.verification-stored-fields dl { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.verification-stored-fields dl div { background: #fffdf8; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.verification-stored-fields dt { color: var(--muted); font-size: 7px; font-weight: 750; }
+.verification-stored-fields dd { font-size: 9px; font-weight: 750; margin: 4px 0 0; }
+.verification-audit-summary { display: grid; gap: 9px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.verification-audit-summary > div { background: #fffdf8; border: 1px solid var(--line); border-radius: 9px; display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 11px; }
+.verification-audit-summary span { color: var(--muted); font-size: 7px; font-weight: 750; text-transform: uppercase; }
+.verification-audit-summary strong { font-size: 9px; overflow-wrap: anywhere; }
+.verification-audit-summary small { color: #68525c; font-family: var(--font-geist-mono); font-size: 7px; overflow-wrap: anywhere; }
+.verification-audit-list { margin-top: 14px; }
+.verification-audit-list h4 { color: #6e5962; font-size: 8px; margin: 0 0 7px; text-transform: uppercase; }
+.verification-audit-list article { background: #fffdf8; border: 1px solid var(--line); border-radius: 9px; padding: 11px; }
+.verification-audit-list article + article { margin-top: 7px; }
+.verification-audit-list article > div { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; }
+.verification-audit-list article strong { font-size: 9px; }
+.verification-audit-list article span, .verification-audit-list article small { color: #68525c; font-size: 7px; overflow-wrap: anywhere; }
+.verification-audit-list article p { color: var(--ink); font-size: 8px; line-height: 1.55; overflow-wrap: anywhere; }
+.verification-audit-list article ul { color: var(--ink); font-size: 8px; line-height: 1.5; margin: 9px 0 0; padding-left: 18px; }
+
+@media (max-width: 1050px) { .verification-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .verification-explanation { grid-template-columns: 1fr; }.verification-list { grid-template-columns: 1fr; }.verification-stored-fields dl, .verification-audit-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 390px) { .verification-stored-fields dl, .verification-audit-summary { grid-template-columns: 1fr; } }
+
 /* Blush + butter visual system and non-overlapping responsive navigation. */
 :root {
   --ink: #573846;

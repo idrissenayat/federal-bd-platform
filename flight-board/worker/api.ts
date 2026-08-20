@@ -16,6 +16,7 @@ import { isStr028CaseId } from "../lib/str028-manifest";
 import { buildDecisionEvent, createDecisionIssuerEnvelope, createUuidV7, decisionDigest, decisionFinalizationError, decisionIssuerPublicKey, safeDecisionExport, signAuthorityPayload, validateDecisionIntent, verifyAuthorityPayload, verifyDecisionIssuerEnvelope, type DecisionIntentPayload, type PreparedDecisionPackage } from "../lib/decision-package";
 import { canonicalRiskInputs, classifyRiskCodes, effectiveNotBefore, readinessDrift, RELEASE_READINESS_POLICY_V1, releaseReadinessAuthority, releaseReadinessDigest, readinessStatus, requiredRolesFor, validateSatisfactionPath, type ReadinessDrift, type ReleaseReadinessSnapshot, type SatisfactionPath } from "../lib/release-readiness";
 import { buildReviewIdentity, createSignedReviewEvent, reviewManifestSha256, validateReviewAssignmentPayload, verifyReviewerBinding, type ReviewAssignmentPayload } from "../lib/review-lifecycle";
+import { classifyVerificationFixture, isIssue74VerificationMember } from "../lib/verification-fixtures";
 import { buildInitialQueuedEvent, ensureDispatchServiceSigner, handleDispatchServiceApi, type DispatchServiceEnv } from "./dispatch";
 
 type D1Result<T = Record<string, unknown>> = {
@@ -190,7 +191,7 @@ function safeEconomicsEvent(event: Record<string, unknown>) {
   return { ...event, previous_json: sanitize(event.previous_json), replacement_json: sanitize(event.replacement_json) };
 }
 
-async function authoritativeItemSnapshot(db: Database, user: User, itemId: number) {
+async function authoritativeItemSnapshot(db: Database, env: Env, user: User, itemId: number) {
   const generatedAt = new Date().toISOString();
   const [item, activity, economicsEvents] = await Promise.all([
     db.prepare(
@@ -235,6 +236,7 @@ async function authoritativeItemSnapshot(db: Database, user: User, itemId: numbe
       ...item,
       work_economics: safeEconomicsFromRow(item, generatedAt),
       dispatch_authorization: evaluateAgentDispatch(item),
+      verification_classification: classifyVerificationFixture(item, String(env.STEER_DEPLOYMENT_ENV ?? "production")),
     },
     activity: activity.results ?? [],
     work_economics_events: (economicsEvents.results ?? []).map((event) => safeEconomicsEvent(event)),
@@ -1249,7 +1251,7 @@ async function bootstrap(db: Database, user: User, env: Env) {
        FROM activity a JOIN work_items w ON w.id = a.item_id
        LEFT JOIN members m ON m.id = a.actor_id
        WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
-       ORDER BY a.created_at DESC LIMIT 80`,
+       ORDER BY a.created_at DESC`,
     ).bind(user.id).all(),
     db.prepare(
       `SELECT d.*, w.key AS item_key, w.title AS item_title
@@ -1266,7 +1268,7 @@ async function bootstrap(db: Database, user: User, env: Env) {
        FROM notifications n JOIN work_items w ON w.id = n.item_id
        LEFT JOIN members m ON m.id = n.member_id
        WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
-       ORDER BY n.created_at DESC LIMIT 80`,
+       ORDER BY n.created_at DESC`,
     ).bind(user.id).all(),
     db.prepare("SELECT role, authority, pod_id FROM members WHERE id = ?").bind(user.id).first<{ role: string; authority: string; pod_id: string }>(),
     db.prepare(
@@ -1274,7 +1276,7 @@ async function bootstrap(db: Database, user: User, env: Env) {
        FROM work_economics_events e JOIN work_items w ON w.id = e.item_id
        LEFT JOIN members m ON m.id = e.actor_id
        WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
-       ORDER BY e.created_at DESC LIMIT 120`,
+       ORDER BY e.created_at DESC`,
     ).bind(user.id).all(),
   ]);
   const parsedReviews = (reviews.results ?? []).map((review) => ({
@@ -1285,11 +1287,31 @@ async function bootstrap(db: Database, user: User, env: Env) {
     actions: JSON.parse(String((review as Record<string, unknown>).actions_json ?? "[]")),
     derived_tags: JSON.parse(String((review as Record<string, unknown>).derived_tags_json ?? "[]")),
   }));
-  const authorizedItems = (items.results ?? []).map((item) => ({
+  const deploymentEnvironment = String(env.STEER_DEPLOYMENT_ENV ?? "production");
+  const classifiedItems = (items.results ?? []).map((item) => ({
     ...item,
     work_economics: safeEconomicsFromRow(item as Record<string, unknown>, generatedAt),
     dispatch_authorization: evaluateAgentDispatch(item as Record<string, unknown>),
-  })) as unknown as Array<Record<string, unknown> & { key: string; state: string; assignee_name?: string | null; work_economics: ReturnType<typeof safeEconomicsFromRow> }>;
+    verification_classification: classifyVerificationFixture(item as Record<string, unknown>, deploymentEnvironment),
+  })) as unknown as Array<Record<string, unknown> & { id: number; key: string; state: string; assignee_name?: string | null; work_economics: ReturnType<typeof safeEconomicsFromRow>; verification_classification: ReturnType<typeof classifyVerificationFixture> }>;
+  const verificationFixtureIds = new Set(classifiedItems.filter((item) => item.verification_classification.is_fixture).map((item) => Number(item.id)));
+  const operationalItems = classifiedItems.filter((item) => !verificationFixtureIds.has(Number(item.id)));
+  const verificationFixtures = classifiedItems.filter((item) => verificationFixtureIds.has(Number(item.id)));
+  const operationalRecord = (record: Record<string, unknown>) => !verificationFixtureIds.has(Number(record.item_id));
+  const verificationRecord = (record: Record<string, unknown>) => verificationFixtureIds.has(Number(record.item_id));
+  const operationalMembers = (members.results ?? []).filter((member) => !isIssue74VerificationMember(member as Record<string, unknown>, deploymentEnvironment));
+  const verificationMembers = (members.results ?? []).filter((member) => isIssue74VerificationMember(member as Record<string, unknown>, deploymentEnvironment));
+  const operationalActivity = (activity.results ?? []).filter((record) => operationalRecord(record as Record<string, unknown>)).slice(0, 80);
+  const verificationActivity = (activity.results ?? []).filter((record) => verificationRecord(record as Record<string, unknown>));
+  const operationalDecisions = (decisions.results ?? []).filter((record) => operationalRecord(record as Record<string, unknown>));
+  const verificationDecisions = (decisions.results ?? []).filter((record) => verificationRecord(record as Record<string, unknown>));
+  const operationalReviews = parsedReviews.filter((record) => operationalRecord(record as Record<string, unknown>));
+  const verificationReviews = parsedReviews.filter((record) => verificationRecord(record as Record<string, unknown>));
+  const operationalNotifications = (notifications.results ?? []).filter((record) => operationalRecord(record as Record<string, unknown>)).slice(0, 80);
+  const verificationNotifications = (notifications.results ?? []).filter((record) => verificationRecord(record as Record<string, unknown>));
+  const parsedEconomicsEvents = (economicsEvents.results ?? []).map((event) => safeEconomicsEvent(event as Record<string, unknown>));
+  const operationalEconomicsEvents = parsedEconomicsEvents.filter((record) => operationalRecord(record as Record<string, unknown>)).slice(0, 120);
+  const verificationEconomicsEvents = parsedEconomicsEvents.filter((record) => verificationRecord(record as Record<string, unknown>));
   const privacyPolicy = await db.prepare(`SELECT policy_version, status, inventory_url, inventory_sha256,
       ruling_url, ruling_sha256, authorization_event_id, activation_receipt_sha256
     FROM dispatch_privacy_policies WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`)
@@ -1303,7 +1325,7 @@ async function bootstrap(db: Database, user: User, env: Env) {
     FROM decision_readiness_policies WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").first<Record<string, unknown>>();
   const readinessRows = await db.prepare(`SELECT * FROM decision_readiness_snapshots
-    WHERE pod_id = ? ORDER BY created_at DESC LIMIT 80`)
+    WHERE pod_id = ? ORDER BY created_at DESC`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").all<Record<string, unknown>>();
   const releaseReadiness = await Promise.all((readinessRows.results ?? []).map((row) => releaseReadinessView(db, row, env, generatedAt)));
   const configuredDecisionKeyId = String(env.DECISION_SERVICE_KEY_ID ?? "");
@@ -1321,20 +1343,41 @@ async function bootstrap(db: Database, user: User, env: Env) {
       i.current_sequence, i.current_event_sha256, i.intent_json, i.created_at, i.updated_at,
       w.key AS item_key, w.title AS item_title
     FROM decision_intents i JOIN work_items w ON w.id = i.item_id
-    WHERE i.pod_id = ? ORDER BY i.created_at DESC LIMIT 80`)
+    WHERE i.pod_id = ? ORDER BY i.created_at DESC`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").all<Record<string, unknown>>();
+  const mappedDecisionReceipts = (decisionReceipts.results ?? []).map((receipt) => {
+    const intent = JSON.parse(String(receipt.intent_json)) as DecisionIntentPayload;
+    return {
+      intent_id: receipt.intent_id, receipt_id: receipt.receipt_id, item_id: receipt.item_id,
+      item_key: receipt.item_key, item_title: receipt.item_title, state: receipt.current_state,
+      sequence: receipt.current_sequence, latest_event_sha256: receipt.current_event_sha256,
+      decision_kind: intent.decision_kind, decision: intent.decision,
+      operating_mode: intent.operating_mode, signer_policy_version: intent.signer_policy_version,
+      required_countersignatures: intent.required_countersignatures,
+      readiness_snapshot_sha256: intent.readiness_snapshot_sha256 ?? null,
+      effective_not_before: intent.effective_not_before, submitted_at: intent.submitted_at,
+      created_at: receipt.created_at, updated_at: receipt.updated_at,
+    };
+  });
   return {
     generated_at: generatedAt,
     user: { ...user, role: currentMember?.role ?? "Contributor", authority: currentMember?.authority ?? "May own work", role_contexts: roleContexts(currentMember?.role ?? "Contributor") },
-    items: authorizedItems,
-    members: members.results ?? [],
-    activity: activity.results ?? [],
-    decisions: decisions.results ?? [],
-    reviews: parsedReviews,
-    notifications: notifications.results ?? [],
-    work_economics_events: (economicsEvents.results ?? []).map((event) => safeEconomicsEvent(event as Record<string, unknown>)),
-    pull_forecast: buildPullForecast(authorizedItems, 2, generatedAt),
-    service_level_distributions: buildServiceLevelDistributions(authorizedItems),
+    items: operationalItems,
+    verification_fixtures: verificationFixtures,
+    members: operationalMembers,
+    verification_members: verificationMembers,
+    activity: operationalActivity,
+    verification_activity: verificationActivity,
+    decisions: operationalDecisions,
+    verification_decisions: verificationDecisions,
+    reviews: operationalReviews,
+    verification_reviews: verificationReviews,
+    notifications: operationalNotifications,
+    verification_notifications: verificationNotifications,
+    work_economics_events: operationalEconomicsEvents,
+    verification_work_economics_events: verificationEconomicsEvents,
+    pull_forecast: buildPullForecast(operationalItems, 2, generatedAt),
+    service_level_distributions: buildServiceLevelDistributions(operationalItems),
     privacy_policy: privacyPolicy ?? null,
     decision_policy: decisionPolicy ?? null,
     release_readiness_policy: readinessPolicy ? { ...readinessPolicy, policy: JSON.parse(String(readinessPolicy.policy_json)) } : null,
@@ -1345,22 +1388,11 @@ async function bootstrap(db: Database, user: User, env: Env) {
       public_key: configuredDecisionPublicKey,
       status: activeDecisionIssuer?.status === "ACTIVE" && activeDecisionIssuer.public_key === configuredDecisionPublicKey ? "ACTIVE" : "INACTIVE",
     } : { configured: false, key_id: null, key_version: null, public_key: null, status: "UNAVAILABLE" },
-    deployment_environment: String(env.STEER_DEPLOYMENT_ENV ?? "production"),
-    release_readiness: releaseReadiness,
-    decision_receipts: (decisionReceipts.results ?? []).map((receipt) => {
-      const intent = JSON.parse(String(receipt.intent_json)) as DecisionIntentPayload;
-      return {
-        intent_id: receipt.intent_id, receipt_id: receipt.receipt_id, item_id: receipt.item_id,
-        item_key: receipt.item_key, item_title: receipt.item_title, state: receipt.current_state,
-        sequence: receipt.current_sequence, latest_event_sha256: receipt.current_event_sha256,
-        decision_kind: intent.decision_kind, decision: intent.decision,
-        operating_mode: intent.operating_mode, signer_policy_version: intent.signer_policy_version,
-        required_countersignatures: intent.required_countersignatures,
-        readiness_snapshot_sha256: intent.readiness_snapshot_sha256 ?? null,
-        effective_not_before: intent.effective_not_before, submitted_at: intent.submitted_at,
-        created_at: receipt.created_at, updated_at: receipt.updated_at,
-      };
-    }),
+    deployment_environment: deploymentEnvironment,
+    release_readiness: releaseReadiness.filter((entry) => !verificationFixtureIds.has(Number(entry.snapshot.work_item_id))),
+    verification_release_readiness: releaseReadiness.filter((entry) => verificationFixtureIds.has(Number(entry.snapshot.work_item_id))),
+    decision_receipts: mappedDecisionReceipts.filter((entry) => !verificationFixtureIds.has(Number(entry.item_id))),
+    verification_decision_receipts: mappedDecisionReceipts.filter((entry) => verificationFixtureIds.has(Number(entry.item_id))),
   };
 }
 
@@ -1519,7 +1551,7 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
   });
   const existing = await db.prepare("SELECT receipt_json FROM dispatch_receipts WHERE intent_id = ?").bind(identity.intentId).first<{ receipt_json: string }>();
   if (existing) {
-    return json({ ok: true, idempotent_replay: true, receipt: JSON.parse(existing.receipt_json), authorization: { ...authorization, channel: route.channelName }, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
+    return json({ ok: true, idempotent_replay: true, receipt: JSON.parse(existing.receipt_json), authorization: { ...authorization, channel: route.channelName }, snapshot: await authoritativeItemSnapshot(db, env, user, itemId) });
   }
   if (predecessorClosesSameLineage) {
     return json({ error: "The prior terminal dispatch closes this authorization lineage; a changed objective requires a new human authorization.", code: "PREDECESSOR_LINEAGE_CLOSED", authorization }, 409);
@@ -1681,9 +1713,9 @@ async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId
   } catch (error) {
     const raced = await db.prepare("SELECT receipt_json FROM dispatch_receipts WHERE intent_id = ?").bind(identity.intentId).first<{ receipt_json: string }>();
     if (!raced) throw error;
-    return json({ ok: true, idempotent_replay: true, receipt: JSON.parse(raced.receipt_json), authorization: { ...authorization, channel: route.channelName }, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
+    return json({ ok: true, idempotent_replay: true, receipt: JSON.parse(raced.receipt_json), authorization: { ...authorization, channel: route.channelName }, snapshot: await authoritativeItemSnapshot(db, env, user, itemId) });
   }
-  return json({ ok: true, idempotent_replay: false, authorization: { ...authorization, channel: route.channelName }, receipt, message: handoffMessage, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
+  return json({ ok: true, idempotent_replay: false, authorization: { ...authorization, channel: route.channelName }, receipt, message: handoffMessage, snapshot: await authoritativeItemSnapshot(db, env, user, itemId) });
 }
 
 async function manageDispatchRetentionHold(request: Request, db: Database, user: User, intentId: string) {
@@ -1736,6 +1768,9 @@ const telemetryContract: Record<string, { labelName: string; values: string[]; h
   steer_release_hosted_case_total: { labelName: "outcome", values: ["READY", "NOT_READY", "INVALIDATED"] },
   steer_release_readiness_latency_ms: { labelName: "", values: [], histogram: true },
   steer_release_snapshot_creation_latency_ms: { labelName: "outcome", values: ["created", "replay"], histogram: true },
+  steer_verification_fixture_partition_size: { labelName: "partition", values: ["operational", "verification"], histogram: true },
+  steer_verification_fixture_classifier_outcome_total: { labelName: "outcome", values: ["partitioned", "mismatch"] },
+  steer_verification_evidence_view_total: { labelName: "outcome", values: ["populated", "empty", "warning"] },
 };
 
 async function releaseReadinessTelemetryCaseId(db: Database, itemId?: number) {
@@ -1853,7 +1888,7 @@ export function nextWorkItemKey(existingKeys: string[]) {
   return `STR-${String(highest + 1).padStart(3, "0")}`;
 }
 
-async function updateItem(request: Request, db: Database, user: User, itemId: number) {
+async function updateItem(request: Request, db: Database, env: Env, user: User, itemId: number) {
   const actor = await memberContext(db, user);
   if (actor?.kind !== "human") return json({ error: "Only an authenticated human POD member may update authoritative work state." }, 403);
   const current = await scopedItemOrDenied(db, user, itemId, "item update");
@@ -1862,7 +1897,7 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
   const expectedRevision = String(body.expectedRevision ?? "");
   if (!expectedRevision) return json({ error: "Refresh the work item before saving; the expected revision is required.", code: "REVISION_REQUIRED" }, 400);
   if (expectedRevision !== String(current.updated_at)) {
-    return json({ error: "This work item changed after you opened it. Your input was preserved; review the authoritative state before retrying.", code: "STALE_REVISION", snapshot: await authoritativeItemSnapshot(db, user, itemId) }, 409);
+    return json({ error: "This work item changed after you opened it. Your input was preserved; review the authoritative state before retrying.", code: "STALE_REVISION", snapshot: await authoritativeItemSnapshot(db, env, user, itemId) }, 409);
   }
   const allowed: Record<string, { column: string; values?: string[] }> = {
     phase: { column: "phase", values: phases },
@@ -1913,7 +1948,7 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
   values.push(now, itemId, expectedRevision);
   const mutation = await db.prepare(`UPDATE work_items SET ${sets.join(", ")} WHERE id = ? AND updated_at = ?`).bind(...values).run();
   if (Number(mutation.meta?.changes ?? 0) !== 1) {
-    return json({ error: "This work item changed while the save was in progress. Your input was preserved; review the authoritative state before retrying.", code: "STALE_REVISION", snapshot: await authoritativeItemSnapshot(db, user, itemId) }, 409);
+    return json({ error: "This work item changed while the save was in progress. Your input was preserved; review the authoritative state before retrying.", code: "STALE_REVISION", snapshot: await authoritativeItemSnapshot(db, env, user, itemId) }, 409);
   }
   await db.prepare("INSERT INTO activity (item_id, actor_id, action, detail, created_at) VALUES (?, ?, 'updated', ?, ?)")
     .bind(itemId, user.id, changes.join(" · "), now).run();
@@ -1964,7 +1999,7 @@ async function updateItem(request: Request, db: Database, user: User, itemId: nu
       // Legacy actuals remain visible as unavailable until corrected through the governed editor.
     }
   }
-  return json({ ok: true, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
+  return json({ ok: true, snapshot: await authoritativeItemSnapshot(db, env, user, itemId) });
 }
 
 const economicsColumns: Record<WorkEconomicsSection, string> = {
@@ -2076,7 +2111,7 @@ async function authoritativeCompletionAt(db: Database, current: Record<string, u
   return event?.created_at ?? String(current.updated_at);
 }
 
-async function updateWorkEconomics(request: Request, db: Database, user: User, itemId: number) {
+async function updateWorkEconomics(request: Request, db: Database, env: Env, user: User, itemId: number) {
   const current = await scopedItemOrDenied(db, user, itemId, "Work Economics update");
   if (!current) return json({ error: "Permission denied. Ask the named record owner in this POD to review or edit this record." }, 403);
   const member = await db.prepare("SELECT id, kind, role, pod_id FROM members WHERE id = ?").bind(user.id).first<{ id: string; kind: string; role: string; pod_id: string | null }>();
@@ -2084,7 +2119,7 @@ async function updateWorkEconomics(request: Request, db: Database, user: User, i
   const expectedRevision = String(body.expectedRevision ?? "");
   if (!expectedRevision) return json({ error: "Refresh the work item before saving; the expected revision is required.", code: "REVISION_REQUIRED" }, 400);
   if (expectedRevision !== String(current.updated_at)) {
-    return json({ error: "This governed record changed after you opened it. Your input was preserved; review the authoritative state before retrying.", code: "STALE_REVISION", snapshot: await authoritativeItemSnapshot(db, user, itemId) }, 409);
+    return json({ error: "This governed record changed after you opened it. Your input was preserved; review the authoritative state before retrying.", code: "STALE_REVISION", snapshot: await authoritativeItemSnapshot(db, env, user, itemId) }, 409);
   }
   const section = String(body.section ?? "") as WorkEconomicsSection;
   if (!(section in economicsColumns)) return json({ error: "Choose a valid Work Economics section." }, 400);
@@ -2189,7 +2224,7 @@ async function updateWorkEconomics(request: Request, db: Database, user: User, i
     ...ownerStatements,
     ...normalizedEconomicsStatements(db, itemId, section, value, now),
   ]);
-  return json({ ok: true, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
+  return json({ ok: true, snapshot: await authoritativeItemSnapshot(db, env, user, itemId) });
 }
 
 async function readEvidence(urlValue: unknown): Promise<EvidenceRead> {
@@ -2919,7 +2954,7 @@ export function gateOneValueReady(valueJson: unknown) {
   }
 }
 
-async function decide(request: Request, db: Database, user: User, itemId: number) {
+async function decide(request: Request, db: Database, env: Env, user: User, itemId: number) {
   const current = await scopedItemOrDenied(db, user, itemId, "gate decision");
   if (!current) return json({ error: "Work item not found in your POD." }, 404);
   const governedPolicy = await db.prepare("SELECT policy_version FROM decision_signer_policies WHERE pod_id = ? AND status = 'ACTIVE' ORDER BY policy_version DESC LIMIT 1")
@@ -2982,7 +3017,7 @@ async function decide(request: Request, db: Database, user: User, itemId: number
       recipient?.role ?? "Evidence owner", `${String(current.key)} returned for changes`, reasoning, now,
     ).run();
   }
-  return json({ ok: true, snapshot: await authoritativeItemSnapshot(db, user, itemId) });
+  return json({ ok: true, snapshot: await authoritativeItemSnapshot(db, env, user, itemId) });
 }
 
 function decisionTargetFromEvidence(urlValue: unknown, revisionValue: unknown, shaValue: unknown) {
@@ -4795,9 +4830,9 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "POST" && url.pathname === "/api/decision-readiness-policies/activate") return activateDecisionReadinessPolicy(request, env.DB, user);
     if (request.method === "POST" && url.pathname === "/api/items") return createItem(request, env.DB, user);
     const itemMatch = url.pathname.match(/^\/api\/items\/(\d+)$/);
-    if (request.method === "PATCH" && itemMatch) return updateItem(request, env.DB, user, Number(itemMatch[1]));
+    if (request.method === "PATCH" && itemMatch) return updateItem(request, env.DB, env, user, Number(itemMatch[1]));
     const economicsMatch = url.pathname.match(/^\/api\/items\/(\d+)\/work-economics$/);
-    if (request.method === "PATCH" && economicsMatch) return updateWorkEconomics(request, env.DB, user, Number(economicsMatch[1]));
+    if (request.method === "PATCH" && economicsMatch) return updateWorkEconomics(request, env.DB, env, user, Number(economicsMatch[1]));
     const reviewMatch = url.pathname.match(/^\/api\/items\/(\d+)\/reviews$/);
     if (request.method === "POST" && reviewMatch) return requestSignedCriticReview(request, env.DB, env, user, Number(reviewMatch[1]));
     const reviewRetentionHoldMatch = url.pathname.match(/^\/api\/review-assignments\/([0-9a-f]{64})\/retention-holds$/);
@@ -4812,7 +4847,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     const workflowMatch = url.pathname.match(/^\/api\/items\/(\d+)\/workflow$/);
     if (request.method === "POST" && workflowMatch) return transitionItem(request, env.DB, user, Number(workflowMatch[1]));
     const decisionMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decisions$/);
-    if (request.method === "POST" && decisionMatch) return decide(request, env.DB, user, Number(decisionMatch[1]));
+    if (request.method === "POST" && decisionMatch) return decide(request, env.DB, env, user, Number(decisionMatch[1]));
     const decisionPackageMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decision-packages$/);
     if (request.method === "POST" && decisionPackageMatch) return prepareDecisionPackage(env.DB, user, Number(decisionPackageMatch[1]));
     const decisionSessionMatch = url.pathname.match(/^\/api\/items\/(\d+)\/decision-sessions$/);
