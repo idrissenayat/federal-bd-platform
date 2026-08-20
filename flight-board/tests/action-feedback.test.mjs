@@ -48,6 +48,9 @@ test("governed decisions bind the exact solo policy and recover from terminal pr
 });
 
 test("Gate 3 renders server-authoritative risk readiness without automatic ripening", () => {
+  assert.match(page, /api\(`\/api\/items\/\$\{itemId\}\/release-readiness`\)/);
+  assert.match(page, /current\.release_readiness\.filter\(\(entry\) => entry\.snapshot\.work_item_id !== itemId\)/);
+  assert.match(page, /item\.gate === "Gate 3 pending"\) void loadSelectedReleaseReadiness\(item\.id\)/);
   assert.match(page, /readiness\?\.status === "READY"/);
   assert.match(page, /Verification snapshot required/);
   assert.match(page, /Time or a new countersignature never makes it effective automatically/);

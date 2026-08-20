@@ -1427,6 +1427,19 @@ export default function Home() {
     }
   }
 
+  async function loadSelectedReleaseReadiness(itemId: number) {
+    try {
+      const readiness = await api(`/api/items/${itemId}/release-readiness`) as Omit<ReleaseReadiness, "snapshot"> & { snapshot: ReleaseReadiness["snapshot"] | null };
+      if (!readiness.snapshot) return;
+      setData((current) => current ? {
+        ...current,
+        release_readiness: [...current.release_readiness.filter((entry) => entry.snapshot.work_item_id !== itemId), readiness as ReleaseReadiness],
+      } : current);
+    } catch (caught) {
+      setDecisionStepError(caught instanceof Error ? caught.message : "The selected release-readiness status could not be loaded.");
+    }
+  }
+
   function openCodeReview(item: WorkItem) {
     setSelectedId(item.id);
     setCodeReviewOpen(true);
@@ -1480,6 +1493,7 @@ export default function Home() {
     setDecisionStepError(null);
     setReplacingFailedDecision(false);
     setDecisionOpen(true);
+    if (item.gate === "Gate 3 pending") void loadSelectedReleaseReadiness(item.id);
     if (!data?.decision_receipts.some((receipt) => receipt.item_id === item.id && receipt.state !== "EFFECTIVE")) {
       void prepareGovernedDecision(item.id);
     }
