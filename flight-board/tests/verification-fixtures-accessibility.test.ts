@@ -33,6 +33,17 @@ async function scan(items: EvidenceItem[], total: number) {
   return { main, results };
 }
 
+function relativeLuminance(hex: string) {
+  const channels = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255)
+    .map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+function contrastRatio(foreground: string, background: string) {
+  const values = [relativeLuminance(foreground), relativeLuminance(background)].sort((left, right) => right - left);
+  return (values[0] + 0.05) / (values[1] + 0.05);
+}
+
 test("FI-15 populated verification evidence is named, read-only, and axe clean", async () => {
   const { main, results } = await scan([fixture], 106);
   assert.match(main.textContent ?? "", /Preserved, not operational/);
@@ -48,4 +59,21 @@ test("FI-14 empty and filtered-empty states do not claim evidence was deleted", 
   const filtered = await scan([], 106);
   assert.match(filtered.main.textContent ?? "", /Clear the global search/);
   assert.match(filtered.main.textContent ?? "", /Nothing was deleted or rewritten/);
+});
+
+test("FI-15 verification evidence text and controls meet WCAG AA contrast", () => {
+  const pairs = [
+    ["#94506a", "#fffefa"],
+    ["#77626b", "#fffefa"],
+    ["#647680", "#fffefa"],
+    ["#68525c", "#fffdf8"],
+    ["#5f7041", "#f2f7e8"],
+    ["#51672b", "#f2f7e8"],
+    ["#684f26", "#fff5d9"],
+    ["#76500b", "#fff5d9"],
+    ["#ffffff", "#697d3d"],
+  ] as const;
+  for (const [foreground, background] of pairs) {
+    assert.ok(contrastRatio(foreground, background) >= 4.5, `${foreground} on ${background} must meet 4.5:1`);
+  }
 });
