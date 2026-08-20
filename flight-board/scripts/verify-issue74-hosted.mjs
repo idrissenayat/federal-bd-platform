@@ -59,7 +59,7 @@ async function call(path, { service = false, body, controlledNow, accepted = [20
 
 const define = (caseId, extra = {}) => ({ case_id: caseId, declared: ["NONE"], derived: ["NONE"], mode: "SOLO_CALIBRATION",
   path: "TIME", verified: iso(baseClock), controlled: iso(baseClock), signatures: [], drift: null,
-  tier: "DEFAULT_OPEN", readiness: "READY", finalStatus: 201, snapshotReplay: false, ...extra });
+  tier: "DEFAULT_OPEN", readiness: "READY", finalStatus: 201, snapshotReplay: false, stopAfterIntent: false, ...extra });
 const cases = [
   define("RR74-CLASS-OPEN"),
   define("RR74-CLASS-ELEVATED", { declared: ["SECURITY_NON_AUTH"], derived: ["SECURITY_NON_AUTH"], tier: "ELEVATED", readiness: "NOT_READY", finalStatus: 409 }),
@@ -141,6 +141,19 @@ async function runFlow(definition) {
       projection_sha256: steps.projection.body.projection_sha256, projection: steps.projection.body.projection, steps: stepRecord,
       latency_ms: Object.values(steps).flatMap((value) => Array.isArray(value) ? value.map((entry) => entry.latency_ms) : [value.latency_ms]), pass: true };
   }
+  if (definition.stopAfterIntent) {
+    steps.readiness = await humanCall(itemId, "READINESS");
+    steps.projection = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "PROJECT", item_id: itemId } });
+    const effectCount = steps.projection.body.projection.decisions.filter((row) => row.decision_intent_id === intentId).length;
+    assert.equal(effectCount, 0);
+    const stepRecord = Object.fromEntries(Object.entries(steps).map(([name, value]) => [name, Array.isArray(value)
+      ? value.map((entry) => ({ status: entry.status, latency_ms: entry.latency_ms, body: entry.body }))
+      : { status: value.status, latency_ms: value.latency_ms, attempts: value.attempts, body: value.body }]));
+    return { case_id: definition.case_id, item_id: itemId, snapshot_id: snapshotId, intent_id: intentId, packet,
+      oracle: { tier: definition.tier, readiness: steps.readiness.body.status, intent_state: "PENDING_PROOF", gate_effects: 0 },
+      projection_sha256: steps.projection.body.projection_sha256, projection: steps.projection.body.projection, steps: stepRecord,
+      latency_ms: Object.values(steps).flatMap((value) => Array.isArray(value) ? value.map((entry) => entry.latency_ms) : [value.latency_ms]), pass: true };
+  }
   steps.proof = await call(`/api/decision-intents/${intentId}/issuer-proof`, { service: true, body: {} });
   if (definition.drift === "VERIFICATION_RECEIPT") steps.drift = await receipt(itemId, builderId, submitterId, definition, `${definition.case_id}:changed`);
   else if (definition.drift) steps.drift = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "MUTATE", item_id: itemId, field: definition.drift } });
@@ -158,6 +171,16 @@ async function runFlow(definition) {
     oracle: { tier: definition.tier, readiness: definition.readiness, finalize_http: definition.finalStatus, gate_effects: effectCount },
     projection_sha256: steps.projection.body.projection_sha256, projection: steps.projection.body.projection, steps: stepRecord,
     latency_ms: Object.values(steps).flatMap((value) => Array.isArray(value) ? value.map((entry) => entry.latency_ms) : [value.latency_ms]), pass: true };
+}
+
+if (cfg.ISSUE74_MODE === "PREPARE_ROLLBACK") {
+  const pending = await runFlow(define("RR74-ROLLBACK-PENDING", { snapshotReplay: true, stopAfterIntent: true }));
+  const rollbackSeed = { schema: "steer.issue74-rollback-pending/v1", run_id: runId, generated_at: new Date().toISOString(),
+    target: { staging_url: baseUrl, ...runtime, ...target, brief, exam, case_contract_sha256: cfg.ISSUE74_CASE_CONTRACT_SHA256 }, pending };
+  await writeFile(cfg.ISSUE74_LEDGER_PATH, `${JSON.stringify(rollbackSeed, null, 2)}\n`);
+  console.log(JSON.stringify({ run_id: runId, item_id: pending.item_id, snapshot_id: pending.snapshot_id, intent_id: pending.intent_id,
+    projection_sha256: pending.projection_sha256, output: cfg.ISSUE74_LEDGER_PATH }));
+  process.exit(0);
 }
 
 const observations = [];
