@@ -1225,7 +1225,7 @@ async function bootstrap(db: Database, user: User, env: Env) {
   await backfillApprovedGateOneHandoffs(db);
   await backfillExplicitEngineeringRecords(db);
   const generatedAt = new Date().toISOString();
-  const [items, members, activity, decisions, reviews, notifications, currentMember, economicsEvents] = await Promise.all([
+  const [items, members, currentMember] = await Promise.all([
     db.prepare(
       `SELECT w.*, m.display_name AS assignee_name, m.kind AS assignee_kind,
          (SELECT o.intent_id FROM dispatch_outbox o JOIN dispatch_receipts r ON r.intent_id = o.intent_id
@@ -1246,37 +1246,50 @@ async function bootstrap(db: Database, user: User, env: Env) {
        ORDER BY CASE w.priority WHEN 'Now' THEN 0 WHEN 'Next' THEN 1 ELSE 2 END, w.updated_at DESC`,
     ).bind(user.id).all(),
     db.prepare("SELECT * FROM members WHERE pod_id = (SELECT pod_id FROM members WHERE id = ?) ORDER BY kind DESC, display_name").bind(user.id).all(),
+    db.prepare("SELECT role, authority, pod_id FROM members WHERE id = ?").bind(user.id).first<{ role: string; authority: string; pod_id: string }>(),
+  ]);
+  const deploymentEnvironment = String(env.STEER_DEPLOYMENT_ENV ?? "production");
+  const classifiedItems = (items.results ?? []).map((item) => ({
+    ...item,
+    work_economics: safeEconomicsFromRow(item as Record<string, unknown>, generatedAt),
+    dispatch_authorization: evaluateAgentDispatch(item as Record<string, unknown>),
+    verification_classification: classifyVerificationFixture(item as Record<string, unknown>, deploymentEnvironment),
+  })) as unknown as Array<Record<string, unknown> & { id: number; key: string; state: string; assignee_name?: string | null; work_economics: ReturnType<typeof safeEconomicsFromRow>; verification_classification: ReturnType<typeof classifyVerificationFixture> }>;
+  const verificationFixtureIds = new Set(classifiedItems.filter((item) => item.verification_classification.is_fixture).map((item) => Number(item.id)));
+  const fixtureIds = [...verificationFixtureIds].filter((id) => Number.isSafeInteger(id) && id > 0);
+  const excludeFixtureWorkItems = fixtureIds.length ? ` AND w.id NOT IN (${fixtureIds.join(",")})` : "";
+  const excludeFixtureItemIds = fixtureIds.length ? ` AND item_id NOT IN (${fixtureIds.join(",")})` : "";
+  const [activity, decisions, reviews, notifications, economicsEvents] = await Promise.all([
     db.prepare(
       `SELECT a.*, w.key AS item_key, w.title AS item_title, m.display_name AS actor_name
        FROM activity a JOIN work_items w ON w.id = a.item_id
        LEFT JOIN members m ON m.id = a.actor_id
-       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
-       ORDER BY a.created_at DESC`,
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)${excludeFixtureWorkItems}
+       ORDER BY a.created_at DESC LIMIT 80`,
     ).bind(user.id).all(),
     db.prepare(
       `SELECT d.*, w.key AS item_key, w.title AS item_title
        FROM decisions d JOIN work_items w ON w.id = d.item_id
-       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?) ORDER BY d.created_at DESC`,
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)${excludeFixtureWorkItems} ORDER BY d.created_at DESC LIMIT 80`,
     ).bind(user.id).all(),
     db.prepare(
       `SELECT r.*, w.key AS item_key, w.title AS item_title
        FROM agent_reviews r JOIN work_items w ON w.id = r.item_id
-       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?) ORDER BY r.created_at DESC`,
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)${excludeFixtureWorkItems} ORDER BY r.created_at DESC LIMIT 80`,
     ).bind(user.id).all(),
     db.prepare(
       `SELECT n.*, w.key AS item_key, w.title AS item_title, m.display_name AS member_name
        FROM notifications n JOIN work_items w ON w.id = n.item_id
        LEFT JOIN members m ON m.id = n.member_id
-       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
-       ORDER BY n.created_at DESC`,
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)${excludeFixtureWorkItems}
+       ORDER BY n.created_at DESC LIMIT 80`,
     ).bind(user.id).all(),
-    db.prepare("SELECT role, authority, pod_id FROM members WHERE id = ?").bind(user.id).first<{ role: string; authority: string; pod_id: string }>(),
     db.prepare(
       `SELECT e.*, w.key AS item_key, w.title AS item_title, m.display_name AS actor_name
        FROM work_economics_events e JOIN work_items w ON w.id = e.item_id
        LEFT JOIN members m ON m.id = e.actor_id
-       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)
-       ORDER BY e.created_at DESC`,
+       WHERE w.pod_id = (SELECT pod_id FROM members WHERE id = ?)${excludeFixtureWorkItems}
+       ORDER BY e.created_at DESC LIMIT 120`,
     ).bind(user.id).all(),
   ]);
   const parsedReviews = (reviews.results ?? []).map((review) => ({
@@ -1287,31 +1300,10 @@ async function bootstrap(db: Database, user: User, env: Env) {
     actions: JSON.parse(String((review as Record<string, unknown>).actions_json ?? "[]")),
     derived_tags: JSON.parse(String((review as Record<string, unknown>).derived_tags_json ?? "[]")),
   }));
-  const deploymentEnvironment = String(env.STEER_DEPLOYMENT_ENV ?? "production");
-  const classifiedItems = (items.results ?? []).map((item) => ({
-    ...item,
-    work_economics: safeEconomicsFromRow(item as Record<string, unknown>, generatedAt),
-    dispatch_authorization: evaluateAgentDispatch(item as Record<string, unknown>),
-    verification_classification: classifyVerificationFixture(item as Record<string, unknown>, deploymentEnvironment),
-  })) as unknown as Array<Record<string, unknown> & { id: number; key: string; state: string; assignee_name?: string | null; work_economics: ReturnType<typeof safeEconomicsFromRow>; verification_classification: ReturnType<typeof classifyVerificationFixture> }>;
-  const verificationFixtureIds = new Set(classifiedItems.filter((item) => item.verification_classification.is_fixture).map((item) => Number(item.id)));
   const operationalItems = classifiedItems.filter((item) => !verificationFixtureIds.has(Number(item.id)));
   const verificationFixtures = classifiedItems.filter((item) => verificationFixtureIds.has(Number(item.id)));
-  const operationalRecord = (record: Record<string, unknown>) => !verificationFixtureIds.has(Number(record.item_id));
-  const verificationRecord = (record: Record<string, unknown>) => verificationFixtureIds.has(Number(record.item_id));
   const operationalMembers = (members.results ?? []).filter((member) => !isIssue74VerificationMember(member as Record<string, unknown>, deploymentEnvironment));
   const verificationMembers = (members.results ?? []).filter((member) => isIssue74VerificationMember(member as Record<string, unknown>, deploymentEnvironment));
-  const operationalActivity = (activity.results ?? []).filter((record) => operationalRecord(record as Record<string, unknown>)).slice(0, 80);
-  const verificationActivity = (activity.results ?? []).filter((record) => verificationRecord(record as Record<string, unknown>));
-  const operationalDecisions = (decisions.results ?? []).filter((record) => operationalRecord(record as Record<string, unknown>));
-  const verificationDecisions = (decisions.results ?? []).filter((record) => verificationRecord(record as Record<string, unknown>));
-  const operationalReviews = parsedReviews.filter((record) => operationalRecord(record as Record<string, unknown>));
-  const verificationReviews = parsedReviews.filter((record) => verificationRecord(record as Record<string, unknown>));
-  const operationalNotifications = (notifications.results ?? []).filter((record) => operationalRecord(record as Record<string, unknown>)).slice(0, 80);
-  const verificationNotifications = (notifications.results ?? []).filter((record) => verificationRecord(record as Record<string, unknown>));
-  const parsedEconomicsEvents = (economicsEvents.results ?? []).map((event) => safeEconomicsEvent(event as Record<string, unknown>));
-  const operationalEconomicsEvents = parsedEconomicsEvents.filter((record) => operationalRecord(record as Record<string, unknown>)).slice(0, 120);
-  const verificationEconomicsEvents = parsedEconomicsEvents.filter((record) => verificationRecord(record as Record<string, unknown>));
   const privacyPolicy = await db.prepare(`SELECT policy_version, status, inventory_url, inventory_sha256,
       ruling_url, ruling_sha256, authorization_event_id, activation_receipt_sha256
     FROM dispatch_privacy_policies WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`)
@@ -1325,7 +1317,7 @@ async function bootstrap(db: Database, user: User, env: Env) {
     FROM decision_readiness_policies WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").first<Record<string, unknown>>();
   const readinessRows = await db.prepare(`SELECT * FROM decision_readiness_snapshots
-    WHERE pod_id = ? ORDER BY created_at DESC LIMIT 80`)
+    WHERE pod_id = ?${excludeFixtureItemIds} ORDER BY created_at DESC LIMIT 80`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").all<Record<string, unknown>>();
   const releaseReadiness = await Promise.all((readinessRows.results ?? []).map((row) => releaseReadinessView(db, row, env, generatedAt)));
   const configuredDecisionKeyId = String(env.DECISION_SERVICE_KEY_ID ?? "");
@@ -1343,7 +1335,7 @@ async function bootstrap(db: Database, user: User, env: Env) {
       i.current_sequence, i.current_event_sha256, i.intent_json, i.created_at, i.updated_at,
       w.key AS item_key, w.title AS item_title
     FROM decision_intents i JOIN work_items w ON w.id = i.item_id
-    WHERE i.pod_id = ? ORDER BY i.created_at DESC`)
+    WHERE i.pod_id = ?${excludeFixtureWorkItems} ORDER BY i.created_at DESC LIMIT 80`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").all<Record<string, unknown>>();
   const mappedDecisionReceipts = (decisionReceipts.results ?? []).map((receipt) => {
     const intent = JSON.parse(String(receipt.intent_json)) as DecisionIntentPayload;
@@ -1366,16 +1358,16 @@ async function bootstrap(db: Database, user: User, env: Env) {
     verification_fixtures: verificationFixtures,
     members: operationalMembers,
     verification_members: verificationMembers,
-    activity: operationalActivity,
-    verification_activity: verificationActivity,
-    decisions: operationalDecisions,
-    verification_decisions: verificationDecisions,
-    reviews: operationalReviews,
-    verification_reviews: verificationReviews,
-    notifications: operationalNotifications,
-    verification_notifications: verificationNotifications,
-    work_economics_events: operationalEconomicsEvents,
-    verification_work_economics_events: verificationEconomicsEvents,
+    activity: activity.results ?? [],
+    verification_activity: [],
+    decisions: decisions.results ?? [],
+    verification_decisions: [],
+    reviews: parsedReviews,
+    verification_reviews: [],
+    notifications: notifications.results ?? [],
+    verification_notifications: [],
+    work_economics_events: (economicsEvents.results ?? []).map((event) => safeEconomicsEvent(event as Record<string, unknown>)),
+    verification_work_economics_events: [],
     pull_forecast: buildPullForecast(operationalItems, 2, generatedAt),
     service_level_distributions: buildServiceLevelDistributions(operationalItems),
     privacy_policy: privacyPolicy ?? null,
@@ -1389,11 +1381,70 @@ async function bootstrap(db: Database, user: User, env: Env) {
       status: activeDecisionIssuer?.status === "ACTIVE" && activeDecisionIssuer.public_key === configuredDecisionPublicKey ? "ACTIVE" : "INACTIVE",
     } : { configured: false, key_id: null, key_version: null, public_key: null, status: "UNAVAILABLE" },
     deployment_environment: deploymentEnvironment,
-    release_readiness: releaseReadiness.filter((entry) => !verificationFixtureIds.has(Number(entry.snapshot.work_item_id))),
-    verification_release_readiness: releaseReadiness.filter((entry) => verificationFixtureIds.has(Number(entry.snapshot.work_item_id))),
-    decision_receipts: mappedDecisionReceipts.filter((entry) => !verificationFixtureIds.has(Number(entry.item_id))),
-    verification_decision_receipts: mappedDecisionReceipts.filter((entry) => verificationFixtureIds.has(Number(entry.item_id))),
+    release_readiness: releaseReadiness,
+    verification_release_readiness: [],
+    decision_receipts: mappedDecisionReceipts,
+    verification_decision_receipts: [],
   };
+}
+
+async function verificationEvidence(db: Database, env: Env, user: User, itemId: number) {
+  const item = await scopedItemOrDenied(db, user, itemId, "verification evidence read");
+  if (!item) return json({ error: "Work item not found in your POD." }, 404);
+  if (!classifyVerificationFixture(item, String(env.STEER_DEPLOYMENT_ENV ?? "production")).is_fixture) {
+    return json({ error: "This record is operational work, not governed verification evidence." }, 409);
+  }
+  const [activity, decisions, reviews, notifications, economicsEvents, readinessRow, receipts] = await Promise.all([
+    db.prepare(`SELECT a.*, w.key AS item_key, w.title AS item_title, m.display_name AS actor_name
+      FROM activity a JOIN work_items w ON w.id = a.item_id LEFT JOIN members m ON m.id = a.actor_id
+      WHERE a.item_id = ? ORDER BY a.created_at DESC, a.id DESC LIMIT 80`).bind(itemId).all<Record<string, unknown>>(),
+    db.prepare(`SELECT d.*, w.key AS item_key, w.title AS item_title FROM decisions d
+      JOIN work_items w ON w.id = d.item_id WHERE d.item_id = ? ORDER BY d.created_at DESC, d.id DESC LIMIT 40`).bind(itemId).all<Record<string, unknown>>(),
+    db.prepare(`SELECT r.*, w.key AS item_key, w.title AS item_title FROM agent_reviews r
+      JOIN work_items w ON w.id = r.item_id WHERE r.item_id = ? ORDER BY r.created_at DESC, r.id DESC LIMIT 20`).bind(itemId).all<Record<string, unknown>>(),
+    db.prepare(`SELECT n.*, w.key AS item_key, w.title AS item_title, m.display_name AS member_name
+      FROM notifications n JOIN work_items w ON w.id = n.item_id LEFT JOIN members m ON m.id = n.member_id
+      WHERE n.item_id = ? ORDER BY n.created_at DESC, n.id DESC LIMIT 40`).bind(itemId).all<Record<string, unknown>>(),
+    db.prepare(`SELECT e.*, w.key AS item_key, w.title AS item_title, m.display_name AS actor_name
+      FROM work_economics_events e JOIN work_items w ON w.id = e.item_id LEFT JOIN members m ON m.id = e.actor_id
+      WHERE e.item_id = ? ORDER BY e.created_at DESC, e.id DESC LIMIT 40`).bind(itemId).all<Record<string, unknown>>(),
+    db.prepare("SELECT * FROM decision_readiness_snapshots WHERE item_id = ? ORDER BY created_at DESC LIMIT 1").bind(itemId).first<Record<string, unknown>>(),
+    db.prepare(`SELECT i.intent_id, i.receipt_id, i.item_id, i.current_state, i.current_sequence,
+      i.current_event_sha256, i.intent_json, i.created_at, i.updated_at, w.key AS item_key, w.title AS item_title
+      FROM decision_intents i JOIN work_items w ON w.id = i.item_id
+      WHERE i.item_id = ? ORDER BY i.created_at DESC LIMIT 20`).bind(itemId).all<Record<string, unknown>>(),
+  ]);
+  const parsedReviews = (reviews.results ?? []).map((review) => ({
+    ...review,
+    findings: JSON.parse(String(review.findings_json ?? "[]")),
+    dependencies: JSON.parse(String(review.dependencies_json ?? "[]")),
+    impacts: JSON.parse(String(review.impacts_json ?? "[]")),
+    actions: JSON.parse(String(review.actions_json ?? "[]")),
+    derived_tags: JSON.parse(String(review.derived_tags_json ?? "[]")),
+  }));
+  const mappedReceipts = (receipts.results ?? []).map((receipt) => {
+    const intent = JSON.parse(String(receipt.intent_json)) as DecisionIntentPayload;
+    return {
+      intent_id: receipt.intent_id, receipt_id: receipt.receipt_id, item_id: receipt.item_id,
+      item_key: receipt.item_key, item_title: receipt.item_title, state: receipt.current_state,
+      sequence: receipt.current_sequence, latest_event_sha256: receipt.current_event_sha256,
+      decision_kind: intent.decision_kind, decision: intent.decision,
+      operating_mode: intent.operating_mode, signer_policy_version: intent.signer_policy_version,
+      required_countersignatures: intent.required_countersignatures,
+      readiness_snapshot_sha256: intent.readiness_snapshot_sha256 ?? null,
+      effective_not_before: intent.effective_not_before, submitted_at: intent.submitted_at,
+      created_at: receipt.created_at, updated_at: receipt.updated_at,
+    };
+  });
+  return json({
+    activity: activity.results ?? [],
+    decisions: decisions.results ?? [],
+    reviews: parsedReviews,
+    notifications: notifications.results ?? [],
+    work_economics_events: (economicsEvents.results ?? []).map((event) => safeEconomicsEvent(event)),
+    release_readiness: readinessRow ? await releaseReadinessView(db, readinessRow, env) : null,
+    decision_receipts: mappedReceipts,
+  });
 }
 
 async function authorizeAgentDispatch(db: Database, env: Env, user: User, itemId: number) {
@@ -4829,6 +4880,8 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method === "POST" && url.pathname === "/api/decision-signer-policies/activate") return activateDecisionSignerPolicy(request, env.DB, user);
     if (request.method === "POST" && url.pathname === "/api/decision-readiness-policies/activate") return activateDecisionReadinessPolicy(request, env.DB, user);
     if (request.method === "POST" && url.pathname === "/api/items") return createItem(request, env.DB, user);
+    const verificationEvidenceMatch = url.pathname.match(/^\/api\/items\/(\d+)\/verification-evidence$/);
+    if (request.method === "GET" && verificationEvidenceMatch) return verificationEvidence(env.DB, env, user, Number(verificationEvidenceMatch[1]));
     const itemMatch = url.pathname.match(/^\/api\/items\/(\d+)$/);
     if (request.method === "PATCH" && itemMatch) return updateItem(request, env.DB, env, user, Number(itemMatch[1]));
     const economicsMatch = url.pathname.match(/^\/api\/items\/(\d+)\/work-economics$/);

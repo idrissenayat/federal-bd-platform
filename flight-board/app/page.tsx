@@ -1483,6 +1483,32 @@ export default function Home() {
     }
   }
 
+  async function loadVerificationEvidence(itemId: number) {
+    try {
+      const evidence = await api(`/api/items/${itemId}/verification-evidence`) as {
+        activity: Activity[];
+        decisions: Decision[];
+        reviews: AgentReview[];
+        notifications: Notification[];
+        work_economics_events: WorkEconomicsEvent[];
+        release_readiness: ReleaseReadiness | null;
+        decision_receipts: DecisionReceipt[];
+      };
+      setData((current) => current ? {
+        ...current,
+        verification_activity: [...current.verification_activity.filter((entry) => entry.item_id !== itemId), ...evidence.activity],
+        verification_decisions: [...current.verification_decisions.filter((entry) => entry.item_id !== itemId), ...evidence.decisions],
+        verification_reviews: [...current.verification_reviews.filter((entry) => entry.item_id !== itemId), ...evidence.reviews],
+        verification_notifications: [...current.verification_notifications.filter((entry) => entry.item_id !== itemId), ...evidence.notifications],
+        verification_work_economics_events: [...current.verification_work_economics_events.filter((entry) => entry.item_id !== itemId), ...evidence.work_economics_events],
+        verification_release_readiness: [...current.verification_release_readiness.filter((entry) => entry.snapshot.work_item_id !== itemId), ...(evidence.release_readiness ? [evidence.release_readiness] : [])],
+        verification_decision_receipts: [...current.verification_decision_receipts.filter((entry) => entry.item_id !== itemId), ...evidence.decision_receipts],
+      } : current);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The preserved fixture evidence could not be loaded.");
+    }
+  }
+
   function openCodeReview(item: WorkItem) {
     setSelectedId(item.id);
     setCodeReviewOpen(true);
@@ -1597,7 +1623,7 @@ export default function Home() {
     if (document.activeElement instanceof HTMLElement) drawerReturnFocus.current = document.activeElement;
     setSelectedId(item.id);
     setDecisionOpen(false);
-    if (item.verification_classification.is_fixture) void loadSelectedReleaseReadiness(item.id);
+    if (item.verification_classification.is_fixture) void loadVerificationEvidence(item.id);
   }
 
   function closeItem() {

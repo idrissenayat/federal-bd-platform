@@ -99,13 +99,23 @@ test("FI-05 bootstrap partitions exact governed fixtures and their related recor
   assert.equal(staging.verification_fixtures.some((item) => item.id === fixtureId && item.verification_classification.is_fixture), true);
   assert.equal(staging.items.some((item) => item.id === fixtureId), false);
   assert.equal(staging.items.some((item) => item.id === ordinaryId && !item.verification_classification.is_fixture), true);
-  assert.equal(staging.verification_activity.some((record) => record.item_id === fixtureId), true);
+  assert.equal(staging.verification_activity.length, 0);
   assert.equal(staging.activity.some((record) => record.item_id === fixtureId), false);
-  assert.equal(staging.verification_decisions.some((record) => record.item_id === fixtureId), true);
+  assert.equal(staging.activity.some((record) => record.item_id === ordinaryId), true);
+  assert.equal(staging.verification_decisions.length, 0);
   assert.equal(staging.decisions.some((record) => record.item_id === fixtureId), false);
+  assert.equal(staging.decisions.some((record) => record.item_id === ordinaryId), true);
   assert.equal(staging.verification_members.some((member) => member.id === fixtureMemberId), true);
   assert.equal(staging.members.some((member) => member.id === fixtureMemberId), false);
   assert.equal(Number(db.sqlite.prepare("SELECT COUNT(*) AS count FROM work_items").get()!.count), rowCountBefore);
+
+  const fixtureEvidenceResponse = await handleApi(request(`/api/items/${fixtureId}/verification-evidence`), { DB: db, STEER_DEPLOYMENT_ENV: "staging" });
+  assert.equal(fixtureEvidenceResponse?.status, 200, await fixtureEvidenceResponse?.clone().text());
+  const fixtureEvidence = await fixtureEvidenceResponse!.json() as { activity: Array<{ item_id: number }>; decisions: Array<{ item_id: number }> };
+  assert.equal(fixtureEvidence.activity.every((record) => record.item_id === fixtureId), true);
+  assert.equal(fixtureEvidence.decisions.every((record) => record.item_id === fixtureId), true);
+  assert.equal(fixtureEvidence.activity.length, 1);
+  assert.equal(fixtureEvidence.decisions.length, 1);
 
   const production = await bootstrap(db, "production");
   assert.equal(production.verification_fixtures.length, 0);
@@ -114,4 +124,6 @@ test("FI-05 bootstrap partitions exact governed fixtures and their related recor
   assert.equal(production.verification_decisions.length, 0);
   assert.equal(production.verification_members.length, 0);
   assert.equal(production.members.some((member) => member.id === fixtureMemberId), true);
+  const productionEvidenceResponse = await handleApi(request(`/api/items/${fixtureId}/verification-evidence`), { DB: db, STEER_DEPLOYMENT_ENV: "production" });
+  assert.equal(productionEvidenceResponse?.status, 409);
 });
