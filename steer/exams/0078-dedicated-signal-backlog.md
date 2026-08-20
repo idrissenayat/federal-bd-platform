@@ -185,6 +185,6 @@ GATE 2 EVIDENCE: Product Lead/solo operator approval in the governed Codex task,
 
 ---
 
-GATE 2 AMENDMENT: PENDING — 2026-08-20
+GATE 2 AMENDMENT: APPROVED — 2026-08-20 — idrissenayat
 
-The proposed amendment is limited to SB-19. It replaces a blanket all-repository green requirement with a signal-scoped regression boundary and a closed exception predicate for independently proven, separately governed predecessor failures. All other original Gate 2 controls remain unchanged. No additional implementation, merge, production deployment, Release, closure, or Gate 3 authority exists until the Product Lead approves the exact pre-signature amendment revision and SHA-256.
+The approved amendment is bound to pre-signature Exam revision `47c8ee5b1b34cc5462d8bcb5731a0c4dade3f6c1` and Exam SHA-256 `03b2263d928fecb73bf2ddcf9aba5b3818ec2b77205f36fe6883a97671c6e453`. It is limited to SB-19 and replaces a blanket all-repository green requirement with a signal-scoped regression boundary and a closed exception predicate for independently proven, separately governed predecessor failures. All other original Gate 2 controls remain unchanged. Authorized scope is the remaining owner-only staging verification. This does not authorize merge, production deployment, Release, closure, or Gate 3.
