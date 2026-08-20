@@ -24,14 +24,16 @@ scope, assign another agent, or approve a gate.
 
 | Communication | Destination | Response expectation | Durable outcome |
 |---|---|---|---|
-| Daily asynchronous huddle | One parent thread in Block Buzz `#steer-team` | By the team's working-day midpoint | Each active human/agent posts status, blocker/input, evidence link, next handoff, and boundary; decisions move to the durable record |
-| Authorized agent handoff | Work-item thread in `#project-<short-name>` using the Flight Board-generated message | Agent acknowledges in the same working thread | Assignment, scope, state, and authorization remain in the Flight Board; implementation evidence remains in GitHub |
-| Signal or observation | Block Buzz `#signals` or signal issue form | Triage within two working days | Digest in `steer/signals/`; candidate if evidence warrants |
-| Agent ambiguity/escalation | Block Buzz `#agent-ops` plus linked escalation issue | Same working day for in-flight work | Ruling in issue and decision log when reusable |
-| Upcoming human gate | Block Buzz `#gate-review` plus Flight Board decision inbox | Same working day when work is ready | Authenticated ruling bound to the exact evidence |
+| Daily asynchronous huddle | One parent thread in Block Buzz `steer-team` | By the team's working-day midpoint | Each active human/agent posts status, blocker/input, evidence link, next handoff, and boundary; decisions move to the durable record |
+| Authorized agent handoff | Work-item thread in the applicable project channel, or `steer-team` until that channel exists, using the Flight Board-generated message | Agent acknowledges in the same working thread | Assignment, scope, state, and authorization remain in the Flight Board; implementation evidence remains in GitHub |
+| Signal or observation | Block Buzz `signals`; signal issue form is the durable fallback | Triage within two working days | Digest in `steer/signals/`; candidate if evidence warrants |
+| Agent ambiguity/escalation | Block Buzz `agent-escalations` plus linked escalation issue | Same working day for in-flight work | Ruling in issue and decision log when reusable |
+| Upcoming human gate | Flight Board Human Decisions inbox; `steer-team` may carry the review alert | Same working day when work is ready | Authenticated ruling bound to the exact evidence; Buzz never holds the ruling |
 | Build/review question | Pull-request thread | One working day; urgent blocker same day | Resolved thread or linked decision |
+| Critic finding | Buzz `#critic-findings` plus pull-request review | Same day for a blocker; otherwise one working day | Human ruling or verified change on the pull request |
 | Security concern | Private Security Advisory | Immediate acknowledgement | Remediation issue without sensitive details |
-| Weekly Learning Review | Versioned file in `steer/reviews/` | Protected weekly slot | At most two normal process changes, plus escape conversions |
+| Release observation | Buzz `#release-watch` plus release/incident evidence | During the release watch window | Verified outcome, rollback, or defect record |
+| Weekly Learning Review | Buzz `#learning-review` plus versioned file in `steer/reviews/` | Protected weekly slot | At most two normal process changes, plus escape conversions |
 
 Do not use direct messages as the only record of a scope ruling, gate decision, security
 exception, source interpretation, or experiment deviation. Do not paste secrets or
@@ -40,7 +42,9 @@ sensitive data into any communication surface.
 Block Buzz is the live communication system for humans and agents. The tested human and
 agent access procedures are in `TEAM-ONBOARDING.md`. GitHub Issues, pull requests,
 Discussions, briefs, exams, and decision records remain the durable evidence surfaces;
-link consequential Buzz conclusions back to the relevant record.
+link consequential Buzz conclusions back to the relevant record. If Buzz or its
+identity/audit controls are unavailable, GitHub Discussions and escalation issues are
+the operational fallback.
 
 Buzz visibility is not proof that a named agent produced a deliverable. During a
 Codex-hosted bootstrap run, messages must identify the named agent and link its exact run

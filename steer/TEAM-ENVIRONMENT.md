@@ -13,7 +13,7 @@ operating model.
 | Review | Pull request + fresh-context Critic | Diff, Critic findings, human rulings, and required checks are preserved |
 | Release decision | Gate 3 evidence | Human decision is distinct from green CI and merge permission |
 | Documentation | Repository Markdown | Intent, design, decisions, operations, and learning are versioned with code |
-| Team communication | Block Buzz + GitHub evidence | Humans and agents share channels; consequential outcomes link back to work and evidence |
+| Team communication | Block Buzz + GitHub evidence | Named identities and signed events pass B1; consequential outcomes link back to authoritative work and evidence |
 | Learning | Metrics ledger + weekly Learning Review | Flow, quality, outcome, cost, and human attention are reviewed and changes are limited |
 
 ## Shared GitHub surfaces
@@ -23,8 +23,13 @@ operating model.
 - **Issues:** candidate work, defects, signals requiring action, and agent escalations.
 - **Pull requests:** implementation evidence, Critic review, CI, and authenticated human
   review. They are not substitutes for Gate 3.
-- **Discussions:** the asynchronous huddle and signals inbox. Durable decisions graduate
-  to the decision log; product evidence graduates to a brief or signal digest.
+- **Discussions:** the asynchronous fallback when Buzz or its identity/audit controls are
+  unavailable. Durable decisions graduate to the decision log; product evidence
+  graduates to a brief or signal digest.
+- **Block Buzz:** the target shared human-agent huddle, signals, findings, and escalation
+  plane. The Railway-hosted communication slice has passed B1 for controlled onboarding.
+  Hosted agent workers, backup restore, external alerting, and B2 GitHub reconciliation
+  remain default-closed under `BUZZ-OPERATING-CONTRACT.md`.
 - **Security Advisories:** confidential vulnerability reporting.
 
 New humans and agents follow `TEAM-ONBOARDING.md`. Block Buzz is the live huddle,
@@ -45,6 +50,10 @@ additional capacity does not raise the limit until human review capacity is meas
 4. A fresh-context Critic produces a review artifact without Builder context.
 5. A signal can be captured, promoted to a candidate, and traced to a brief.
 6. A gate approval is tied to an authenticated GitHub identity and exact revision.
+7. Each active agent can perform one allowed action, is denied one forbidden action, and
+   can be revoked without removing its communication history.
+8. A Buzz signal, escalation, and Critic finding retain actor provenance and write
+   through to the linked authoritative GitHub artifact.
 
 Passing workstation checks is L1. Passing shared repository and collaboration proofs is
 L2. Staging, flags, rollback, telemetry, and tracer `0002` are L3.

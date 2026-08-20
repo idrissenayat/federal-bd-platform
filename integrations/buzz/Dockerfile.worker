@@ -1,0 +1,64 @@
+# syntax=docker/dockerfile:1.7
+
+# Keep the worker protocol-compatible with the deployed relay image.
+ARG BUZZ_UPSTREAM_SHA=788b3c002bd2509455444f57f8a03a054b4b496a
+ARG RUST_VERSION=1.95
+
+FROM rust:${RUST_VERSION}-bookworm AS builder
+ARG BUZZ_UPSTREAM_SHA
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        git \
+        libssl-dev \
+        pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+RUN git clone --filter=blob:none https://github.com/block/buzz.git . \
+    && git checkout --detach "${BUZZ_UPSTREAM_SHA}"
+
+RUN --mount=type=cache,id=s/4689e21d-fe47-4ea9-a369-0ec835f4b515-/usr/local/cargo/registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=s/4689e21d-fe47-4ea9-a369-0ec835f4b515-/src/target,target=/src/target \
+    cargo build --release --locked \
+      -p buzz-acp --bin buzz-acp \
+      -p buzz-agent --bin buzz-agent \
+      -p buzz-dev-mcp --bin buzz-dev-mcp \
+      -p buzz-cli --bin buzz \
+    && install -Dm0755 target/release/buzz-acp /out/buzz-acp \
+    && install -Dm0755 target/release/buzz-agent /out/buzz-agent \
+    && install -Dm0755 target/release/buzz-dev-mcp /out/buzz-dev-mcp \
+    && install -Dm0755 target/release/buzz /out/buzz
+
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        ca-certificates \
+        curl \
+        git \
+        openssl \
+        ripgrep \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 1000 buzz-worker \
+    && useradd --system --uid 1000 --gid 1000 --create-home \
+        --home-dir /var/lib/buzz-worker --shell /bin/bash buzz-worker
+
+COPY --from=builder /out/ /usr/local/bin/
+
+ENV BUZZ_ACP_AGENT_COMMAND=/usr/local/bin/buzz-agent \
+    BUZZ_ACP_AGENT_ARGS="" \
+    BUZZ_ACP_MCP_COMMAND=/usr/local/bin/buzz-dev-mcp \
+    BUZZ_ACP_AGENTS=1 \
+    BUZZ_ACP_RESPOND_TO=owner-only \
+    BUZZ_AGENT_REQUIRE_REPLY=1 \
+    BUZZ_AGENT_MAX_ROUNDS=12 \
+    RUST_LOG=info
+
+USER buzz-worker:buzz-worker
+WORKDIR /var/lib/buzz-worker
+
+ENTRYPOINT ["/usr/local/bin/buzz-acp"]
