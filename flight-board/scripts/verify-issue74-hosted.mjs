@@ -45,11 +45,6 @@ async function call(path, { service = false, body, controlledNow, accepted = [20
   throw new Error(`${path} did not reconcile: ${JSON.stringify(attempts)}`);
 }
 
-const bootstrap = await call("/api/bootstrap");
-const currentMember = bootstrap.body.user ?? bootstrap.body.currentMember ?? bootstrap.body.current_member ?? bootstrap.body.me;
-const submitterId = String(currentMember?.id ?? "");
-assert.ok(submitterId, "Authenticated staging Product Lead was not returned by bootstrap.");
-
 const define = (caseId, extra = {}) => ({ case_id: caseId, declared: ["NONE"], derived: ["NONE"], mode: "SOLO_CALIBRATION",
   path: "TIME", verified: iso(baseClock), controlled: iso(baseClock), signatures: [], drift: null,
   tier: "DEFAULT_OPEN", readiness: "READY", finalStatus: 201, ...extra });
@@ -75,7 +70,7 @@ const cases = [
 ];
 assert.equal(cases.length, 24);
 
-async function receipt(itemId, builderId, definition, salt = definition.case_id) {
+async function receipt(itemId, builderId, submitterId, definition, salt = definition.case_id) {
   return call("/api/staging-verification-receipts", { service: true, body: { item_id: itemId, environment: "staging",
     brief_path: brief.path, brief_commit: brief.commit, brief_sha256: brief.sha256, exam_path: exam.path, exam_commit: exam.commit, exam_sha256: exam.sha256,
     source_revision: runtime.source_revision, build_sha256: runtime.build_sha256, migration_set_sha256: runtime.migration_set_sha256,
@@ -83,19 +78,23 @@ async function receipt(itemId, builderId, definition, salt = definition.case_id)
     candidate_builder_id: builderId, intended_submitter_id: submitterId, completed_at: definition.verified } });
 }
 
+const humanCall = (itemId, operation, payload, accepted = [200, 201]) => call("/api/staging-release-readiness-fixtures", {
+  service: true, accepted, body: { action: "HUMAN", item_id: itemId, operation, ...(payload === undefined ? {} : { payload }) } });
+
 async function runFlow(definition) {
   const steps = {};
   steps.fixture = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "CREATE", run_id: runId,
-    case_id: definition.case_id, intended_submitter_id: submitterId, derived_risk_codes: definition.derived, operating_mode: definition.mode,
+    case_id: definition.case_id, intended_submitter_id: "CURRENT_PRODUCT_LEAD", derived_risk_codes: definition.derived, operating_mode: definition.mode,
     target_path: target.path, target_sha256: target.sha256, target_commit_object_sha256: target.commit_object_sha256 } });
   const itemId = Number(steps.fixture.body.item_id); const builderId = String(steps.fixture.body.candidate_builder_id);
-  steps.receipt = await receipt(itemId, builderId, definition);
+  const submitterId = String(steps.fixture.body.intended_submitter_id);
+  steps.receipt = await receipt(itemId, builderId, submitterId, definition);
   const packet = { brief_path: brief.path, brief_commit: brief.commit, brief_sha256: brief.sha256,
     exam_path: exam.path, exam_commit: exam.commit, exam_sha256: exam.sha256, implementation_commit: runtime.source_revision,
     build_sha256: runtime.build_sha256, migration_set_sha256: runtime.migration_set_sha256, runtime_policy_sha256: runtime.runtime_policy_sha256,
     verification_receipt_id: steps.receipt.body.receipt_id, verification_receipt_sha256: steps.receipt.body.receipt_sha256,
     declared_risk_codes: definition.declared, operating_mode: definition.mode, satisfaction_path: definition.path };
-  steps.snapshot = await call(`/api/items/${itemId}/release-readiness`, { body: packet });
+  steps.snapshot = await humanCall(itemId, "SNAPSHOT", packet);
   assert.equal(steps.snapshot.body.snapshot.tier, definition.tier);
   const snapshotId = steps.snapshot.body.snapshot.snapshot_id;
   steps.signatures = [];
@@ -103,16 +102,16 @@ async function runFlow(definition) {
     const memberId = identity === "SUBMITTER" ? submitterId : identity === "BUILDER" ? builderId : identity;
     steps.signatures.push(await call("/api/staging-release-readiness-fixtures", { service: true, accepted: [status], body: { action: "COUNTERSIGN", item_id: itemId, snapshot_id: snapshotId, member_id: memberId, role } }));
   }
-  steps.package = await call(`/api/items/${itemId}/decision-packages`, { body: {} });
-  steps.session = await call(`/api/items/${itemId}/decision-sessions`, { body: { reason: "Fresh issue #74 real hosted verification session." } });
-  steps.intent = await call(`/api/items/${itemId}/decision-intents`, { body: { package_id: steps.package.body.package.package_id, decision: "APPROVED",
-    final_reasoning: "The exact issue #74 hosted candidate satisfies the recorded release controls.", decision_session_id: steps.session.body.session_id, idempotency_key: randomUUID() } });
+  steps.package = await humanCall(itemId, "PACKAGE", {});
+  steps.session = await humanCall(itemId, "SESSION", { reason: "Fresh issue #74 real hosted verification session." });
+  steps.intent = await humanCall(itemId, "INTENT", { package_id: steps.package.body.package.package_id, decision: "APPROVED",
+    final_reasoning: "The exact issue #74 hosted candidate satisfies the recorded release controls.", decision_session_id: steps.session.body.session_id, idempotency_key: randomUUID() });
   const intentId = steps.intent.body.intent?.intent_id ?? steps.intent.body.intent_id; assert.ok(intentId);
   steps.proof = await call(`/api/decision-intents/${intentId}/issuer-proof`, { service: true, body: {} });
-  if (definition.drift === "VERIFICATION_RECEIPT") steps.drift = await receipt(itemId, builderId, definition, `${definition.case_id}:changed`);
+  if (definition.drift === "VERIFICATION_RECEIPT") steps.drift = await receipt(itemId, builderId, submitterId, definition, `${definition.case_id}:changed`);
   else if (definition.drift) steps.drift = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "MUTATE", item_id: itemId, field: definition.drift } });
   steps.finalize = await call(`/api/decision-intents/${intentId}/finalize`, { service: true, body: {}, controlledNow: definition.controlled, accepted: [definition.finalStatus] });
-  steps.readiness = await call(`/api/items/${itemId}/release-readiness`);
+  steps.readiness = await humanCall(itemId, "READINESS");
   const boundaryReadiness = steps.finalize.body.readiness?.status ?? steps.readiness.body.status;
   assert.equal(boundaryReadiness, definition.readiness);
   steps.projection = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "PROJECT", item_id: itemId } });
@@ -130,7 +129,7 @@ async function runFlow(definition) {
 const observations = [];
 for (const definition of cases) observations.push(await runFlow(definition));
 const replay = await runFlow(define("RR74-REPLAY-IDEMPOTENT"));
-const replayCall = await call(`/api/items/${replay.item_id}/release-readiness`, { body: replay.packet });
+const replayCall = await humanCall(replay.item_id, "SNAPSHOT", replay.packet);
 assert.equal(replayCall.body.replay, true); replay.replay = { status: replayCall.status, snapshot_sha256: replayCall.body.snapshot_sha256 }; observations.push(replay);
 
 const concurrent = [];

@@ -317,13 +317,19 @@ test("staging fixture creates only signed real-lifecycle prerequisites and expos
     REVIEW_SERVICE_PRIVATE_KEY: "4".repeat(64), REVIEW_SERVICE_KEY_ID: "fixture-review", REVIEW_SERVICE_KEY_VERSION: "1" };
   const fixture = await handleApi(new Request("https://steer.test/api/staging-release-readiness-fixtures", { method: "POST",
     headers: { authorization: `Bearer ${serviceToken}`, "content-type": "application/json" }, body: JSON.stringify({ action: "CREATE",
-      run_id: "rr74-local-fixture", case_id: "RR74-LOCAL-FIXTURE", intended_submitter_id: "human-1", derived_risk_codes: ["NONE"],
+      run_id: "rr74-local-fixture", case_id: "RR74-LOCAL-FIXTURE", intended_submitter_id: "CURRENT_PRODUCT_LEAD", derived_risk_codes: ["NONE"],
       operating_mode: "SOLO_CALIBRATION", target_path: "steer/evidence/0074-real-lifecycle-case-contract.md", target_sha256: targetSha256,
       target_commit_object_sha256: "d".repeat(64) }) }), serviceEnv);
   assert.equal(fixture?.status, 201, await fixture?.clone().text());
-  const itemId = Number((await fixture?.json() as { item_id: number }).item_id);
+  const fixtureBody = await fixture?.json() as { item_id: number; intended_submitter_id: string };
+  const itemId = Number(fixtureBody.item_id);
+  assert.equal(fixtureBody.intended_submitter_id, "human-1");
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM review_events e JOIN review_assignments a ON a.assignment_id=e.assignment_id WHERE a.item_id=?").get(itemId)?.count, 5);
   assert.equal(db.sqlite.prepare("SELECT current_state FROM review_assignments WHERE item_id=?").get(itemId)?.current_state, "RESULT_RECORDED");
+  const humanReadiness = await handleApi(new Request("https://steer.test/api/staging-release-readiness-fixtures", { method: "POST",
+    headers: { authorization: `Bearer ${serviceToken}`, "content-type": "application/json" }, body: JSON.stringify({ action: "HUMAN", item_id: itemId, operation: "READINESS" }) }), serviceEnv);
+  assert.equal(humanReadiness?.status, 200, await humanReadiness?.clone().text());
+  assert.equal((await humanReadiness?.json() as { status: string }).status, "NOT_READY");
   const projection = await handleApi(new Request("https://steer.test/api/staging-release-readiness-fixtures", { method: "POST",
     headers: { authorization: `Bearer ${serviceToken}`, "content-type": "application/json" }, body: JSON.stringify({ action: "PROJECT", item_id: itemId }) }), serviceEnv);
   assert.equal(projection?.status, 200, await projection?.clone().text());

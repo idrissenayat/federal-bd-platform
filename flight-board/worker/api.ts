@@ -4048,13 +4048,34 @@ async function runIssue74StagingFixture(request: Request, db: Database, env: Env
   if (token.length < 32 || request.headers.get("authorization") !== `Bearer ${token}`) return json({ error: "Issue #74 fixture authentication failed." }, 401);
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const action = String(body?.action ?? "");
-  if (!body || !["CREATE", "MUTATE", "COUNTERSIGN", "PROJECT"].includes(action)) return json({ error: "A bounded fixture action is required." }, 400);
+  if (!body || !["CREATE", "HUMAN", "MUTATE", "COUNTERSIGN", "PROJECT"].includes(action)) return json({ error: "A bounded fixture action is required." }, 400);
   const itemId = Number(body.item_id ?? 0);
   if (action !== "CREATE") {
     if (!Number.isSafeInteger(itemId) || itemId < 1) return json({ error: "A fixture work item is required." }, 400);
-    const item = await db.prepare("SELECT id, pod_id FROM work_items WHERE id = ? AND workflow = 'Setup / excluded' AND github_url LIKE 'https://staging.test/issue-74/%'")
+    const item = await db.prepare("SELECT id, pod_id, created_by FROM work_items WHERE id = ? AND workflow = 'Setup / excluded' AND github_url LIKE 'https://staging.test/issue-74/%'")
       .bind(itemId).first<Record<string, unknown>>();
     if (!item) return json({ error: "The bounded issue #74 fixture item was not found." }, 404);
+    if (action === "HUMAN") {
+      const operation = String(body.operation ?? "");
+      const payload = body.payload;
+      if (!hasOnlyKeys(body, ["action", "item_id", "operation", "payload"]) ||
+          !["SNAPSHOT", "PACKAGE", "SESSION", "INTENT", "READINESS"].includes(operation) ||
+          (payload !== undefined && (!payload || typeof payload !== "object" || Array.isArray(payload)))) {
+        return json({ error: "The staging human-principal adapter input is outside the bounded contract." }, 400);
+      }
+      const actor = await db.prepare("SELECT id, email, display_name, kind, role, status, pod_id FROM members WHERE id = ?")
+        .bind(String(item.created_by)).first<Record<string, unknown>>();
+      if (!actor || actor.kind !== "human" || actor.status !== "available" || actor.pod_id !== item.pod_id || !String(actor.role).includes("Product Lead")) {
+        return json({ error: "The exact fixture Product Lead is no longer currently authorized." }, 409);
+      }
+      const user: User = { id: String(actor.id), email: actor.email ? String(actor.email) : null, name: String(actor.display_name ?? "Product Lead") };
+      const adapted = new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload ?? {}) });
+      if (operation === "SNAPSHOT") return createReleaseReadinessSnapshot(adapted, db, env, user, itemId);
+      if (operation === "PACKAGE") return prepareDecisionPackage(db, user, itemId);
+      if (operation === "SESSION") return startDecisionSession(adapted, db, user, itemId);
+      if (operation === "INTENT") return createDecisionIntent(adapted, db, env, user, itemId);
+      return getReleaseReadiness(db, env, user, itemId);
+    }
     if (action === "PROJECT") {
       const [snapshots, readinessEvents, countersignatures, intents, proofEvents, decisions, activity] = await Promise.all([
         db.prepare("SELECT snapshot_id, snapshot_sha256, current_state, invalidation_reason, created_at FROM decision_readiness_snapshots WHERE item_id = ? ORDER BY created_at, snapshot_id").bind(itemId).all(),
@@ -4122,7 +4143,7 @@ async function runIssue74StagingFixture(request: Request, db: Database, env: Env
   if (!hasOnlyKeys(body, allowed)) return json({ error: "The fixture creation input is outside the bounded contract." }, 400);
   const runId = String(body.run_id ?? "");
   const caseId = String(body.case_id ?? "");
-  const submitterId = String(body.intended_submitter_id ?? "");
+  let submitterId = String(body.intended_submitter_id ?? "");
   const operatingMode = String(body.operating_mode ?? "");
   const targetPath = String(body.target_path ?? "");
   const targetSha256 = String(body.target_sha256 ?? "");
@@ -4134,11 +4155,17 @@ async function runIssue74StagingFixture(request: Request, db: Database, env: Env
       !hex64(targetCommitObjectSha256) || !hex40(sourceRevision) || !Array.isArray(body.derived_risk_codes)) {
     return json({ error: "The fixture must bind one exact staging candidate and bounded identity." }, 400);
   }
+  if (submitterId === "CURRENT_PRODUCT_LEAD") {
+    const candidates = await db.prepare(`SELECT id FROM members WHERE kind = 'human' AND status = 'available'
+      AND role LIKE '%Product Lead%' AND id NOT LIKE 'rr74-%' ORDER BY id`).all<{ id: string }>();
+    if ((candidates.results ?? []).length !== 1) return json({ error: "The fixture requires exactly one current non-fixture Product Lead." }, 409);
+    submitterId = String(candidates.results![0].id);
+  }
   const submitter = await db.prepare("SELECT id, pod_id, kind, role, status FROM members WHERE id = ?").bind(submitterId).first<Record<string, unknown>>();
   if (!submitter || submitter.kind !== "human" || submitter.status !== "available" || !String(submitter.role).includes("Product Lead")) return json({ error: "The intended fixture submitter is not the current Product Lead." }, 409);
   const fixtureUrl = `https://staging.test/issue-74/${runId}/${caseId}`;
-  const existing = await db.prepare("SELECT id, key, updated_at, assignee_id FROM work_items WHERE github_url = ?").bind(fixtureUrl).first<Record<string, unknown>>();
-  if (existing) return json({ item_id: Number(existing.id), item_key: existing.key, item_updated_at: existing.updated_at, candidate_builder_id: existing.assignee_id, replay: true });
+  const existing = await db.prepare("SELECT id, key, updated_at, assignee_id, created_by FROM work_items WHERE github_url = ?").bind(fixtureUrl).first<Record<string, unknown>>();
+  if (existing) return json({ item_id: Number(existing.id), item_key: existing.key, item_updated_at: existing.updated_at, candidate_builder_id: existing.assignee_id, intended_submitter_id: existing.created_by, replay: true });
   const targetUrl = `https://github.com/${allowedGitHubRepository}/blob/${sourceRevision}/${targetPath}`;
   const resolvedTarget = await readEvidence(targetUrl);
   if (resolvedTarget.revision !== sourceRevision || resolvedTarget.sha256 !== targetSha256) return json({ error: "The exact fixture target bytes could not be resolved." }, 409);
@@ -4248,7 +4275,7 @@ async function runIssue74StagingFixture(request: Request, db: Database, env: Env
     db.prepare("INSERT INTO activity (item_id,actor_id,action,detail,created_at,review_assignment_id) VALUES (?,?,'agent_review','PASS · signed issue #74 hosted fixture review recorded',?,?)")
       .bind(createdItemId, criticId, now, reviewIdentity.reviewAssignmentId),
   ]);
-  return json({ item_id: createdItemId, item_key: key, item_updated_at: now, candidate_builder_id: builderId,
+  return json({ item_id: createdItemId, item_key: key, item_updated_at: now, candidate_builder_id: builderId, intended_submitter_id: submitterId,
     critic_assignment_id: reviewIdentity.reviewAssignmentId, target_manifest_sha256: targetManifestSha256, replay: false }, 201);
 }
 
