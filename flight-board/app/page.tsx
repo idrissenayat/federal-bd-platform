@@ -1474,7 +1474,9 @@ export default function Home() {
       if (!readiness.snapshot) return;
       setData((current) => current ? {
         ...current,
-        release_readiness: [...current.release_readiness.filter((entry) => entry.snapshot.work_item_id !== itemId), readiness as ReleaseReadiness],
+        ...(current.verification_fixtures.some((item) => item.id === itemId)
+          ? { verification_release_readiness: [...current.verification_release_readiness.filter((entry) => entry.snapshot.work_item_id !== itemId), readiness as ReleaseReadiness] }
+          : { release_readiness: [...current.release_readiness.filter((entry) => entry.snapshot.work_item_id !== itemId), readiness as ReleaseReadiness] }),
       } : current);
     } catch (caught) {
       setDecisionStepError(caught instanceof Error ? caught.message : "The selected release-readiness status could not be loaded.");
@@ -1595,6 +1597,7 @@ export default function Home() {
     if (document.activeElement instanceof HTMLElement) drawerReturnFocus.current = document.activeElement;
     setSelectedId(item.id);
     setDecisionOpen(false);
+    if (item.verification_classification.is_fixture) void loadSelectedReleaseReadiness(item.id);
   }
 
   function closeItem() {

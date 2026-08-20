@@ -1325,7 +1325,7 @@ async function bootstrap(db: Database, user: User, env: Env) {
     FROM decision_readiness_policies WHERE pod_id = ? ORDER BY policy_version DESC LIMIT 1`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").first<Record<string, unknown>>();
   const readinessRows = await db.prepare(`SELECT * FROM decision_readiness_snapshots
-    WHERE pod_id = ? ORDER BY created_at DESC`)
+    WHERE pod_id = ? ORDER BY created_at DESC LIMIT 80`)
     .bind(currentMember?.pod_id ?? "steer-flight-team").all<Record<string, unknown>>();
   const releaseReadiness = await Promise.all((readinessRows.results ?? []).map((row) => releaseReadinessView(db, row, env, generatedAt)));
   const configuredDecisionKeyId = String(env.DECISION_SERVICE_KEY_ID ?? "");
