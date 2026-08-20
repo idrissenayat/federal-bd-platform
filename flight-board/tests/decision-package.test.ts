@@ -64,6 +64,21 @@ test("risk-based Gate 3 intents bind a readiness snapshot without weakening lega
     decision_kind: "Gate 3 pending",
     effective_not_before: "2026-08-18T23:00:00Z",
     readiness_snapshot_sha256: "9".repeat(64),
+    readiness_authority: {
+      schema: "steer.gate-readiness-authority/v1" as const,
+      snapshot_id: "8".repeat(64), snapshot_sha256: "9".repeat(64), work_item_id: 74,
+      work_item_key: "STR-024", pod_id: "steer-flight-team",
+      brief_path: "steer/briefs/0074-risk-based-gate3-readiness.md", brief_commit: "1".repeat(40), brief_sha256: "1".repeat(64),
+      exam_path: "steer/exams/0074-risk-based-gate3-readiness.md", exam_commit: "2".repeat(40), exam_sha256: "2".repeat(64),
+      implementation_commit: "3".repeat(40), build_sha256: "3".repeat(64), migration_set_sha256: "4".repeat(64), runtime_policy_sha256: "5".repeat(64),
+      verification_receipt_id: "6".repeat(64), verification_receipt_sha256: "6".repeat(64), verification_completed_at: "2026-08-18T23:00:00Z",
+      critic_assignment_id: "7".repeat(64), critic_review_id: 74, critic_target_revision: "3".repeat(40), critic_recommendation: "PASS", evidence_set_sha256: "b".repeat(64),
+      declared_risk_codes: ["NONE" as const], derived_risk_codes: ["NONE" as const], resolved_risk_codes: ["NONE" as const], classification_errors: [],
+      risk_policy_version: 1, risk_policy_sha256: "8".repeat(64), tier: "DEFAULT_OPEN" as const,
+      operating_mode: "SOLO_CALIBRATION" as const, satisfaction_path: "TIME" as const, delay_hours: 0 as const,
+      verification_authority: "SIGNED_STAGING_RECEIPT" as const, effective_not_before: "2026-08-18T23:00:00Z",
+      required_roles: [], candidate_builder_id: "agent-builder", intended_submitter_id: "human-1",
+    },
   };
   assert.equal(validateDecisionIntent(readinessIntent), null);
   assert.match(validateDecisionIntent({ ...readinessIntent, readiness_snapshot_sha256: "bad" }) ?? "", /snapshot digest/);

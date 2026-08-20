@@ -30,6 +30,54 @@ export type RiskTier = "DEFAULT_OPEN" | "ELEVATED" | "DEFAULT_CLOSED";
 export type SatisfactionPath = "TIME" | "QUALIFIED_HUMAN" | "QUALIFIED_TEAM";
 export type ReadinessStatus = "NOT_READY" | "READY" | "INVALIDATED";
 
+export type ReadinessDrift = {
+  field: string;
+  old_sha256: string;
+  new_sha256: string;
+};
+
+export type ReleaseReadinessAuthority = {
+  schema: "steer.gate-readiness-authority/v1";
+  snapshot_id: string;
+  snapshot_sha256: string;
+  work_item_id: number;
+  work_item_key: string;
+  pod_id: string;
+  brief_path: string;
+  brief_commit: string;
+  brief_sha256: string;
+  exam_path: string;
+  exam_commit: string;
+  exam_sha256: string;
+  implementation_commit: string;
+  build_sha256: string;
+  migration_set_sha256: string;
+  runtime_policy_sha256: string;
+  verification_receipt_id: string;
+  verification_receipt_sha256: string;
+  verification_completed_at: string;
+  critic_assignment_id: string;
+  critic_review_id: number;
+  critic_target_revision: string;
+  critic_recommendation: string;
+  evidence_set_sha256: string;
+  declared_risk_codes: RiskCode[];
+  derived_risk_codes: RiskCode[];
+  resolved_risk_codes: RiskCode[];
+  classification_errors: string[];
+  risk_policy_version: number;
+  risk_policy_sha256: string;
+  tier: RiskTier;
+  operating_mode: "SOLO_CALIBRATION" | "TEAM";
+  satisfaction_path: SatisfactionPath;
+  delay_hours: 0 | 4 | 24;
+  verification_authority: "SIGNED_STAGING_RECEIPT";
+  effective_not_before: string;
+  required_roles: string[];
+  candidate_builder_id: string;
+  intended_submitter_id: string;
+};
+
 export type RiskClassification = {
   tier: RiskTier;
   codes: RiskCode[];
@@ -44,8 +92,10 @@ export type ReleaseReadinessSnapshot = {
   work_item_key: string;
   work_item_updated_at: string;
   pod_id: string;
+  brief_path: string;
   brief_commit: string;
   brief_sha256: string;
+  exam_path: string;
   exam_commit: string;
   exam_sha256: string;
   implementation_commit: string;
@@ -55,6 +105,7 @@ export type ReleaseReadinessSnapshot = {
   verification_receipt_id: string;
   verification_receipt_sha256: string;
   verification_completed_at: string;
+  critic_assignment_id: string;
   critic_review_id: number;
   critic_target_revision: string;
   critic_recommendation: string;
@@ -65,10 +116,13 @@ export type ReleaseReadinessSnapshot = {
   classification_errors: string[];
   tier: RiskTier;
   risk_policy_version: number;
+  risk_policy_sha256: string;
   operating_mode: "SOLO_CALIBRATION" | "TEAM";
   satisfaction_path: SatisfactionPath;
   delay_hours: 0 | 4 | 24;
   required_roles: string[];
+  candidate_builder_id: string;
+  intended_submitter_id: string;
   effective_not_before: string;
   created_by: string;
   created_at: string;
@@ -124,6 +178,56 @@ export function effectiveNotBefore(verifiedAt: string, delayHours: number) {
 
 export async function releaseReadinessDigest(value: unknown) {
   return sha256Hex(canonicalJson(value));
+}
+
+export function releaseReadinessAuthority(snapshot: ReleaseReadinessSnapshot, snapshotSha256: string): ReleaseReadinessAuthority {
+  return {
+    schema: "steer.gate-readiness-authority/v1",
+    snapshot_id: snapshot.snapshot_id,
+    snapshot_sha256: snapshotSha256,
+    work_item_id: snapshot.work_item_id,
+    work_item_key: snapshot.work_item_key,
+    pod_id: snapshot.pod_id,
+    brief_path: snapshot.brief_path,
+    brief_commit: snapshot.brief_commit,
+    brief_sha256: snapshot.brief_sha256,
+    exam_path: snapshot.exam_path,
+    exam_commit: snapshot.exam_commit,
+    exam_sha256: snapshot.exam_sha256,
+    implementation_commit: snapshot.implementation_commit,
+    build_sha256: snapshot.build_sha256,
+    migration_set_sha256: snapshot.migration_set_sha256,
+    runtime_policy_sha256: snapshot.runtime_policy_sha256,
+    verification_receipt_id: snapshot.verification_receipt_id,
+    verification_receipt_sha256: snapshot.verification_receipt_sha256,
+    verification_completed_at: snapshot.verification_completed_at,
+    critic_assignment_id: snapshot.critic_assignment_id,
+    critic_review_id: snapshot.critic_review_id,
+    critic_target_revision: snapshot.critic_target_revision,
+    critic_recommendation: snapshot.critic_recommendation,
+    evidence_set_sha256: snapshot.evidence_set_sha256,
+    declared_risk_codes: [...snapshot.declared_risk_codes],
+    derived_risk_codes: [...snapshot.derived_risk_codes],
+    resolved_risk_codes: [...snapshot.resolved_risk_codes],
+    classification_errors: [...snapshot.classification_errors],
+    risk_policy_version: snapshot.risk_policy_version,
+    risk_policy_sha256: snapshot.risk_policy_sha256,
+    tier: snapshot.tier,
+    operating_mode: snapshot.operating_mode,
+    satisfaction_path: snapshot.satisfaction_path,
+    delay_hours: snapshot.delay_hours,
+    verification_authority: "SIGNED_STAGING_RECEIPT",
+    effective_not_before: snapshot.effective_not_before,
+    required_roles: [...snapshot.required_roles],
+    candidate_builder_id: snapshot.candidate_builder_id,
+    intended_submitter_id: snapshot.intended_submitter_id,
+  };
+}
+
+export async function readinessDrift(field: string, before: unknown, after: unknown): Promise<ReadinessDrift | null> {
+  const oldSha256 = await releaseReadinessDigest(before);
+  const newSha256 = await releaseReadinessDigest(after);
+  return oldSha256 === newSha256 ? null : { field, old_sha256: oldSha256, new_sha256: newSha256 };
 }
 
 export function requiredRolesFor(codes: RiskCode[], tier: RiskTier) {

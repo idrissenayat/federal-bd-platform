@@ -1,5 +1,6 @@
 import { canonicalJson, sha256Hex } from "./dispatch-lifecycle";
 import { ed25519 } from "@noble/curves/ed25519.js";
+import type { ReleaseReadinessAuthority } from "./release-readiness";
 
 export type DecisionPackageState =
   | "PENDING_PROOF"
@@ -60,6 +61,7 @@ export type DecisionIntentPayload = {
   signer_policy_version: number;
   required_countersignatures: number;
   readiness_snapshot_sha256?: string;
+  readiness_authority?: ReleaseReadinessAuthority;
   idempotency_key: string;
   sequence: number;
 };
@@ -67,6 +69,7 @@ export type DecisionIntentPayload = {
 const HEX40 = /^[0-9a-f]{40}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const RFC3339_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 
 export function createUuidV7(now = Date.now()) {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -102,6 +105,20 @@ export function validateDecisionIntent(input: DecisionIntentPayload) {
   if (!Number.isFinite(submittedAt) || !Number.isFinite(effectiveNotBefore)) return "Decision readiness timestamps are invalid.";
   if (input.readiness_snapshot_sha256) {
     if (!HEX64.test(input.readiness_snapshot_sha256)) return "The release readiness snapshot digest is invalid.";
+    const authority = input.readiness_authority;
+    if (!authority || authority.schema !== "steer.gate-readiness-authority/v1" ||
+        authority.snapshot_sha256 !== input.readiness_snapshot_sha256 ||
+        authority.work_item_key !== input.item_key || authority.intended_submitter_id !== input.submitter_principal ||
+        authority.operating_mode !== input.operating_mode || authority.effective_not_before !== input.effective_not_before ||
+        authority.risk_policy_version !== input.signer_policy_version ||
+        ![authority.snapshot_sha256, authority.brief_sha256, authority.exam_sha256, authority.build_sha256,
+          authority.migration_set_sha256, authority.runtime_policy_sha256, authority.verification_receipt_sha256,
+          authority.evidence_set_sha256, authority.risk_policy_sha256].every((value) => HEX64.test(value)) ||
+        ![authority.brief_commit, authority.exam_commit, authority.implementation_commit, authority.critic_target_revision].every((value) => HEX40.test(value)) ||
+        !RFC3339_UTC.test(authority.verification_completed_at) || !RFC3339_UTC.test(authority.effective_not_before) ||
+        authority.required_roles.length > 16 || authority.required_roles.some((role) => role.length < 2 || role.length > 80)) {
+      return "The complete immutable release-readiness authority is required and must match the intent.";
+    }
   } else if (effectiveNotBefore < submittedAt + 24 * 60 * 60 * 1000) {
     return "Legacy default-closed decisions require at least 24 hours of cooling.";
   }
@@ -214,6 +231,7 @@ export async function createDecisionIssuerEnvelope(input: {
     effective_not_before: input.intent.effective_not_before, operating_mode: input.intent.operating_mode,
     signer_policy_version: input.intent.signer_policy_version, required_countersignatures: input.intent.required_countersignatures,
     readiness_snapshot_sha256: input.intent.readiness_snapshot_sha256 ?? "",
+    readiness_authority: input.intent.readiness_authority ?? null,
     sequence: input.intent.sequence,
   };
   const payloadSha256 = await decisionDigest(payload);

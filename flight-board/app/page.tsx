@@ -179,11 +179,15 @@ type ReleaseReadiness = {
     effective_not_before: string;
     required_roles: string[];
     classification_errors: string[];
+    candidate_builder_id: string;
+    intended_submitter_id: string;
   };
   snapshot_sha256: string;
   status: "NOT_READY" | "READY" | "INVALIDATED";
   reason: string;
   missing_roles: string[];
+  completed_controls: string[];
+  invalidation?: { code: string; changes: Array<{ field: string; old_sha256: string; new_sha256: string }> };
   server_now: string;
 };
 
@@ -364,6 +368,38 @@ const phaseCues: Record<string, string> = {
 function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Recently" : new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
+}
+
+function formatReadinessCountdown(effectiveNotBefore: string, now: number) {
+  const remaining = Math.max(0, Date.parse(effectiveNotBefore) - now);
+  const hours = Math.floor(remaining / 3_600_000);
+  const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+  const seconds = Math.floor((remaining % 60_000) / 1_000);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+export function ReleaseReadinessCard({ readiness, displayNow, error = null, effectiveHistory = false }: { readiness: ReleaseReadiness | null; displayNow: number; error?: string | null; effectiveHistory?: boolean }) {
+  const countdown = readiness?.status === "NOT_READY" && readiness.snapshot.satisfaction_path === "TIME"
+    ? formatReadinessCountdown(readiness.snapshot.effective_not_before, displayNow)
+    : null;
+  const heading = error ? "Release readiness temporarily unavailable"
+    : effectiveHistory ? "Effective ruling preserved"
+    : !readiness ? "Verification snapshot required"
+    : readiness.status === "READY" ? "Ready for your decision"
+      : readiness.status === "INVALIDATED" ? "Verification reset — candidate changed"
+        : readiness.snapshot.satisfaction_path === "TIME" ? `Ready after ${countdown}`
+          : `Independent ${readiness.missing_roles[0] ?? "human"} approval required`;
+  return <section className={`decision-receipt-status ${effectiveHistory || readiness?.status === "READY" ? "effective" : error || readiness?.status === "INVALIDATED" ? "failed" : "pending"}`} aria-labelledby="release-readiness-status">
+    <span>Server-authoritative Release readiness</span>
+    <strong id="release-readiness-status" role={error || readiness?.status === "INVALIDATED" ? "alert" : "status"} aria-live={error || readiness?.status === "INVALIDATED" ? "assertive" : "polite"} aria-atomic="true">{heading}</strong>
+    {error ? <p>{error} No decision control was enabled. Refresh the authoritative workspace before retrying.</p> : effectiveHistory && readiness ? <p>The exact snapshot and completed human ruling remain immutable history. A later policy or candidate does not reinterpret it.</p> : readiness ? <>
+      <p>{readiness.status === "READY" ? "All frozen controls are satisfied. You may record an explicit intent; the server will recheck everything before any Gate effect." : readiness.status === "INVALIDATED" ? `The server detected ${readiness.invalidation?.changes.map((change) => change.field.replaceAll("_", " ")).join(", ") || "authority drift"}. Verify the new candidate, freeze a replacement snapshot, and start a fresh package and session.` : readiness.snapshot.satisfaction_path === "TIME" ? `Advisory countdown: ${countdown}. The authoritative boundary is ${formatDate(readiness.snapshot.effective_not_before)}. Only a fresh server response can enable the decision.` : `Still required: ${readiness.missing_roles.join(", ") || "current-role verification"}. The submitter and candidate Builder cannot fill an independent slot.`}</p>
+      <dl><div><dt>Tier</dt><dd>{readiness.snapshot.tier.replaceAll("_", " ")}</dd></div><div><dt>Candidate</dt><dd>{readiness.snapshot.implementation_commit.slice(0, 12)}</dd></div><div><dt>Verified · UTC</dt><dd>{formatDate(readiness.snapshot.verification_completed_at)}</dd></div><div><dt>Path</dt><dd>{readiness.snapshot.satisfaction_path.replaceAll("_", " ")}</dd></div><div><dt>Earliest · UTC</dt><dd>{formatDate(readiness.snapshot.effective_not_before)}</dd></div><div><dt>Snapshot</dt><dd>{readiness.snapshot_sha256.slice(0, 12)}</dd></div></dl>
+      <div className="readiness-control-lists"><div><b>Completed controls</b><ul>{readiness.completed_controls.map((control) => <li key={control}>✓ {control}</li>)}</ul></div><div><b>{readiness.status === "INVALIDATED" ? "Reset fields" : "Still required"}</b><ul>{readiness.status === "INVALIDATED" ? (readiness.invalidation?.changes ?? []).map((change) => <li key={change.field}>{change.field.replaceAll("_", " ")} · {change.old_sha256.slice(0, 8)} → {change.new_sha256.slice(0, 8)}</li>) : readiness.missing_roles.length ? readiness.missing_roles.map((role) => <li key={role}>{role}</li>) : <li>{readiness.status === "READY" ? "Nothing; explicit human intent is next." : `Wait for the server boundary at ${formatDate(readiness.snapshot.effective_not_before)}.`}</li>}</ul></div></div>
+    </> : <p>The platform creates this after exact staging verification and a passing signed Critic result. Missing evidence never becomes low risk.</p>}
+  </section>;
 }
 
 function clientUuidV7(now = Date.now()) {
@@ -945,6 +981,7 @@ export default function Home() {
   const [policyActivating, setPolicyActivating] = useState(false);
   const [replacingFailedDecision, setReplacingFailedDecision] = useState(false);
   const [decisionSessionExpired, setDecisionSessionExpired] = useState(false);
+  const [readinessDisplayNow, setReadinessDisplayNow] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [reloadError, setReloadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -1099,11 +1136,14 @@ export default function Home() {
 
   useEffect(() => {
     if (!decisionOpen || selectedReleaseReadiness?.status !== "NOT_READY" || selectedReleaseReadiness.snapshot.satisfaction_path !== "TIME") return;
-    const remaining = Date.parse(selectedReleaseReadiness.snapshot.effective_not_before) - Date.now();
+    const remaining = Date.parse(selectedReleaseReadiness.snapshot.effective_not_before) - readinessDisplayNow;
     const interval = remaining <= 60_000 ? 1_000 : 60_000;
-    const timeout = window.setTimeout(() => void load({ quiet: true }), Math.max(250, Math.min(interval, remaining + 25)));
+    const timeout = window.setTimeout(() => {
+      setReadinessDisplayNow(Date.now());
+      if (remaining <= interval + 25) void load({ quiet: true });
+    }, Math.max(250, Math.min(interval, remaining + 25)));
     return () => window.clearTimeout(timeout);
-  }, [decisionOpen, selectedReleaseReadiness?.snapshot.effective_not_before, selectedReleaseReadiness?.snapshot.satisfaction_path, selectedReleaseReadiness?.status]);
+  }, [decisionOpen, readinessDisplayNow, selectedReleaseReadiness?.snapshot.effective_not_before, selectedReleaseReadiness?.snapshot.satisfaction_path, selectedReleaseReadiness?.status]);
 
   function beginItemAction(id: number, scope: ActionScope, message: string) {
     const actionId = ++mutationSequence.current;
@@ -1871,14 +1911,7 @@ export default function Home() {
               {decisionProofFailed && <button type="button" onClick={replaceFailedDecision}>Start governed replacement</button>}
             </section>}
             {!decisionSubmissionLocked && <>
-            {isGateThreeDecision && <section className={`decision-receipt-status ${selectedReleaseReadiness?.status === "READY" ? "effective" : selectedReleaseReadiness?.status === "INVALIDATED" ? "failed" : "pending"}`} role={selectedReleaseReadiness?.status === "INVALIDATED" ? "alert" : "status"} aria-live="polite">
-              <span>{selectedReleaseReadiness?.status === "READY" ? "✓ Ready for explicit finalization" : selectedReleaseReadiness?.status === "INVALIDATED" ? "! Readiness invalidated" : "◷ Not ready"}</span>
-              <strong>{selectedReleaseReadiness ? `${selectedReleaseReadiness.snapshot.tier.replaceAll("_", " ")} · ${selectedReleaseReadiness.reason.replaceAll("_", " ")}` : "Authoritative snapshot required"}</strong>
-              {selectedReleaseReadiness ? <>
-                <p>{selectedReleaseReadiness.status === "READY" ? "Every frozen control is currently satisfied. Recording intent still does not create a Gate effect; finalization rechecks the server state." : selectedReleaseReadiness.status === "INVALIDATED" ? "A candidate or authority input changed. The platform must verify and freeze a replacement before a new session and intent." : selectedReleaseReadiness.snapshot.satisfaction_path === "TIME" ? `The selected ${selectedReleaseReadiness.snapshot.delay_hours}-hour separation ends ${formatDate(selectedReleaseReadiness.snapshot.effective_not_before)}. The server must be refreshed at that boundary.` : `Qualified human controls are incomplete: ${selectedReleaseReadiness.missing_roles.join(", ") || "current-role verification required"}.`}</p>
-                <dl><div><dt>Candidate</dt><dd>{selectedReleaseReadiness.snapshot.implementation_commit.slice(0, 12)}</dd></div><div><dt>Verified</dt><dd>{formatDate(selectedReleaseReadiness.snapshot.verification_completed_at)}</dd></div><div><dt>Path</dt><dd>{selectedReleaseReadiness.snapshot.satisfaction_path.replaceAll("_", " ")}</dd></div><div><dt>Snapshot</dt><dd>{selectedReleaseReadiness.snapshot_sha256.slice(0, 12)}</dd></div></dl>
-              </> : <p>The platform creates this after exact staging verification and a passing signed Critic result. Missing evidence never becomes low risk.</p>}
-            </section>}
+            {isGateThreeDecision && <ReleaseReadinessCard readiness={selectedReleaseReadiness} displayNow={readinessDisplayNow} error={reloadError && !selectedReleaseReadiness ? reloadError : null} effectiveHistory={visibleDecisionReceipt?.state === "EFFECTIVE"} />}
             <section className="decision-governance" aria-label="Governed decision readiness">
               <article className={gatePolicyReady ? "ready" : "blocked"}>
                 <span>{gatePolicyReady ? "1 · Ready" : "1 · Required"}</span>

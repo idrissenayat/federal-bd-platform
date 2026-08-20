@@ -1,133 +1,159 @@
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
-import { verifyAuthorityPayload } from "../lib/decision-package.ts";
+import { createHash, randomUUID } from "node:crypto";
 
-const baseUrl = process.env.ISSUE74_STAGING_URL;
-const serviceToken = process.env.ISSUE74_SERVICE_TOKEN;
-const sitesToken = process.env.ISSUE74_SITES_TOKEN;
-const publicKey = process.env.ISSUE74_PUBLIC_KEY;
-const outputPath = process.env.ISSUE74_LEDGER_PATH;
-const expected = {
-  source_revision: process.env.ISSUE74_SOURCE_REVISION,
-  build_sha256: process.env.ISSUE74_BUILD_SHA256,
-  migration_set_sha256: process.env.ISSUE74_MIGRATION_SET_SHA256,
-  policy_sha256: process.env.ISSUE74_POLICY_SHA256,
-};
-for (const [name, value] of Object.entries({ baseUrl, serviceToken, sitesToken, publicKey, outputPath, ...expected })) {
-  if (!value) throw new Error(`Missing ${name}`);
+const cfg = process.env;
+for (const key of ["ISSUE74_STAGING_URL", "ISSUE74_SERVICE_TOKEN", "ISSUE74_SITES_TOKEN", "ISSUE74_LEDGER_PATH",
+  "ISSUE74_SOURCE_REVISION", "ISSUE74_BUILD_SHA256", "ISSUE74_MIGRATION_SET_SHA256", "ISSUE74_POLICY_SHA256",
+  "ISSUE74_TARGET_PATH", "ISSUE74_TARGET_SHA256", "ISSUE74_TARGET_COMMIT_OBJECT_SHA256", "ISSUE74_CASE_CONTRACT_SHA256"]) {
+  if (!cfg[key]) throw new Error(`Missing ${key}`);
+}
+const baseUrl = cfg.ISSUE74_STAGING_URL.replace(/\/$/, "");
+const runId = cfg.ISSUE74_RUN_ID || `rr74-${new Date().toISOString().replace(/[-:.TZ]/g, "").toLowerCase()}`;
+const brief = { path: "steer/briefs/0074-risk-based-gate3-readiness.md", commit: "e1644ff3421800423e90980929fa4eac3c64f1e1", sha256: "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5" };
+const exam = { path: "steer/exams/0074-risk-based-gate3-readiness.md", commit: "1b8ad059a8ee2a4a94c7828bc617d4909a52813c", sha256: "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6" };
+const runtime = { source_revision: cfg.ISSUE74_SOURCE_REVISION, build_sha256: cfg.ISSUE74_BUILD_SHA256,
+  migration_set_sha256: cfg.ISSUE74_MIGRATION_SET_SHA256, runtime_policy_sha256: cfg.ISSUE74_POLICY_SHA256 };
+const target = { path: cfg.ISSUE74_TARGET_PATH, sha256: cfg.ISSUE74_TARGET_SHA256, commit_object_sha256: cfg.ISSUE74_TARGET_COMMIT_OBJECT_SHA256 };
+const digest = (value) => createHash("sha256").update(String(value)).digest("hex");
+const iso = (ms) => new Date(ms).toISOString();
+const baseClock = Date.now() - 60_000;
+const hour = 3_600_000;
+
+async function call(path, { service = false, body, controlledNow, accepted = [200, 201], token = cfg.ISSUE74_SERVICE_TOKEN } = {}) {
+  const attempts = [];
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const started = performance.now();
+    try {
+      const headers = { "content-type": "application/json", "OAI-Sites-Authorization": `Bearer ${cfg.ISSUE74_SITES_TOKEN}` };
+      if (service) headers.authorization = `Bearer ${token}`;
+      if (controlledNow) headers["x-steer-controlled-now"] = controlledNow;
+      const response = await fetch(`${baseUrl}${path}`, { method: body === undefined ? "GET" : "POST", headers,
+        body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
+      const text = await response.text();
+      let parsed; try { parsed = JSON.parse(text); } catch { parsed = { non_json_sha256: digest(text) }; }
+      const result = { status: response.status, body: parsed, latency_ms: Math.round((performance.now() - started) * 100) / 100, transport_error: null };
+      attempts.push({ status: result.status, latency_ms: result.latency_ms, transport_error: null });
+      if (accepted.includes(result.status)) return { ...result, attempts };
+      if (result.status < 500) assert.fail(`${path}: ${result.status} ${JSON.stringify(parsed)}`);
+    } catch (error) {
+      attempts.push({ status: 0, latency_ms: Math.round((performance.now() - started) * 100) / 100,
+        transport_error: error instanceof Error ? `${error.name}:${error.message}` : "FETCH_FAILED" });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+  }
+  throw new Error(`${path} did not reconcile: ${JSON.stringify(attempts)}`);
 }
 
-const runId = process.env.ISSUE74_RUN_ID || `rr74-${new Date().toISOString().replace(/[-:.TZ]/g, "").toLowerCase()}`;
-const verified = "2026-08-19T20:00:00.000Z";
-const at = (hours, deltaMs = 0) => new Date(Date.parse(verified) + hours * 3_600_000 + deltaMs).toISOString();
-const base = (caseId, overrides = {}) => ({
-  run_id: runId, case_id: caseId, declared_risk_codes: ["NONE"], derived_risk_codes: ["NONE"],
-  operating_mode: "SOLO_CALIBRATION", satisfaction_path: "TIME", verification_completed_at: verified,
-  server_now: verified, signatures: [], drift_field: "NONE", ...overrides,
-});
-const human = (member_id, role, overrides = {}) => ({
-  member_id, role, kind: "human", pod_id: "steer-flight-team", current_role: role,
-  status: "available", is_submitter: false, is_builder: false, ...overrides,
-});
+const bootstrap = await call("/api/bootstrap");
+const currentMember = bootstrap.body.user ?? bootstrap.body.currentMember ?? bootstrap.body.current_member ?? bootstrap.body.me;
+const submitterId = String(currentMember?.id ?? "");
+assert.ok(submitterId, "Authenticated staging Product Lead was not returned by bootstrap.");
 
+const define = (caseId, extra = {}) => ({ case_id: caseId, declared: ["NONE"], derived: ["NONE"], mode: "SOLO_CALIBRATION",
+  path: "TIME", verified: iso(baseClock), controlled: iso(baseClock), signatures: [], drift: null,
+  tier: "DEFAULT_OPEN", readiness: "READY", finalStatus: 201, ...extra });
 const cases = [
-  [base("RR74-CLASS-OPEN"), "DEFAULT_OPEN", "READY", "TIME_PATH_SATISFIED"],
-  [base("RR74-CLASS-ELEVATED", { declared_risk_codes: ["SECURITY_NON_AUTH"], derived_risk_codes: ["SECURITY_NON_AUTH"], server_now: at(3) }), "ELEVATED", "NOT_READY", "COOLING_PERIOD_ACTIVE"],
-  [base("RR74-CLASS-CLOSED", { declared_risk_codes: ["GOVERNANCE_CONTROL"], derived_risk_codes: ["GOVERNANCE_CONTROL"], server_now: at(23) }), "DEFAULT_CLOSED", "NOT_READY", "COOLING_PERIOD_ACTIVE"],
-  [base("RR74-CLASS-UNKNOWN", { declared_risk_codes: ["UNKNOWN_CODE"], derived_risk_codes: ["UNKNOWN_CODE"] }), "DEFAULT_CLOSED", "NOT_READY", "RISK_CODE_UNKNOWN"],
-  [base("RR74-TIME-OPEN-BEFORE", { server_now: at(0, -1) }), "DEFAULT_OPEN", "NOT_READY", "COOLING_PERIOD_ACTIVE"],
-  [base("RR74-TIME-OPEN-AT"), "DEFAULT_OPEN", "READY", "TIME_PATH_SATISFIED"],
-  [base("RR74-TIME-ELEVATED-BEFORE", { declared_risk_codes: ["SECURITY_NON_AUTH"], derived_risk_codes: ["SECURITY_NON_AUTH"], server_now: at(4, -1) }), "ELEVATED", "NOT_READY", "COOLING_PERIOD_ACTIVE"],
-  [base("RR74-TIME-ELEVATED-AT", { declared_risk_codes: ["SECURITY_NON_AUTH"], derived_risk_codes: ["SECURITY_NON_AUTH"], server_now: at(4) }), "ELEVATED", "READY", "TIME_PATH_SATISFIED"],
-  [base("RR74-TIME-CLOSED-BEFORE", { declared_risk_codes: ["GOVERNANCE_CONTROL"], derived_risk_codes: ["GOVERNANCE_CONTROL"], server_now: at(24, -1) }), "DEFAULT_CLOSED", "NOT_READY", "COOLING_PERIOD_ACTIVE"],
-  [base("RR74-TIME-CLOSED-AT", { declared_risk_codes: ["GOVERNANCE_CONTROL"], derived_risk_codes: ["GOVERNANCE_CONTROL"], server_now: at(24) }), "DEFAULT_CLOSED", "READY", "TIME_PATH_SATISFIED"],
-  [base("RR74-SIGNER-ELEVATED-VALID", { declared_risk_codes: ["ACCESSIBILITY_UI"], derived_risk_codes: ["ACCESSIBILITY_UI"], satisfaction_path: "QUALIFIED_HUMAN", signatures: [human("human-design-1", "Product Designer")] }), "ELEVATED", "READY", "QUALIFIED_HUMAN_PATH_SATISFIED"],
-  [base("RR74-SIGNER-WRONG-DOMAIN", { declared_risk_codes: ["ACCESSIBILITY_UI"], derived_risk_codes: ["ACCESSIBILITY_UI"], satisfaction_path: "QUALIFIED_HUMAN", signatures: [human("human-security-1", "Security Owner")] }), "ELEVATED", "NOT_READY", "QUALIFIED_HUMAN_REQUIRED"],
-  [base("RR74-SIGNER-SUBMITTER", { declared_risk_codes: ["ACCESSIBILITY_UI"], derived_risk_codes: ["ACCESSIBILITY_UI"], satisfaction_path: "QUALIFIED_HUMAN", signatures: [human("human-design-1", "Product Designer", { is_submitter: true })] }), "ELEVATED", "NOT_READY", "QUALIFIED_HUMAN_REQUIRED"],
-  [base("RR74-SIGNER-BUILDER", { declared_risk_codes: ["ACCESSIBILITY_UI"], derived_risk_codes: ["ACCESSIBILITY_UI"], satisfaction_path: "QUALIFIED_HUMAN", signatures: [human("human-design-1", "Product Designer", { is_builder: true })] }), "ELEVATED", "NOT_READY", "QUALIFIED_HUMAN_REQUIRED"],
-  [base("RR74-SIGNER-TEAM-COMPLETE", { declared_risk_codes: ["GOVERNANCE_CONTROL"], derived_risk_codes: ["GOVERNANCE_CONTROL"], operating_mode: "TEAM", satisfaction_path: "QUALIFIED_TEAM", signatures: [human("human-product-1", "Product Lead"), human("human-tech-1", "Tech Lead")] }), "DEFAULT_CLOSED", "READY", "QUALIFIED_HUMAN_PATH_SATISFIED"],
-  [base("RR74-SIGNER-TEAM-DUPLICATE", { declared_risk_codes: ["GOVERNANCE_CONTROL"], derived_risk_codes: ["GOVERNANCE_CONTROL"], operating_mode: "TEAM", satisfaction_path: "QUALIFIED_TEAM", signatures: [human("human-stack-1", "Product Lead", { current_role: "Product Lead Tech Lead" }), human("human-stack-1", "Tech Lead", { current_role: "Product Lead Tech Lead" })] }), "DEFAULT_CLOSED", "NOT_READY", "QUALIFIED_HUMAN_REQUIRED"],
-  ...["IMPLEMENTATION", "MIGRATION", "RUNTIME_POLICY", "EXAM", "VERIFICATION_RECEIPT", "DERIVED_DOMAINS", "CRITIC_TARGET", "RISK_POLICY"].map((field) => [base(`RR74-DRIFT-${field.replaceAll("_", "-")}`, { drift_field: field }), "DEFAULT_OPEN", "INVALIDATED", `${field}_DRIFT`]),
+  define("RR74-CLASS-OPEN"),
+  define("RR74-CLASS-ELEVATED", { declared: ["SECURITY_NON_AUTH"], derived: ["SECURITY_NON_AUTH"], tier: "ELEVATED", readiness: "NOT_READY", finalStatus: 409 }),
+  define("RR74-CLASS-CLOSED", { declared: ["GOVERNANCE_CONTROL"], derived: ["GOVERNANCE_CONTROL"], tier: "DEFAULT_CLOSED", readiness: "NOT_READY", finalStatus: 409 }),
+  define("RR74-CLASS-UNKNOWN", { declared: ["UNKNOWN_CODE"], derived: ["UNKNOWN_CODE"], tier: "DEFAULT_CLOSED", readiness: "NOT_READY", finalStatus: 409 }),
+  define("RR74-TIME-OPEN-BEFORE", { verified: iso(baseClock + 1), readiness: "NOT_READY", finalStatus: 409 }),
+  define("RR74-TIME-OPEN-AT"),
+  define("RR74-TIME-ELEVATED-BEFORE", { declared: ["SECURITY_NON_AUTH"], derived: ["SECURITY_NON_AUTH"], verified: iso(baseClock - 4 * hour + 1), tier: "ELEVATED", readiness: "NOT_READY", finalStatus: 409 }),
+  define("RR74-TIME-ELEVATED-AT", { declared: ["SECURITY_NON_AUTH"], derived: ["SECURITY_NON_AUTH"], verified: iso(baseClock - 4 * hour), tier: "ELEVATED" }),
+  define("RR74-TIME-CLOSED-BEFORE", { declared: ["GOVERNANCE_CONTROL"], derived: ["GOVERNANCE_CONTROL"], verified: iso(baseClock - 24 * hour + 1), tier: "DEFAULT_CLOSED", readiness: "NOT_READY", finalStatus: 409 }),
+  define("RR74-TIME-CLOSED-AT", { declared: ["GOVERNANCE_CONTROL"], derived: ["GOVERNANCE_CONTROL"], verified: iso(baseClock - 24 * hour), tier: "DEFAULT_CLOSED" }),
+  define("RR74-SIGNER-ELEVATED-VALID", { declared: ["ACCESSIBILITY_UI"], derived: ["ACCESSIBILITY_UI"], path: "QUALIFIED_HUMAN", tier: "ELEVATED", signatures: [["rr74-human-design-valid", "Product Designer", 201]] }),
+  define("RR74-SIGNER-WRONG-DOMAIN", { declared: ["ACCESSIBILITY_UI"], derived: ["ACCESSIBILITY_UI"], path: "QUALIFIED_HUMAN", tier: "ELEVATED", signatures: [["rr74-human-security-wrong", "Security Owner", 400]], readiness: "NOT_READY", finalStatus: 409 }),
+  define("RR74-SIGNER-SUBMITTER", { declared: ["ACCESSIBILITY_UI"], derived: ["ACCESSIBILITY_UI"], path: "QUALIFIED_HUMAN", tier: "ELEVATED", signatures: [["SUBMITTER", "Product Designer", 403]], readiness: "NOT_READY", finalStatus: 409 }),
+  define("RR74-SIGNER-BUILDER", { declared: ["ACCESSIBILITY_UI"], derived: ["ACCESSIBILITY_UI"], path: "QUALIFIED_HUMAN", tier: "ELEVATED", signatures: [["BUILDER", "Product Designer", 403]], readiness: "NOT_READY", finalStatus: 409 }),
+  define("RR74-SIGNER-TEAM-COMPLETE", { declared: ["GOVERNANCE_CONTROL"], derived: ["GOVERNANCE_CONTROL"], mode: "TEAM", path: "QUALIFIED_TEAM", tier: "DEFAULT_CLOSED", signatures: [["rr74-human-product-team", "Product Lead", 201], ["rr74-human-tech-team", "Tech Lead", 201]] }),
+  define("RR74-SIGNER-TEAM-DUPLICATE", { declared: ["GOVERNANCE_CONTROL"], derived: ["GOVERNANCE_CONTROL"], mode: "TEAM", path: "QUALIFIED_TEAM", tier: "DEFAULT_CLOSED", signatures: [["rr74-human-stack-team", "Product Lead", 201], ["rr74-human-stack-team", "Tech Lead", 200]], readiness: "NOT_READY", finalStatus: 409 }),
+  ...["WORK_ITEM", "BRIEF_AUTHORITY", "EXAM_AUTHORITY", "CRITIC_RESULT", "DERIVED_DOMAINS", "OPERATING_MODE", "CANDIDATE_BUILDER", "VERIFICATION_RECEIPT"]
+    .map((field) => define(`RR74-DRIFT-${field.replaceAll("_", "-")}`, { drift: field, readiness: "INVALIDATED", finalStatus: 409 })),
 ];
 assert.equal(cases.length, 24);
 
-async function send(input, token = serviceToken) {
-  const started = performance.now();
-  try {
-    const response = await fetch(`${baseUrl}/api/staging-release-readiness-cases`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}`, "OAI-Sites-Authorization": `Bearer ${sitesToken}`, "content-type": "application/json" },
-      body: JSON.stringify(input),
-      signal: AbortSignal.timeout(15_000),
-    });
-    const text = await response.text();
-    let body = null;
-    try { body = JSON.parse(text); } catch { body = { transport_error: "NON_JSON_PROVIDER_RESPONSE", content_type: response.headers.get("content-type"), body_sha256_pending: true }; }
-    return { status: response.status, body, latency_ms: Math.round((performance.now() - started) * 100) / 100, transport_failure: body?.transport_error ?? null };
-  } catch (error) {
-    return { status: 0, body: { transport_error: error instanceof Error ? error.name : "FETCH_FAILURE" }, latency_ms: Math.round((performance.now() - started) * 100) / 100, transport_failure: error instanceof Error ? error.name : "FETCH_FAILURE" };
-  }
+async function receipt(itemId, builderId, definition, salt = definition.case_id) {
+  return call("/api/staging-verification-receipts", { service: true, body: { item_id: itemId, environment: "staging",
+    brief_path: brief.path, brief_commit: brief.commit, brief_sha256: brief.sha256, exam_path: exam.path, exam_commit: exam.commit, exam_sha256: exam.sha256,
+    source_revision: runtime.source_revision, build_sha256: runtime.build_sha256, migration_set_sha256: runtime.migration_set_sha256,
+    runtime_policy_sha256: runtime.runtime_policy_sha256, case_ledger_sha256: digest(`${cfg.ISSUE74_CASE_CONTRACT_SHA256}:${salt}`),
+    candidate_builder_id: builderId, intended_submitter_id: submitterId, completed_at: definition.verified } });
 }
 
-async function sendWithReconciliation(input, token = serviceToken, maximumAttempts = 6) {
-  const attempts = [];
-  for (let index = 0; index < maximumAttempts; index += 1) {
-    const result = await send(input, token);
-    attempts.push(result);
-    if (!result.transport_failure && result.status < 500) return { ...result, attempts };
-    await new Promise((resolve) => setTimeout(resolve, 250 * (index + 1)));
+async function runFlow(definition) {
+  const steps = {};
+  steps.fixture = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "CREATE", run_id: runId,
+    case_id: definition.case_id, intended_submitter_id: submitterId, derived_risk_codes: definition.derived, operating_mode: definition.mode,
+    target_path: target.path, target_sha256: target.sha256, target_commit_object_sha256: target.commit_object_sha256 } });
+  const itemId = Number(steps.fixture.body.item_id); const builderId = String(steps.fixture.body.candidate_builder_id);
+  steps.receipt = await receipt(itemId, builderId, definition);
+  const packet = { brief_path: brief.path, brief_commit: brief.commit, brief_sha256: brief.sha256,
+    exam_path: exam.path, exam_commit: exam.commit, exam_sha256: exam.sha256, implementation_commit: runtime.source_revision,
+    build_sha256: runtime.build_sha256, migration_set_sha256: runtime.migration_set_sha256, runtime_policy_sha256: runtime.runtime_policy_sha256,
+    verification_receipt_id: steps.receipt.body.receipt_id, verification_receipt_sha256: steps.receipt.body.receipt_sha256,
+    declared_risk_codes: definition.declared, operating_mode: definition.mode, satisfaction_path: definition.path };
+  steps.snapshot = await call(`/api/items/${itemId}/release-readiness`, { body: packet });
+  assert.equal(steps.snapshot.body.snapshot.tier, definition.tier);
+  const snapshotId = steps.snapshot.body.snapshot.snapshot_id;
+  steps.signatures = [];
+  for (const [identity, role, status] of definition.signatures) {
+    const memberId = identity === "SUBMITTER" ? submitterId : identity === "BUILDER" ? builderId : identity;
+    steps.signatures.push(await call("/api/staging-release-readiness-fixtures", { service: true, accepted: [status], body: { action: "COUNTERSIGN", item_id: itemId, snapshot_id: snapshotId, member_id: memberId, role } }));
   }
-  return { ...attempts.at(-1), attempts };
+  steps.package = await call(`/api/items/${itemId}/decision-packages`, { body: {} });
+  steps.session = await call(`/api/items/${itemId}/decision-sessions`, { body: { reason: "Fresh issue #74 real hosted verification session." } });
+  steps.intent = await call(`/api/items/${itemId}/decision-intents`, { body: { package_id: steps.package.body.package.package_id, decision: "APPROVED",
+    final_reasoning: "The exact issue #74 hosted candidate satisfies the recorded release controls.", decision_session_id: steps.session.body.session_id, idempotency_key: randomUUID() } });
+  const intentId = steps.intent.body.intent?.intent_id ?? steps.intent.body.intent_id; assert.ok(intentId);
+  steps.proof = await call(`/api/decision-intents/${intentId}/issuer-proof`, { service: true, body: {} });
+  if (definition.drift === "VERIFICATION_RECEIPT") steps.drift = await receipt(itemId, builderId, definition, `${definition.case_id}:changed`);
+  else if (definition.drift) steps.drift = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "MUTATE", item_id: itemId, field: definition.drift } });
+  steps.finalize = await call(`/api/decision-intents/${intentId}/finalize`, { service: true, body: {}, controlledNow: definition.controlled, accepted: [definition.finalStatus] });
+  steps.readiness = await call(`/api/items/${itemId}/release-readiness`);
+  const boundaryReadiness = steps.finalize.body.readiness?.status ?? steps.readiness.body.status;
+  assert.equal(boundaryReadiness, definition.readiness);
+  steps.projection = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "PROJECT", item_id: itemId } });
+  const effectCount = steps.projection.body.projection.decisions.filter((row) => row.decision_intent_id === intentId).length;
+  assert.equal(effectCount, definition.finalStatus === 201 ? 1 : 0);
+  const stepRecord = Object.fromEntries(Object.entries(steps).map(([name, value]) => [name, Array.isArray(value)
+    ? value.map((entry) => ({ status: entry.status, latency_ms: entry.latency_ms, body: entry.body }))
+    : { status: value.status, latency_ms: value.latency_ms, attempts: value.attempts, body: value.body }]));
+  return { case_id: definition.case_id, item_id: itemId, snapshot_id: snapshotId, intent_id: intentId, packet,
+    oracle: { tier: definition.tier, readiness: definition.readiness, finalize_http: definition.finalStatus, gate_effects: effectCount },
+    projection_sha256: steps.projection.body.projection_sha256, projection: steps.projection.body.projection, steps: stepRecord,
+    latency_ms: Object.values(steps).flatMap((value) => Array.isArray(value) ? value.map((entry) => entry.latency_ms) : [value.latency_ms]), pass: true };
 }
 
 const observations = [];
-for (const [input, tier, status, reason] of cases) {
-  const result = await sendWithReconciliation(input);
-  assert.ok([200, 201].includes(result.status), JSON.stringify(result.body));
-  assert.equal(result.body.response.classification.tier, tier);
-  assert.equal(result.body.response.result.status, status);
-  assert.equal(result.body.response.result.reason, reason);
-  for (const [key, value] of Object.entries(expected)) assert.equal(result.body.response[key], value);
-  assert.equal(verifyAuthorityPayload("STEER_HOSTED_READINESS_CASE_V1", result.body.response, result.body.service_signature, publicKey), true);
-  observations.push({ case_id: input.case_id, request: input, http_status: result.status, response: result.body.response, response_sha256: result.body.response_sha256, service_signature: result.body.service_signature, latency_ms: result.latency_ms, transport_attempts: result.attempts.map((entry) => ({ status: entry.status, transport_failure: entry.transport_failure, latency_ms: entry.latency_ms })), oracle: { tier, status, reason }, pass: true });
-}
+for (const definition of cases) observations.push(await runFlow(definition));
+const replay = await runFlow(define("RR74-REPLAY-IDEMPOTENT"));
+const replayCall = await call(`/api/items/${replay.item_id}/release-readiness`, { body: replay.packet });
+assert.equal(replayCall.body.replay, true); replay.replay = { status: replayCall.status, snapshot_sha256: replayCall.body.snapshot_sha256 }; observations.push(replay);
 
-const replayInput = base("RR74-REPLAY-IDEMPOTENT");
-const replayFirst = await sendWithReconciliation(replayInput);
-const replaySecond = await sendWithReconciliation(replayInput);
-assert.ok([200, 201].includes(replayFirst.status));
-assert.equal(replaySecond.status, 200);
-assert.equal(replaySecond.body.replay, true);
-assert.equal(replayFirst.body.response_sha256, replaySecond.body.response_sha256);
-observations.push({ case_id: replayInput.case_id, first_http_status: replayFirst.status, replay_http_status: replaySecond.status, response_sha256: replayFirst.body.response_sha256, replay: true, latency_ms: replaySecond.latency_ms, pass: true });
+const concurrent = [];
+const concurrencyCases = Array.from({ length: 100 }, (_, index) => define(`RR74-C100-${String(index + 1).padStart(3, "0")}`));
+for (let index = 0; index < 100; index += 10) concurrent.push(...await Promise.all(concurrencyCases.slice(index, index + 10).map(runFlow)));
+assert.equal(new Set(concurrent.map((row) => row.snapshot_id)).size, 100); assert.equal(new Set(concurrent.map((row) => row.intent_id)).size, 100);
+assert.equal(concurrent.reduce((sum, row) => sum + row.oracle.gate_effects, 0), 100);
+observations.push({ case_id: "RR74-CONCURRENCY-100", identity_count: 100, distinct_snapshots: 100, distinct_intents: 100, gate_effects: 100,
+  identities: concurrent.map((row) => ({ item_id: row.item_id, snapshot_id: row.snapshot_id, intent_id: row.intent_id, projection_sha256: row.projection_sha256 })),
+  latency_ms: concurrent.flatMap((row) => row.latency_ms), pass: true });
 
-const concurrencyInput = base("RR74-CONCURRENCY-100");
-const concurrentInitial = await Promise.all(Array.from({ length: 100 }, () => send(concurrencyInput)));
-const successfulConcurrent = concurrentInitial.filter((entry) => !entry.transport_failure && [200, 201].includes(entry.status));
-assert.ok(successfulConcurrent.length > 0);
-assert.ok(successfulConcurrent.filter((entry) => entry.status === 201).length <= 1);
-assert.equal(new Set(successfulConcurrent.map((entry) => entry.body.response_sha256)).size, 1);
-const reconciledConcurrency = await sendWithReconciliation(concurrencyInput);
-assert.equal(reconciledConcurrency.status, 200);
-assert.equal(reconciledConcurrency.body.replay, true);
-assert.equal(new Set([...successfulConcurrent.map((entry) => entry.body.response_sha256), reconciledConcurrency.body.response_sha256]).size, 1);
-observations.push({ case_id: concurrencyInput.case_id, initial_attempts: 100, initial_authoritative_responses: successfulConcurrent.length, initial_transport_failures: concurrentInitial.filter((entry) => entry.transport_failure || entry.status >= 500).length, created_responses: successfulConcurrent.filter((entry) => entry.status === 201).length, reconciliation_replay_http_status: reconciledConcurrency.status, one_authoritative_identity: true, response_sha256: reconciledConcurrency.body.response_sha256, latencies_ms: concurrentInitial.map((entry) => entry.latency_ms), pass: true });
-
-const faultInput = base("RR74-FAULT-AUTH-RETRY");
-const rejected = await send(faultInput, "invalid-service-token-that-is-long-enough-0000");
-const recovered = await sendWithReconciliation(faultInput);
-assert.equal(rejected.status, 401);
-assert.equal(recovered.status, 201);
-observations.push({ case_id: faultInput.case_id, rejected_http_status: rejected.status, retry_http_status: recovered.status, response_sha256: recovered.body.response_sha256, pass: true });
-
+const denied = await call("/api/staging-release-readiness-fixtures", { service: true, token: "invalid-service-token-that-is-long-enough-0000", accepted: [401], body: { action: "PROJECT", item_id: observations[0].item_id } });
+const recovered = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "PROJECT", item_id: observations[0].item_id } });
+observations.push({ case_id: "RR74-FAULT-AUTH-RETRY", denied_http: denied.status, recovered_http: recovered.status,
+  projection_sha256: recovered.body.projection_sha256, latency_ms: [denied.latency_ms, recovered.latency_ms], pass: true });
 assert.equal(observations.length, 27);
-const allLatencies = observations.flatMap((entry) => entry.latencies_ms ?? (entry.latency_ms === undefined ? [] : [entry.latency_ms])).sort((a, b) => a - b);
-const p95 = allLatencies[Math.max(0, Math.ceil(allLatencies.length * 0.95) - 1)];
-const ledger = {
-  schema: "steer.issue74-hosted-ledger/v1", run_id: runId, generated_at: new Date().toISOString(),
-  target: { staging_url: baseUrl, ...expected }, denominator: 30, hosted_api_cases: 27,
-  rollback_cases_reserved: ["RR74-ROLLBACK-LEGACY", "RR74-ROLLBACK-INERT", "RR74-RESTORE-NO-DUPLICATE"],
-  latency: { observation_count: allLatencies.length, p95_ms: p95 }, observations,
-};
-await writeFile(outputPath, JSON.stringify(ledger, null, 2) + "\n");
-console.log(JSON.stringify({ run_id: runId, cases: observations.length, p95_ms: p95, output: outputPath }));
+
+const latencies = observations.flatMap((row) => row.latency_ms ?? []).sort((a, b) => a - b);
+const p95 = latencies[Math.max(0, Math.ceil(latencies.length * 0.95) - 1)];
+const ledger = { schema: "steer.issue74-real-hosted-ledger/v2", run_id: runId, generated_at: new Date().toISOString(),
+  target: { staging_url: baseUrl, ...runtime, ...target, brief, exam, case_contract_sha256: cfg.ISSUE74_CASE_CONTRACT_SHA256 },
+  denominator: 30, real_hosted_cases: 27, rollback_cases_reserved: ["RR74-ROLLBACK-LEGACY", "RR74-ROLLBACK-INERT", "RR74-RESTORE-NO-DUPLICATE"],
+  concurrency: { identity_count: 100, lifecycle: "fixture→receipt→snapshot→package→session→intent→proof→finalization→D1 projection" },
+  latency: { observation_count: latencies.length, p95_ms: p95 }, observations };
+await writeFile(cfg.ISSUE74_LEDGER_PATH, `${JSON.stringify(ledger, null, 2)}\n`);
+console.log(JSON.stringify({ run_id: runId, cases: observations.length, concurrency_identities: 100, p95_ms: p95, output: cfg.ISSUE74_LEDGER_PATH }));

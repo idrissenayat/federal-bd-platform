@@ -17,6 +17,11 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22.19.0"
+          cache: npm
+          cache-dependency-path: flight-board/package-lock.json
       - name: Install uv and verified static tools
         env:
           GH_TOKEN: ${{ github.token }}
@@ -56,6 +61,13 @@ jobs:
           uv run mypy tests
           uv run pytest -q
           ./scripts/prove-gauntlet-blocks.sh
+      - name: Build and verify the Flight Board
+        working-directory: flight-board
+        run: |
+          npm ci
+          npm test
+          npm run typecheck
+          npm run lint
       - name: Scan dependencies and source
         run: |
           osv-scanner scan source --lockfile uv.lock .
