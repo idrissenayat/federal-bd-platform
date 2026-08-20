@@ -183,6 +183,37 @@ if (cfg.ISSUE74_MODE === "PREPARE_ROLLBACK") {
   process.exit(0);
 }
 
+if (cfg.ISSUE74_MODE === "RESTORE_PENDING") {
+  const itemId = Number(cfg.ISSUE74_ITEM_ID ?? 0);
+  const intentId = String(cfg.ISSUE74_INTENT_ID ?? "");
+  assert.ok(Number.isSafeInteger(itemId) && itemId > 0);
+  assert.match(intentId, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  const before = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "PROJECT", item_id: itemId } });
+  const blocked = await call(`/api/decision-intents/${intentId}/finalize`, { service: true, body: {}, accepted: [409] });
+  const proof = await call(`/api/decision-intents/${intentId}/issuer-proof`, { service: true, body: {} });
+  const finalized = await call(`/api/decision-intents/${intentId}/finalize`, { service: true, body: {}, accepted: [201] });
+  const replay = await call(`/api/decision-intents/${intentId}/finalize`, { service: true, body: {}, accepted: [200] });
+  const after = await call("/api/staging-release-readiness-fixtures", { service: true, body: { action: "PROJECT", item_id: itemId } });
+  const beforeIntent = before.body.projection.intents.find((row) => row.intent_id === intentId);
+  const afterIntent = after.body.projection.intents.find((row) => row.intent_id === intentId);
+  const effects = after.body.projection.decisions.filter((row) => row.decision_intent_id === intentId);
+  assert.equal(beforeIntent.current_state, "PENDING_PROOF");
+  assert.equal(afterIntent.current_state, "EFFECTIVE");
+  assert.equal(effects.length, 1);
+  assert.equal(replay.body.replay, true);
+  const restored = { schema: "steer.issue74-rollback-restored/v1", run_id: runId, generated_at: new Date().toISOString(),
+    target: { staging_url: baseUrl, ...runtime, ...target, brief, exam, case_contract_sha256: cfg.ISSUE74_CASE_CONTRACT_SHA256 },
+    item_id: itemId, intent_id: intentId,
+    before: { projection_sha256: before.body.projection_sha256, intent: beforeIntent, decisions: before.body.projection.decisions },
+    blocked: { status: blocked.status, body: blocked.body }, proof: { status: proof.status, body: proof.body },
+    finalized: { status: finalized.status, body: finalized.body }, replay: { status: replay.status, body: replay.body },
+    after: { projection_sha256: after.body.projection_sha256, intent: afterIntent, decisions: after.body.projection.decisions, exact_gate_effects: effects.length } };
+  await writeFile(cfg.ISSUE74_LEDGER_PATH, `${JSON.stringify(restored, null, 2)}\n`);
+  console.log(JSON.stringify({ run_id: runId, item_id: itemId, intent_id: intentId, before_state: beforeIntent.current_state,
+    after_state: afterIntent.current_state, exact_gate_effects: effects.length, replay: replay.body.replay, output: cfg.ISSUE74_LEDGER_PATH }));
+  process.exit(0);
+}
+
 const observations = [];
 for (const definition of cases) {
   console.error(`START ${definition.case_id}`);
