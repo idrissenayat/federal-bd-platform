@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 const cfg = process.env;
 for (const key of ["ISSUE74_STAGING_URL", "ISSUE74_SERVICE_TOKEN", "ISSUE74_SITES_TOKEN", "ISSUE74_LEDGER_PATH",
@@ -16,6 +16,18 @@ const runtime = { source_revision: cfg.ISSUE74_SOURCE_REVISION, build_sha256: cf
   migration_set_sha256: cfg.ISSUE74_MIGRATION_SET_SHA256, runtime_policy_sha256: cfg.ISSUE74_POLICY_SHA256 };
 const target = { path: cfg.ISSUE74_TARGET_PATH, sha256: cfg.ISSUE74_TARGET_SHA256, commit_object_sha256: cfg.ISSUE74_TARGET_COMMIT_OBJECT_SHA256 };
 const digest = (value) => createHash("sha256").update(String(value)).digest("hex");
+const uuidV7 = (now = Date.now()) => {
+  const bytes = randomBytes(16);
+  let timestamp = Math.max(0, Math.min(now, 281_474_976_710_655));
+  for (let index = 5; index >= 0; index -= 1) {
+    bytes[index] = timestamp % 256;
+    timestamp = Math.floor(timestamp / 256);
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x70;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+};
 const iso = (ms) => new Date(ms).toISOString();
 const baseClock = Date.now() - 60_000;
 const hour = 3_600_000;
@@ -104,8 +116,10 @@ async function runFlow(definition) {
   }
   steps.package = await humanCall(itemId, "PACKAGE", {});
   steps.session = await humanCall(itemId, "SESSION", { reason: "Fresh issue #74 real hosted verification session." });
+  const idempotencyKey = uuidV7();
+  assert.match(idempotencyKey, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   steps.intent = await humanCall(itemId, "INTENT", { package_id: steps.package.body.package.package_id, decision: "APPROVED",
-    final_reasoning: "The exact issue #74 hosted candidate satisfies the recorded release controls.", decision_session_id: steps.session.body.session_id, idempotency_key: randomUUID() });
+    final_reasoning: "The exact issue #74 hosted candidate satisfies the recorded release controls.", decision_session_id: steps.session.body.session_id, idempotency_key: idempotencyKey });
   const intentId = steps.intent.body.intent?.intent_id ?? steps.intent.body.intent_id; assert.ok(intentId);
   steps.proof = await call(`/api/decision-intents/${intentId}/issuer-proof`, { service: true, body: {} });
   if (definition.drift === "VERIFICATION_RECEIPT") steps.drift = await receipt(itemId, builderId, submitterId, definition, `${definition.case_id}:changed`);
