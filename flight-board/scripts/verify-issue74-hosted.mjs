@@ -76,7 +76,7 @@ const cases = [
   define("RR74-SIGNER-SUBMITTER", { declared: ["ACCESSIBILITY_UI"], derived: ["ACCESSIBILITY_UI"], path: "QUALIFIED_HUMAN", tier: "ELEVATED", signatures: [["SUBMITTER", "Product Designer", 403]], readiness: "NOT_READY", finalStatus: 409 }),
   define("RR74-SIGNER-BUILDER", { declared: ["ACCESSIBILITY_UI"], derived: ["ACCESSIBILITY_UI"], path: "QUALIFIED_HUMAN", tier: "ELEVATED", signatures: [["BUILDER", "Product Designer", 403]], readiness: "NOT_READY", finalStatus: 409 }),
   define("RR74-SIGNER-TEAM-COMPLETE", { declared: ["GOVERNANCE_CONTROL"], derived: ["GOVERNANCE_CONTROL"], mode: "TEAM", path: "QUALIFIED_TEAM", tier: "DEFAULT_CLOSED", signatures: [["rr74-human-product-team", "Product Lead", 201], ["rr74-human-tech-team", "Tech Lead", 201]] }),
-  define("RR74-SIGNER-TEAM-DUPLICATE", { declared: ["GOVERNANCE_CONTROL"], derived: ["GOVERNANCE_CONTROL"], mode: "TEAM", path: "QUALIFIED_TEAM", tier: "DEFAULT_CLOSED", signatures: [["rr74-human-stack-team", "Product Lead", 201], ["rr74-human-stack-team", "Tech Lead", 200]], readiness: "NOT_READY", finalStatus: 409 }),
+  define("RR74-SIGNER-TEAM-DUPLICATE", { declared: ["GOVERNANCE_CONTROL"], derived: ["GOVERNANCE_CONTROL"], mode: "TEAM", path: "QUALIFIED_TEAM", tier: "DEFAULT_CLOSED", signatures: [["rr74-human-stack-team", "Product Lead", 201], ["rr74-human-stack-team", "Product Lead", 200]], readiness: "NOT_READY", finalStatus: 409 }),
   ...["WORK_ITEM", "BRIEF_AUTHORITY", "EXAM_AUTHORITY", "CRITIC_RESULT", "DERIVED_DOMAINS", "OPERATING_MODE", "CANDIDATE_BUILDER", "VERIFICATION_RECEIPT"]
     .map((field) => define(`RR74-DRIFT-${field.replaceAll("_", "-")}`, { drift: field, readiness: "INVALIDATED", finalStatus: 409 })),
 ];
