@@ -99,3 +99,9 @@ The Gate 2 Exam must freeze the endpoint schema, cursor encoding/validation, all
 Implementation is owner-only staging first. Verification must include at least 31 staged signals; same-timestamp pagination; all lifecycle groups; search/filter composition; new-capture discoverability; malformed/forged cursors; cross-POD reads; stale response ordering; network/retry/empty states; signal-workspace regression; keyboard, screen reader, contrast, 320-pixel, and true-200% coverage; full repository contract; protected-table before/after hashes; and rollback with an in-flight paginated view.
 
 Production remains untouched until an independent Critic reviews the frozen Brief, Exam, implementation, staging runtime, hosted evidence, migration/non-migration boundary, and rollback evidence, and the Product Lead explicitly approves Gate 3, merge, production deployment, verification, Release, and closure.
+
+---
+
+GATE 1: APPROVED — 2026-08-20T15:34:34Z — idrissenayat
+
+GATE 1 EVIDENCE: Product Lead approval in the governed Codex task, bound to pre-signature commit `f6e309f344ab96084f524df6d54f4c031f6ceb54` and Brief SHA-256 `45eba1fe5908cfebd1820b8ec5eacbf1c2e9066a134bd1a434d30dea6a77fd3b`.
