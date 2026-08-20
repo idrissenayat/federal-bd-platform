@@ -14,7 +14,7 @@ import { buildDispatchIdentity, exactGitEvidence, STEER_HANDOFF_ROUTE_KEY, valid
 import { canonicalJson, createSignedDispatchEvent, dispatchPublicKey, sha256Hex, signSchnorrBinding, type DispatchState } from "../lib/dispatch-lifecycle";
 import { isStr028CaseId } from "../lib/str028-manifest";
 import { buildDecisionEvent, createDecisionIssuerEnvelope, createUuidV7, decisionDigest, decisionFinalizationError, decisionIssuerPublicKey, safeDecisionExport, signAuthorityPayload, validateDecisionIntent, verifyAuthorityPayload, verifyDecisionIssuerEnvelope, type DecisionIntentPayload, type PreparedDecisionPackage } from "../lib/decision-package";
-import { classifyRiskCodes, effectiveNotBefore, parseRiskCodes, readinessDrift, RELEASE_READINESS_POLICY_V1, releaseReadinessAuthority, releaseReadinessDigest, readinessStatus, requiredRolesFor, validateSatisfactionPath, type ReadinessDrift, type ReleaseReadinessSnapshot, type RiskCode, type SatisfactionPath } from "../lib/release-readiness";
+import { canonicalRiskInputs, classifyRiskCodes, effectiveNotBefore, readinessDrift, RELEASE_READINESS_POLICY_V1, releaseReadinessAuthority, releaseReadinessDigest, readinessStatus, requiredRolesFor, validateSatisfactionPath, type ReadinessDrift, type ReleaseReadinessSnapshot, type SatisfactionPath } from "../lib/release-readiness";
 import { buildReviewIdentity, createSignedReviewEvent, reviewManifestSha256, validateReviewAssignmentPayload, verifyReviewerBinding, type ReviewAssignmentPayload } from "../lib/review-lifecycle";
 import { buildInitialQueuedEvent, ensureDispatchServiceSigner, handleDispatchServiceApi, type DispatchServiceEnv } from "./dispatch";
 
@@ -3367,8 +3367,8 @@ async function releaseReadinessView(db: Database, row: Record<string, unknown>, 
   const currentCriticVerified = review ? await verifyRecordedCriticResult(db, env, review) : false;
   const currentGateOne = (gateDecisions.results ?? []).find((decision) => decision.gate === "Gate 1 pending" && decision.decision === "APPROVED");
   const currentGateTwo = (gateDecisions.results ?? []).find((decision) => decision.gate === "Gate 2 pending" && decision.decision === "APPROVED");
-  let currentDerived: RiskCode[] = [];
-  try { currentDerived = parseRiskCodes(JSON.parse(String(review?.derived_tags_json ?? "[]"))).codes; } catch { currentDerived = []; }
+  let currentDerived: string[] = [];
+  try { currentDerived = canonicalRiskInputs(JSON.parse(String(review?.derived_tags_json ?? "[]"))); } catch { currentDerived = []; }
   const currentClassification = classifyRiskCodes(snapshot.declared_risk_codes, currentDerived);
   const currentRoles = requiredRolesFor(currentClassification.codes, currentClassification.tier);
   const checks: Array<[string, unknown, unknown]> = [
@@ -3520,8 +3520,8 @@ async function createReleaseReadinessSnapshot(request: Request, db: Database, en
   let derived: unknown = [];
   try { derived = JSON.parse(String(review.derived_tags_json ?? "[]")); } catch { derived = []; }
   const classification = classifyRiskCodes(declared, derived);
-  const normalizedDeclared = parseRiskCodes(declared).codes;
-  const normalizedDerived = parseRiskCodes(derived).codes;
+  const frozenDeclared = canonicalRiskInputs(declared);
+  const frozenDerived = canonicalRiskInputs(derived);
   const operatingMode = String(body.operating_mode ?? "") as "SOLO_CALIBRATION" | "TEAM";
   const satisfactionPath = String(body.satisfaction_path ?? "") as SatisfactionPath;
   const pathError = validateSatisfactionPath(classification, operatingMode, satisfactionPath);
@@ -3541,8 +3541,8 @@ async function createReleaseReadinessSnapshot(request: Request, db: Database, en
       implementation_commit: body.implementation_commit, build_sha256: body.build_sha256,
       migration_set_sha256: body.migration_set_sha256, runtime_policy_sha256: body.runtime_policy_sha256,
       verification_receipt_id: verificationReceiptId, verification_receipt_sha256: body.verification_receipt_sha256,
-      verification_completed_at: verificationCompletedAt, declared_risk_codes: normalizedDeclared,
-      derived_risk_codes: normalizedDerived, operating_mode: operatingMode, satisfaction_path: satisfactionPath,
+      verification_completed_at: verificationCompletedAt, declared_risk_codes: frozenDeclared,
+      derived_risk_codes: frozenDerived, operating_mode: operatingMode, satisfaction_path: satisfactionPath,
       critic_assignment_id: String(review.review_assignment_id), candidate_builder_id: candidateBuilderId,
       intended_submitter_id: intendedSubmitterId,
     },
@@ -3568,8 +3568,8 @@ async function createReleaseReadinessSnapshot(request: Request, db: Database, en
     verification_receipt_id: verificationReceiptId,
     verification_receipt_sha256: String(body.verification_receipt_sha256), verification_completed_at: verificationCompletedAt,
     critic_assignment_id: String(review.review_assignment_id), critic_review_id: Number(review.id), critic_target_revision: String(review.evidence_revision), critic_recommendation: String(review.recommendation),
-    evidence_set_sha256: String(review.evidence_sha256), declared_risk_codes: normalizedDeclared as RiskCode[],
-    derived_risk_codes: normalizedDerived as RiskCode[], resolved_risk_codes: classification.codes,
+    evidence_set_sha256: String(review.evidence_sha256), declared_risk_codes: frozenDeclared,
+    derived_risk_codes: frozenDerived, resolved_risk_codes: classification.codes,
     classification_errors: classification.errors, tier: classification.tier, risk_policy_version: 1,
     risk_policy_sha256: String(policy.policy_sha256),
     operating_mode: operatingMode, satisfaction_path: satisfactionPath, delay_hours: classification.delay_hours,

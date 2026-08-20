@@ -61,8 +61,8 @@ export type ReleaseReadinessAuthority = {
   critic_target_revision: string;
   critic_recommendation: string;
   evidence_set_sha256: string;
-  declared_risk_codes: RiskCode[];
-  derived_risk_codes: RiskCode[];
+  declared_risk_codes: string[];
+  derived_risk_codes: string[];
   resolved_risk_codes: RiskCode[];
   classification_errors: string[];
   risk_policy_version: number;
@@ -110,8 +110,8 @@ export type ReleaseReadinessSnapshot = {
   critic_target_revision: string;
   critic_recommendation: string;
   evidence_set_sha256: string;
-  declared_risk_codes: RiskCode[];
-  derived_risk_codes: RiskCode[];
+  declared_risk_codes: string[];
+  derived_risk_codes: string[];
   resolved_risk_codes: RiskCode[];
   classification_errors: string[];
   tier: RiskTier;
@@ -133,6 +133,11 @@ const allCodes = new Set<string>([...DEFAULT_CLOSED_CODES, ...ELEVATED_CODES, "N
 
 function canonicalCodes(codes: RiskCode[]) {
   return [...new Set(codes)].sort() as RiskCode[];
+}
+
+export function canonicalRiskInputs(value: unknown) {
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) return [];
+  return [...new Set(value as string[])].sort();
 }
 
 export function parseRiskCodes(value: unknown): { codes: RiskCode[]; errors: string[] } {

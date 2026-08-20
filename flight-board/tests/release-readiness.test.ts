@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import {
+  canonicalRiskInputs,
   classifyRiskCodes,
   effectiveNotBefore,
   parseRiskCodes,
@@ -12,6 +13,15 @@ import {
   validateSatisfactionPath,
   type ReleaseReadinessSnapshot,
 } from "../lib/release-readiness";
+
+test("unknown risk inputs remain exact and fail closed across reevaluation", () => {
+  const declared = canonicalRiskInputs(["UNKNOWN_CODE", "UNKNOWN_CODE"]);
+  const derived = canonicalRiskInputs(["UNKNOWN_CODE"]);
+  assert.deepEqual(declared, ["UNKNOWN_CODE"]);
+  assert.deepEqual(classifyRiskCodes(declared, derived), {
+    tier: "DEFAULT_CLOSED", codes: [], errors: ["RISK_CODE_UNKNOWN"], delay_hours: 24,
+  });
+});
 
 const baseSnapshot: ReleaseReadinessSnapshot = {
   schema: "steer.gate-readiness-snapshot/v1",
