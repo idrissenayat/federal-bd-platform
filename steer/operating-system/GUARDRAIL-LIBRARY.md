@@ -23,7 +23,7 @@ Enforcement levels:
 | CORE-07 | Exam files are frozen at ◆2: any diff touching exams/ after a GATE 2 line exists fails unless authored/approved by the Tech Lead | AUTO |
 | CORE-08 | The Critic derives tags from brief AND final diff; a domain in the diff but missing from the tags blocks ◆3 and auto-applies the tag | AGENT |
 | CORE-09 | The gauntlet's own wall-clock stays under budget (10 min); a run over budget is itself a red check assigned to the Platform Engineer | AUTO |
-| CORE-10 | Gate signature timestamps respect the mandated separations (sessions apart for ◆1/◆2; the ◆3 gap; 24h default-closed) | AUTO |
+| CORE-10 | Gate signatures respect mandated separation: sessions apart for ◆1/◆2; at ◆3 an immutable exact-candidate readiness snapshot enforces 0h default-open, 4h elevated, or 24h default-closed (or the complete qualified-human/team path), with no automatic ripening | AUTO |
 | CORE-11 | Gate approval evidence ties an authenticated approver to the exact brief/exam/commit; a typed timestamp alone never satisfies a gate | AUTO |
 
 ## Security (#security)

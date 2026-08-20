@@ -1,0 +1,44 @@
+{
+  "automatic_ripening": false,
+  "default_closed_codes": [
+    "AUTHN_AUTHZ_SESSION",
+    "MONEY_MOVEMENT",
+    "PERSONAL_DATA_NEW_USE",
+    "DESTRUCTIVE_DATA",
+    "MASS_COMMUNICATION",
+    "GOVERNANCE_CONTROL",
+    "CRITIC_BLOCK_OVERRIDE"
+  ],
+  "delays_hours": {
+    "DEFAULT_CLOSED": 24,
+    "DEFAULT_OPEN": 0,
+    "ELEVATED": 4
+  },
+  "elevated_codes": [
+    "NONDESTRUCTIVE_PERSISTENCE",
+    "EXTERNAL_PROVIDER",
+    "AVAILABILITY_INFRA",
+    "SECURITY_NON_AUTH",
+    "PRIVACY_NO_NEW_DATA",
+    "LEGAL_CLAIM",
+    "ACCESSIBILITY_UI",
+    "COST_NON_CHARGE"
+  ],
+  "path_rules": {
+    "DEFAULT_CLOSED_SOLO_CALIBRATION": ["TIME"],
+    "DEFAULT_CLOSED_TEAM": ["QUALIFIED_TEAM"],
+    "DEFAULT_OPEN": ["TIME"],
+    "ELEVATED": ["TIME", "QUALIFIED_HUMAN"]
+  },
+  "role_rules": {
+    "Finance_Owner": ["MONEY_MOVEMENT", "COST_NON_CHARGE"],
+    "Legal_Owner": ["LEGAL_CLAIM"],
+    "Platform_Ops_Lead": ["DESTRUCTIVE_DATA", "NONDESTRUCTIVE_PERSISTENCE", "AVAILABILITY_INFRA"],
+    "Privacy_Owner": ["PERSONAL_DATA_NEW_USE", "PRIVACY_NO_NEW_DATA"],
+    "Product_Designer": ["ACCESSIBILITY_UI"],
+    "Security_Owner": ["AUTHN_AUTHZ_SESSION", "SECURITY_NON_AUTH", "EXTERNAL_PROVIDER", "CRITIC_BLOCK_OVERRIDE"]
+  },
+  "schema": "steer.release-readiness-policy/v1",
+  "unknown_or_mismatch": "DEFAULT_CLOSED",
+  "version": 1
+}

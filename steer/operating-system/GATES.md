@@ -8,7 +8,7 @@
 |---|---|---|---|
 | **◆1 Spec** | The Intent Brief: worth doing, clearly defined, testable, **tagged, design intent included** | Product Lead | You, after a full re-read, in a later session than the writing |
 | **◆2 Exam** | Tests, evals & guardrails fully express "correct" | Tech Lead | You, in a different session than Gate 1 |
-| **◆3 Ship** | The verified build should reach users | Product Lead + Tech Lead + every tagged domain owner | You, ≥ a few hours after the build; 24h if default-closed |
+| **◆3 Ship** | The verified build should reach users | Product Lead + Tech Lead + every required domain owner | You, after system-enforced risk-based readiness |
 
 **The independent-perspective rule at ◆3.** An error shared by the brief and the exam cannot be
 caught by the people who wrote them. Every ◆3 therefore includes one reader who
@@ -26,8 +26,8 @@ GATE 1: APPROVED — 2026-08-14T09:12 — IE
 
 A typed signature line is the human-readable audit note, not the sole proof. A gate is passed only when the repository also records an authenticated reviewer/approver identity and the required CI check confirms the right approver, artifact version, and sequence. Solo mode records the authenticated account plus the cooling-off check. Agents must treat an
 unsigned or unverified brief/exam as a hard stop, and the gauntlet verifies that gate timestamps
-respect the mandated separations (different sessions for ◆1/◆2; the ◆3 gap;
-24h for default-closed). Protect the approval workflow and required checks with branch rules; do not accept a timestamp edited by the Builder as evidence. Batch-signing is machine-visible.
+respect the mandated separations (different sessions for ◆1/◆2; the ◆3
+risk-based readiness path). Protect the approval workflow and required checks with branch rules; do not accept a client timer or timestamp edited by the Builder as evidence. Batch-signing is machine-visible.
 
 The three gates are **three decision points**, not necessarily three meetings or three different people. Minimum Viable STEER may use one human with time separation; higher-risk or team work adds named independent humans.
 
@@ -67,6 +67,32 @@ Items matching any of these **never auto-ship** and get the long cooling-off
 - Overriding a blocker finding from the independent ◆3 reader
 
 Everything else is **default-open**: green gauntlet + Gate 3 signature ships it.
+
+## Gate 3 release-readiness policy v1
+
+For receipts created after policy v1 activation, the server freezes an immutable
+`steer.gate-readiness-snapshot/v1` after exact staging verification and a passing
+exact-target Critic result. It applies one closed vocabulary:
+
+- `DEFAULT_OPEN`: 0-hour time separation (`NONE` only).
+- `ELEVATED`: 4-hour time separation, or one distinct qualified enrolled human for
+  every derived domain.
+- `DEFAULT_CLOSED`: 24-hour solo separation, or in team mode Product Lead, Tech
+  Lead, every required domain owner, and at least two distinct eligible humans.
+
+Authentication/authorization/session, money movement, new personal-data use,
+destructive data, mass communication, governance-control changes, and overriding a
+Critic blocker are always default-closed. Non-destructive persistence, external
+providers, availability infrastructure, non-auth security, privacy without new data,
+legal claims, accessibility UI, and non-charge cost changes are elevated. Missing,
+unknown, malformed, mismatched, or under-tagged inputs fail closed.
+
+The clock starts at the snapshot-bound staging verification completion time. Passing
+time or receiving a signature never creates a ruling automatically: an authenticated
+human must explicitly finalize, and the server rechecks the exact candidate, Critic,
+current roles, selected path, and policy. Material drift invalidates the snapshot and
+requires a replacement snapshot, session, and intent. Historical receipts retain the
+policy and timing under which they were created; this policy never accelerates them.
 
 ## The hotfix lane
 

@@ -1,0 +1,901 @@
+{
+  "schema": "steer.issue74-rollback-pending/v1",
+  "run_id": "rr74-rb-v38-1787194640949",
+  "generated_at": "2026-08-20T02:57:33.689Z",
+  "target": {
+    "staging_url": "https://steer-flight-board-staging.idriss-enayat.chatgpt.site",
+    "source_revision": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+    "build_sha256": "ede408b3c2ac6f238829d35e5643a10419fddfa630b6b49793f6116f94f698a8",
+    "migration_set_sha256": "6ef5c16a1fabdad73ce952583f67d03b4f65012e90bc6307f255af49fab68511",
+    "runtime_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+    "path": "steer/evidence/0074-real-lifecycle-case-contract.md",
+    "sha256": "5b4bc63646fcb11ee494c507018b36cc95f8f2761da4eae76d551109bdab74d0",
+    "commit_object_sha256": "c62ac8388fe24fbf5b307ae6171e4dcaf17c55dae90153fbfaf321b6904e9378",
+    "brief": {
+      "path": "steer/briefs/0074-risk-based-gate3-readiness.md",
+      "commit": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+      "sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5"
+    },
+    "exam": {
+      "path": "steer/exams/0074-risk-based-gate3-readiness.md",
+      "commit": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+      "sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6"
+    },
+    "case_contract_sha256": "5b4bc63646fcb11ee494c507018b36cc95f8f2761da4eae76d551109bdab74d0"
+  },
+  "pending": {
+    "case_id": "RR74-ROLLBACK-PENDING",
+    "item_id": 478,
+    "snapshot_id": "4271640aef20204d04991dcd376ee889b7532540bb517ee584633ca13f60a513",
+    "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+    "packet": {
+      "brief_path": "steer/briefs/0074-risk-based-gate3-readiness.md",
+      "brief_commit": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+      "brief_sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5",
+      "exam_path": "steer/exams/0074-risk-based-gate3-readiness.md",
+      "exam_commit": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+      "exam_sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6",
+      "implementation_commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+      "build_sha256": "ede408b3c2ac6f238829d35e5643a10419fddfa630b6b49793f6116f94f698a8",
+      "migration_set_sha256": "6ef5c16a1fabdad73ce952583f67d03b4f65012e90bc6307f255af49fab68511",
+      "runtime_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+      "verification_receipt_id": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+      "verification_receipt_sha256": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+      "declared_risk_codes": [
+        "NONE"
+      ],
+      "operating_mode": "SOLO_CALIBRATION",
+      "satisfaction_path": "TIME"
+    },
+    "oracle": {
+      "tier": "DEFAULT_OPEN",
+      "readiness": "READY",
+      "intent_state": "PENDING_PROOF",
+      "gate_effects": 0
+    },
+    "projection_sha256": "1c7d82e5ee9a7f9243fb47b3a9a9a102a955fa17367b34af36c84228989e82a4",
+    "projection": {
+      "schema": "steer.issue74-real-lifecycle-projection/v2",
+      "item_id": 478,
+      "snapshots": [
+        {
+          "snapshot_id": "4271640aef20204d04991dcd376ee889b7532540bb517ee584633ca13f60a513",
+          "snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+          "current_state": "ACTIVE",
+          "invalidation_reason": null,
+          "created_at": "2026-08-20T02:57:25.597Z"
+        }
+      ],
+      "readiness_events": [
+        {
+          "snapshot_id": "4271640aef20204d04991dcd376ee889b7532540bb517ee584633ca13f60a513",
+          "event_type": "SNAPSHOT_FROZEN",
+          "event_sha256": "8a4d9dbb4104d36e2ed49d8012448d140e98dbc2947e265dbf8e5ba5ec1ae171",
+          "created_at": "2026-08-20T02:57:25.597Z"
+        }
+      ],
+      "countersignatures": [],
+      "intents": [
+        {
+          "intent_id": "01a01d1a-12e3-7d5a-b454-2fc477a56f03",
+          "intent_sha256": "d057d79edfa3537182433962a3302e99f52e829d7042eae0d3aafaf68d797e9e",
+          "current_state": "EFFECTIVE",
+          "current_sequence": 3,
+          "current_event_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "readiness_snapshot_sha256": "",
+          "created_at": "2026-08-20T02:57:23.115Z",
+          "updated_at": "2026-08-20T02:57:23.115Z"
+        },
+        {
+          "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+          "intent_sha256": "581cd562ae04f9cc886b97f65ccb8cf1d3f34bf64623693b085b34d53ddfe128",
+          "current_state": "PENDING_PROOF",
+          "current_sequence": 1,
+          "current_event_sha256": "20ed7cd822e6b4dbb51304c17af6bfa2b6e88a72e7593fff306102ba4cfb75b6",
+          "readiness_snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+          "created_at": "2026-08-20T02:57:31.005Z",
+          "updated_at": "2026-08-20T02:57:31.005Z"
+        }
+      ],
+      "proof_events": [
+        {
+          "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+          "sequence": 1,
+          "event_type": "INTENT_RECORDED",
+          "resulting_state": "PENDING_PROOF",
+          "event_sha256": "20ed7cd822e6b4dbb51304c17af6bfa2b6e88a72e7593fff306102ba4cfb75b6",
+          "created_at": "2026-08-20T02:57:31.005Z"
+        }
+      ],
+      "decisions": [
+        {
+          "gate": "Gate 1 pending",
+          "decision": "APPROVED",
+          "evidence_revision": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+          "evidence_sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5",
+          "decision_intent_id": null,
+          "created_at": "2026-08-20T02:57:23.115Z"
+        },
+        {
+          "gate": "Gate 2 pending",
+          "decision": "APPROVED",
+          "evidence_revision": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+          "evidence_sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6",
+          "decision_intent_id": "01a01d1a-12e3-7d5a-b454-2fc477a56f03",
+          "created_at": "2026-08-20T02:57:23.115Z"
+        }
+      ],
+      "activity": [
+        {
+          "action": "agent_review",
+          "detail": "PASS · signed issue #74 hosted fixture review recorded",
+          "created_at": "2026-08-20T02:57:23.115Z"
+        },
+        {
+          "action": "decision_intent",
+          "detail": "Gate 3 pending intent recorded as PENDING_PROOF under SOLO_CALIBRATION; no gate effect before issuer proof and authoritative readiness snapshot ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037.",
+          "created_at": "2026-08-20T02:57:31.005Z"
+        }
+      ],
+      "telemetry": [
+        {
+          "metric_name": "steer_release_risk_classification_total",
+          "label_name": "tier",
+          "label_value": "DEFAULT_OPEN",
+          "value": 1,
+          "case_id": "RR74-ROLLBACK-PENDING",
+          "observed_at": "2026-08-20T02:57:25.757Z"
+        },
+        {
+          "metric_name": "steer_release_snapshot_creation_latency_ms",
+          "label_name": "outcome",
+          "label_value": "created",
+          "value": 818,
+          "case_id": "RR74-ROLLBACK-PENDING",
+          "observed_at": "2026-08-20T02:57:25.853Z"
+        },
+        {
+          "metric_name": "steer_release_readiness_outcome_total",
+          "label_name": "outcome",
+          "label_value": "READY",
+          "value": 1,
+          "case_id": "RR74-ROLLBACK-PENDING",
+          "observed_at": "2026-08-20T02:57:26.116Z"
+        },
+        {
+          "metric_name": "steer_release_readiness_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 265,
+          "case_id": "RR74-ROLLBACK-PENDING",
+          "observed_at": "2026-08-20T02:57:26.213Z"
+        },
+        {
+          "metric_name": "steer_release_snapshot_creation_latency_ms",
+          "label_name": "outcome",
+          "label_value": "replay",
+          "value": 539,
+          "case_id": "RR74-ROLLBACK-PENDING",
+          "observed_at": "2026-08-20T02:57:27.774Z"
+        },
+        {
+          "metric_name": "steer_release_readiness_outcome_total",
+          "label_name": "outcome",
+          "label_value": "READY",
+          "value": 1,
+          "case_id": "RR74-ROLLBACK-PENDING",
+          "observed_at": "2026-08-20T02:57:28.049Z"
+        },
+        {
+          "metric_name": "steer_release_readiness_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 279,
+          "case_id": "RR74-ROLLBACK-PENDING",
+          "observed_at": "2026-08-20T02:57:28.148Z"
+        },
+        {
+          "metric_name": "steer_release_readiness_outcome_total",
+          "label_name": "outcome",
+          "label_value": "READY",
+          "value": 1,
+          "case_id": "RR74-ROLLBACK-PENDING",
+          "observed_at": "2026-08-20T02:57:31.377Z"
+        },
+        {
+          "metric_name": "steer_release_readiness_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 271,
+          "case_id": "RR74-ROLLBACK-PENDING",
+          "observed_at": "2026-08-20T02:57:31.473Z"
+        },
+        {
+          "metric_name": "steer_release_readiness_outcome_total",
+          "label_name": "outcome",
+          "label_value": "READY",
+          "value": 1,
+          "case_id": "RR74-ROLLBACK-PENDING",
+          "observed_at": "2026-08-20T02:57:32.720Z"
+        },
+        {
+          "metric_name": "steer_release_readiness_latency_ms",
+          "label_name": "",
+          "label_value": "",
+          "value": 283,
+          "case_id": "RR74-ROLLBACK-PENDING",
+          "observed_at": "2026-08-20T02:57:32.812Z"
+        }
+      ]
+    },
+    "steps": {
+      "fixture": {
+        "status": 201,
+        "latency_ms": 1154.75,
+        "attempts": [
+          {
+            "status": 201,
+            "latency_ms": 1154.75,
+            "transport_error": null
+          }
+        ],
+        "body": {
+          "item_id": 478,
+          "item_key": "RR74-B5E6E9A6B62B",
+          "item_updated_at": "2026-08-20T02:57:23.115Z",
+          "candidate_builder_id": "rr74-builder-b5e6e9a6b62b4bb6",
+          "intended_submitter_id": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA",
+          "critic_assignment_id": "965bb19a61ab2661f2e46a083aaf9b3bb8ba42b193ab5645374ef395cfdf9a11",
+          "target_manifest_sha256": "303eff67c44882225bb145d8fa7f15436bf495dd597e6567a06431de26e34807",
+          "replay": false
+        }
+      },
+      "receipt": {
+        "status": 201,
+        "latency_ms": 911.8,
+        "attempts": [
+          {
+            "status": 201,
+            "latency_ms": 911.8,
+            "transport_error": null
+          }
+        ],
+        "body": {
+          "receipt_id": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+          "receipt_sha256": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+          "receipt": {
+            "schema": "steer.staging-verification-receipt/v1",
+            "environment": "staging",
+            "item_id": 478,
+            "item_key": "RR74-B5E6E9A6B62B",
+            "item_updated_at": "2026-08-20T02:57:23.115Z",
+            "pod_id": "steer-flight-team",
+            "brief_path": "steer/briefs/0074-risk-based-gate3-readiness.md",
+            "brief_commit": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+            "brief_sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5",
+            "exam_path": "steer/exams/0074-risk-based-gate3-readiness.md",
+            "exam_commit": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+            "exam_sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6",
+            "source_revision": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+            "build_sha256": "ede408b3c2ac6f238829d35e5643a10419fddfa630b6b49793f6116f94f698a8",
+            "migration_set_sha256": "6ef5c16a1fabdad73ce952583f67d03b4f65012e90bc6307f255af49fab68511",
+            "runtime_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+            "case_ledger_sha256": "cb0d4df38dec050047dba699293da3bb48d93fdd45ef1b365a9762a031624951",
+            "candidate_builder_id": "rr74-builder-b5e6e9a6b62b4bb6",
+            "intended_submitter_id": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA",
+            "completed_at": "2026-08-20T02:56:22.186Z",
+            "key_id": "staging-decision-v1",
+            "key_version": 1
+          },
+          "service_signature": "a89fa8f3eec616b1796d76fffdfd29ba6c6e16f9e63d14d3564de5e0c99144b9d4e08e235fd4e1d770a639ae8d48581d15acb2a16dae6b8d71b0f01bd68eed02",
+          "replay": false
+        }
+      },
+      "snapshot": {
+        "status": 201,
+        "latency_ms": 2095.77,
+        "attempts": [
+          {
+            "status": 201,
+            "latency_ms": 2095.77,
+            "transport_error": null
+          }
+        ],
+        "body": {
+          "snapshot": {
+            "brief_commit": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+            "brief_path": "steer/briefs/0074-risk-based-gate3-readiness.md",
+            "brief_sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5",
+            "build_sha256": "ede408b3c2ac6f238829d35e5643a10419fddfa630b6b49793f6116f94f698a8",
+            "candidate_builder_eligible": true,
+            "candidate_builder_id": "rr74-builder-b5e6e9a6b62b4bb6",
+            "classification_errors": [],
+            "created_at": "2026-08-20T02:57:23.115Z",
+            "created_by": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA",
+            "critic_assignment_id": "965bb19a61ab2661f2e46a083aaf9b3bb8ba42b193ab5645374ef395cfdf9a11",
+            "critic_recommendation": "PASS",
+            "critic_review_id": 503,
+            "critic_target_revision": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+            "declared_risk_codes": [
+              "NONE"
+            ],
+            "delay_hours": 0,
+            "derived_risk_codes": [
+              "NONE"
+            ],
+            "effective_not_before": "2026-08-20T02:56:22.186Z",
+            "evidence_set_sha256": "303eff67c44882225bb145d8fa7f15436bf495dd597e6567a06431de26e34807",
+            "exam_commit": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+            "exam_path": "steer/exams/0074-risk-based-gate3-readiness.md",
+            "exam_sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6",
+            "implementation_commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+            "intended_submitter_id": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA",
+            "migration_set_sha256": "6ef5c16a1fabdad73ce952583f67d03b4f65012e90bc6307f255af49fab68511",
+            "operating_mode": "SOLO_CALIBRATION",
+            "pod_id": "steer-flight-team",
+            "predecessor_snapshot_sha256": null,
+            "required_roles": [
+              "Product Lead",
+              "Tech Lead"
+            ],
+            "resolved_risk_codes": [
+              "NONE"
+            ],
+            "risk_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+            "risk_policy_version": 1,
+            "runtime_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+            "satisfaction_path": "TIME",
+            "schema": "steer.gate-readiness-snapshot/v1",
+            "snapshot_id": "4271640aef20204d04991dcd376ee889b7532540bb517ee584633ca13f60a513",
+            "tier": "DEFAULT_OPEN",
+            "verification_completed_at": "2026-08-20T02:56:22.186Z",
+            "verification_receipt_id": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+            "verification_receipt_sha256": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+            "work_item_id": 478,
+            "work_item_key": "RR74-B5E6E9A6B62B",
+            "work_item_updated_at": "2026-08-20T02:57:23.115Z"
+          },
+          "snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+          "status": "READY",
+          "reason": "TIME_PATH_SATISFIED",
+          "missing_roles": [],
+          "signatures": [],
+          "completed_controls": [
+            "Exact candidate",
+            "Signed staging verification",
+            "Passing signed Critic",
+            "Risk policy v1",
+            "Time separation"
+          ],
+          "server_now": "2026-08-20T02:57:25.910Z",
+          "replay": false
+        }
+      },
+      "snapshot_replay": {
+        "status": 200,
+        "latency_ms": 1946.52,
+        "attempts": [
+          {
+            "status": 200,
+            "latency_ms": 1946.52,
+            "transport_error": null
+          }
+        ],
+        "body": {
+          "snapshot": {
+            "brief_commit": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+            "brief_path": "steer/briefs/0074-risk-based-gate3-readiness.md",
+            "brief_sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5",
+            "build_sha256": "ede408b3c2ac6f238829d35e5643a10419fddfa630b6b49793f6116f94f698a8",
+            "candidate_builder_eligible": true,
+            "candidate_builder_id": "rr74-builder-b5e6e9a6b62b4bb6",
+            "classification_errors": [],
+            "created_at": "2026-08-20T02:57:23.115Z",
+            "created_by": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA",
+            "critic_assignment_id": "965bb19a61ab2661f2e46a083aaf9b3bb8ba42b193ab5645374ef395cfdf9a11",
+            "critic_recommendation": "PASS",
+            "critic_review_id": 503,
+            "critic_target_revision": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+            "declared_risk_codes": [
+              "NONE"
+            ],
+            "delay_hours": 0,
+            "derived_risk_codes": [
+              "NONE"
+            ],
+            "effective_not_before": "2026-08-20T02:56:22.186Z",
+            "evidence_set_sha256": "303eff67c44882225bb145d8fa7f15436bf495dd597e6567a06431de26e34807",
+            "exam_commit": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+            "exam_path": "steer/exams/0074-risk-based-gate3-readiness.md",
+            "exam_sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6",
+            "implementation_commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+            "intended_submitter_id": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA",
+            "migration_set_sha256": "6ef5c16a1fabdad73ce952583f67d03b4f65012e90bc6307f255af49fab68511",
+            "operating_mode": "SOLO_CALIBRATION",
+            "pod_id": "steer-flight-team",
+            "predecessor_snapshot_sha256": null,
+            "required_roles": [
+              "Product Lead",
+              "Tech Lead"
+            ],
+            "resolved_risk_codes": [
+              "NONE"
+            ],
+            "risk_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+            "risk_policy_version": 1,
+            "runtime_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+            "satisfaction_path": "TIME",
+            "schema": "steer.gate-readiness-snapshot/v1",
+            "snapshot_id": "4271640aef20204d04991dcd376ee889b7532540bb517ee584633ca13f60a513",
+            "tier": "DEFAULT_OPEN",
+            "verification_completed_at": "2026-08-20T02:56:22.186Z",
+            "verification_receipt_id": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+            "verification_receipt_sha256": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+            "work_item_id": 478,
+            "work_item_key": "RR74-B5E6E9A6B62B",
+            "work_item_updated_at": "2026-08-20T02:57:23.115Z"
+          },
+          "snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+          "status": "READY",
+          "reason": "TIME_PATH_SATISFIED",
+          "missing_roles": [],
+          "signatures": [],
+          "completed_controls": [
+            "Exact candidate",
+            "Signed staging verification",
+            "Passing signed Critic",
+            "Risk policy v1",
+            "Time separation"
+          ],
+          "server_now": "2026-08-20T02:57:27.831Z",
+          "replay": true
+        }
+      },
+      "signatures": [],
+      "package": {
+        "status": 201,
+        "latency_ms": 922.96,
+        "attempts": [
+          {
+            "status": 201,
+            "latency_ms": 922.96,
+            "transport_error": null
+          }
+        ],
+        "body": {
+          "package": {
+            "schema": "steer-decision-package/v1",
+            "package_id": "01a01d1a-2a2f-78a6-aaac-fba385e91773",
+            "item_key": "RR74-B5E6E9A6B62B",
+            "decision_kind": "Gate 3 pending",
+            "target": {
+              "repository_uri": "https://github.com/idrissenayat/federal-bd-platform",
+              "commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+              "path": "steer/evidence/0074-real-lifecycle-case-contract.md",
+              "body_sha256": "5b4bc63646fcb11ee494c507018b36cc95f8f2761da4eae76d551109bdab74d0"
+            },
+            "recommendation": "APPROVED",
+            "summary": "Exact hosted fixture candidate passed its bounded independent review.",
+            "proposed_reasoning": "I reviewed the exact Gate 3 pending evidence at fc7739ad780b31dfc18c1157890ac99eccd3e663 and find it sufficient for this gate.",
+            "evidence": [
+              {
+                "url": "https://github.com/idrissenayat/federal-bd-platform/blob/fc7739ad780b31dfc18c1157890ac99eccd3e663/steer/evidence/0074-real-lifecycle-case-contract.md",
+                "revision": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+                "sha256": "5b4bc63646fcb11ee494c507018b36cc95f8f2761da4eae76d551109bdab74d0"
+              }
+            ],
+            "risks": [],
+            "missing": [],
+            "required_role": "Product Lead",
+            "consequence": "If deliberately submitted and later proven effective, the work may advance under the gate policy.",
+            "preparation": {
+              "principal_id": "steer-critic-preparation-v1",
+              "model": "recorded-agent-review",
+              "config_version": "str027-package-v1",
+              "evidence_set_sha256": "993b560cbb2d322b08ab5886e57fc01c98c0b428d486dc7c006c0ce22521bcdd"
+            },
+            "prepared_at": "2026-08-20T02:57:29.135Z"
+          },
+          "package_sha256": "6b4d6f64052cf2f7cfa5502de40aa1d7687d90764b8bf2732fc81197720edc59",
+          "advisory": true,
+          "decision_created": false
+        }
+      },
+      "session": {
+        "status": 201,
+        "latency_ms": 901.82,
+        "attempts": [
+          {
+            "status": 201,
+            "latency_ms": 901.82,
+            "transport_error": null
+          }
+        ],
+        "body": {
+          "session_id": "01a01d1a-2dbb-7979-848a-0fcebf62e031",
+          "item_key": "RR74-B5E6E9A6B62B",
+          "decision_kind": "Gate 3 pending",
+          "expires_at": "2026-08-20T06:57:30.043Z",
+          "one_intent_only": true
+        }
+      },
+      "intent": {
+        "status": 201,
+        "latency_ms": 1533.97,
+        "attempts": [
+          {
+            "status": 201,
+            "latency_ms": 1533.97,
+            "transport_error": null
+          }
+        ],
+        "body": {
+          "schema": "steer-gate-receipt-export/v1",
+          "intent": {
+            "schema": "steer-decision-intent/v1",
+            "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+            "receipt_id": "01a01d1a-338a-7483-8e25-18aaaa17b774",
+            "package_id": "01a01d1a-2a2f-78a6-aaac-fba385e91773",
+            "item_key": "RR74-B5E6E9A6B62B",
+            "decision_kind": "Gate 3 pending",
+            "decision": "APPROVED",
+            "final_reasoning": "The exact issue #74 hosted candidate satisfies the recorded release controls.",
+            "draft_sha256": "6b4d6f64052cf2f7cfa5502de40aa1d7687d90764b8bf2732fc81197720edc59",
+            "evidence_set_sha256": "993b560cbb2d322b08ab5886e57fc01c98c0b428d486dc7c006c0ce22521bcdd",
+            "target": {
+              "repository_uri": "https://github.com/idrissenayat/federal-bd-platform",
+              "commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+              "path": "steer/evidence/0074-real-lifecycle-case-contract.md",
+              "body_sha256": "5b4bc63646fcb11ee494c507018b36cc95f8f2761da4eae76d551109bdab74d0"
+            },
+            "submitter_principal": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA",
+            "submitter_role": "Product Lead · interim Tech Lead",
+            "decision_session_id": "01a01d1a-2dbb-7979-848a-0fcebf62e031",
+            "submitted_at": "2026-08-20T02:57:31.005Z",
+            "effective_not_before": "2026-08-20T02:56:22.186Z",
+            "operating_mode": "SOLO_CALIBRATION",
+            "signer_policy_version": 1,
+            "required_countersignatures": 0,
+            "readiness_snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+            "readiness_authority": {
+              "schema": "steer.gate-readiness-authority/v1",
+              "snapshot_id": "4271640aef20204d04991dcd376ee889b7532540bb517ee584633ca13f60a513",
+              "snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+              "work_item_id": 478,
+              "work_item_key": "RR74-B5E6E9A6B62B",
+              "pod_id": "steer-flight-team",
+              "brief_path": "steer/briefs/0074-risk-based-gate3-readiness.md",
+              "brief_commit": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+              "brief_sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5",
+              "exam_path": "steer/exams/0074-risk-based-gate3-readiness.md",
+              "exam_commit": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+              "exam_sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6",
+              "implementation_commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+              "build_sha256": "ede408b3c2ac6f238829d35e5643a10419fddfa630b6b49793f6116f94f698a8",
+              "migration_set_sha256": "6ef5c16a1fabdad73ce952583f67d03b4f65012e90bc6307f255af49fab68511",
+              "runtime_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+              "verification_receipt_id": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+              "verification_receipt_sha256": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+              "verification_completed_at": "2026-08-20T02:56:22.186Z",
+              "critic_assignment_id": "965bb19a61ab2661f2e46a083aaf9b3bb8ba42b193ab5645374ef395cfdf9a11",
+              "critic_review_id": 503,
+              "critic_target_revision": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+              "critic_recommendation": "PASS",
+              "evidence_set_sha256": "303eff67c44882225bb145d8fa7f15436bf495dd597e6567a06431de26e34807",
+              "declared_risk_codes": [
+                "NONE"
+              ],
+              "derived_risk_codes": [
+                "NONE"
+              ],
+              "resolved_risk_codes": [
+                "NONE"
+              ],
+              "classification_errors": [],
+              "risk_policy_version": 1,
+              "risk_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+              "tier": "DEFAULT_OPEN",
+              "operating_mode": "SOLO_CALIBRATION",
+              "satisfaction_path": "TIME",
+              "delay_hours": 0,
+              "verification_authority": "SIGNED_STAGING_RECEIPT",
+              "effective_not_before": "2026-08-20T02:56:22.186Z",
+              "required_roles": [
+                "Product Lead",
+                "Tech Lead"
+              ],
+              "candidate_builder_id": "rr74-builder-b5e6e9a6b62b4bb6",
+              "candidate_builder_eligible": true,
+              "intended_submitter_id": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA"
+            },
+            "idempotency_key": "01a01d1a-2e0a-7dca-b884-32bc433743ce",
+            "sequence": 1
+          },
+          "state": "PENDING_PROOF",
+          "effective": false,
+          "latest_event_sha256": "20ed7cd822e6b4dbb51304c17af6bfa2b6e88a72e7593fff306102ba4cfb75b6",
+          "notice": "Pending record only. This receipt has no Gate or RAT effect."
+        }
+      },
+      "readiness": {
+        "status": 200,
+        "latency_ms": 1276.02,
+        "attempts": [
+          {
+            "status": 200,
+            "latency_ms": 1276.02,
+            "transport_error": null
+          }
+        ],
+        "body": {
+          "snapshot": {
+            "brief_commit": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+            "brief_path": "steer/briefs/0074-risk-based-gate3-readiness.md",
+            "brief_sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5",
+            "build_sha256": "ede408b3c2ac6f238829d35e5643a10419fddfa630b6b49793f6116f94f698a8",
+            "candidate_builder_eligible": true,
+            "candidate_builder_id": "rr74-builder-b5e6e9a6b62b4bb6",
+            "classification_errors": [],
+            "created_at": "2026-08-20T02:57:23.115Z",
+            "created_by": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA",
+            "critic_assignment_id": "965bb19a61ab2661f2e46a083aaf9b3bb8ba42b193ab5645374ef395cfdf9a11",
+            "critic_recommendation": "PASS",
+            "critic_review_id": 503,
+            "critic_target_revision": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+            "declared_risk_codes": [
+              "NONE"
+            ],
+            "delay_hours": 0,
+            "derived_risk_codes": [
+              "NONE"
+            ],
+            "effective_not_before": "2026-08-20T02:56:22.186Z",
+            "evidence_set_sha256": "303eff67c44882225bb145d8fa7f15436bf495dd597e6567a06431de26e34807",
+            "exam_commit": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+            "exam_path": "steer/exams/0074-risk-based-gate3-readiness.md",
+            "exam_sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6",
+            "implementation_commit": "fc7739ad780b31dfc18c1157890ac99eccd3e663",
+            "intended_submitter_id": "n1nolTuuRuaDCkVyEZZFUuljNSDGP0rlrc53rjtGaXPIJE8b1YXiJA",
+            "migration_set_sha256": "6ef5c16a1fabdad73ce952583f67d03b4f65012e90bc6307f255af49fab68511",
+            "operating_mode": "SOLO_CALIBRATION",
+            "pod_id": "steer-flight-team",
+            "predecessor_snapshot_sha256": null,
+            "required_roles": [
+              "Product Lead",
+              "Tech Lead"
+            ],
+            "resolved_risk_codes": [
+              "NONE"
+            ],
+            "risk_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+            "risk_policy_version": 1,
+            "runtime_policy_sha256": "8ceebba8473e3729e51c12aabaef1dcdf89a076200a11a898a9716a1e158de9f",
+            "satisfaction_path": "TIME",
+            "schema": "steer.gate-readiness-snapshot/v1",
+            "snapshot_id": "4271640aef20204d04991dcd376ee889b7532540bb517ee584633ca13f60a513",
+            "tier": "DEFAULT_OPEN",
+            "verification_completed_at": "2026-08-20T02:56:22.186Z",
+            "verification_receipt_id": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+            "verification_receipt_sha256": "ede722bad79404f2dbc8126632284fdfdd8f3b2861da50053e3ba5715a61a307",
+            "work_item_id": 478,
+            "work_item_key": "RR74-B5E6E9A6B62B",
+            "work_item_updated_at": "2026-08-20T02:57:23.115Z"
+          },
+          "snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+          "status": "READY",
+          "reason": "TIME_PATH_SATISFIED",
+          "missing_roles": [],
+          "signatures": [],
+          "completed_controls": [
+            "Exact candidate",
+            "Signed staging verification",
+            "Passing signed Critic",
+            "Risk policy v1",
+            "Time separation"
+          ],
+          "server_now": "2026-08-20T02:57:32.494Z"
+        }
+      },
+      "projection": {
+        "status": 200,
+        "latency_ms": 755.42,
+        "attempts": [
+          {
+            "status": 200,
+            "latency_ms": 755.42,
+            "transport_error": null
+          }
+        ],
+        "body": {
+          "projection": {
+            "schema": "steer.issue74-real-lifecycle-projection/v2",
+            "item_id": 478,
+            "snapshots": [
+              {
+                "snapshot_id": "4271640aef20204d04991dcd376ee889b7532540bb517ee584633ca13f60a513",
+                "snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+                "current_state": "ACTIVE",
+                "invalidation_reason": null,
+                "created_at": "2026-08-20T02:57:25.597Z"
+              }
+            ],
+            "readiness_events": [
+              {
+                "snapshot_id": "4271640aef20204d04991dcd376ee889b7532540bb517ee584633ca13f60a513",
+                "event_type": "SNAPSHOT_FROZEN",
+                "event_sha256": "8a4d9dbb4104d36e2ed49d8012448d140e98dbc2947e265dbf8e5ba5ec1ae171",
+                "created_at": "2026-08-20T02:57:25.597Z"
+              }
+            ],
+            "countersignatures": [],
+            "intents": [
+              {
+                "intent_id": "01a01d1a-12e3-7d5a-b454-2fc477a56f03",
+                "intent_sha256": "d057d79edfa3537182433962a3302e99f52e829d7042eae0d3aafaf68d797e9e",
+                "current_state": "EFFECTIVE",
+                "current_sequence": 3,
+                "current_event_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "readiness_snapshot_sha256": "",
+                "created_at": "2026-08-20T02:57:23.115Z",
+                "updated_at": "2026-08-20T02:57:23.115Z"
+              },
+              {
+                "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+                "intent_sha256": "581cd562ae04f9cc886b97f65ccb8cf1d3f34bf64623693b085b34d53ddfe128",
+                "current_state": "PENDING_PROOF",
+                "current_sequence": 1,
+                "current_event_sha256": "20ed7cd822e6b4dbb51304c17af6bfa2b6e88a72e7593fff306102ba4cfb75b6",
+                "readiness_snapshot_sha256": "ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037",
+                "created_at": "2026-08-20T02:57:31.005Z",
+                "updated_at": "2026-08-20T02:57:31.005Z"
+              }
+            ],
+            "proof_events": [
+              {
+                "intent_id": "01a01d1a-338a-7fb2-94d7-3e4c710b034e",
+                "sequence": 1,
+                "event_type": "INTENT_RECORDED",
+                "resulting_state": "PENDING_PROOF",
+                "event_sha256": "20ed7cd822e6b4dbb51304c17af6bfa2b6e88a72e7593fff306102ba4cfb75b6",
+                "created_at": "2026-08-20T02:57:31.005Z"
+              }
+            ],
+            "decisions": [
+              {
+                "gate": "Gate 1 pending",
+                "decision": "APPROVED",
+                "evidence_revision": "e1644ff3421800423e90980929fa4eac3c64f1e1",
+                "evidence_sha256": "fbd22ba38942a4098b727d3c88ebde92b336f1879a5b73ef4cb9c9bc6d0ac6e5",
+                "decision_intent_id": null,
+                "created_at": "2026-08-20T02:57:23.115Z"
+              },
+              {
+                "gate": "Gate 2 pending",
+                "decision": "APPROVED",
+                "evidence_revision": "1b8ad059a8ee2a4a94c7828bc617d4909a52813c",
+                "evidence_sha256": "a407773a621ee75421201a6bd5673024eee4d9f3d8f929cf50bf1740850709c6",
+                "decision_intent_id": "01a01d1a-12e3-7d5a-b454-2fc477a56f03",
+                "created_at": "2026-08-20T02:57:23.115Z"
+              }
+            ],
+            "activity": [
+              {
+                "action": "agent_review",
+                "detail": "PASS · signed issue #74 hosted fixture review recorded",
+                "created_at": "2026-08-20T02:57:23.115Z"
+              },
+              {
+                "action": "decision_intent",
+                "detail": "Gate 3 pending intent recorded as PENDING_PROOF under SOLO_CALIBRATION; no gate effect before issuer proof and authoritative readiness snapshot ed5692e81af63ff3970713e80a43becc40087dbb176674465b3cf0efa73e9037.",
+                "created_at": "2026-08-20T02:57:31.005Z"
+              }
+            ],
+            "telemetry": [
+              {
+                "metric_name": "steer_release_risk_classification_total",
+                "label_name": "tier",
+                "label_value": "DEFAULT_OPEN",
+                "value": 1,
+                "case_id": "RR74-ROLLBACK-PENDING",
+                "observed_at": "2026-08-20T02:57:25.757Z"
+              },
+              {
+                "metric_name": "steer_release_snapshot_creation_latency_ms",
+                "label_name": "outcome",
+                "label_value": "created",
+                "value": 818,
+                "case_id": "RR74-ROLLBACK-PENDING",
+                "observed_at": "2026-08-20T02:57:25.853Z"
+              },
+              {
+                "metric_name": "steer_release_readiness_outcome_total",
+                "label_name": "outcome",
+                "label_value": "READY",
+                "value": 1,
+                "case_id": "RR74-ROLLBACK-PENDING",
+                "observed_at": "2026-08-20T02:57:26.116Z"
+              },
+              {
+                "metric_name": "steer_release_readiness_latency_ms",
+                "label_name": "",
+                "label_value": "",
+                "value": 265,
+                "case_id": "RR74-ROLLBACK-PENDING",
+                "observed_at": "2026-08-20T02:57:26.213Z"
+              },
+              {
+                "metric_name": "steer_release_snapshot_creation_latency_ms",
+                "label_name": "outcome",
+                "label_value": "replay",
+                "value": 539,
+                "case_id": "RR74-ROLLBACK-PENDING",
+                "observed_at": "2026-08-20T02:57:27.774Z"
+              },
+              {
+                "metric_name": "steer_release_readiness_outcome_total",
+                "label_name": "outcome",
+                "label_value": "READY",
+                "value": 1,
+                "case_id": "RR74-ROLLBACK-PENDING",
+                "observed_at": "2026-08-20T02:57:28.049Z"
+              },
+              {
+                "metric_name": "steer_release_readiness_latency_ms",
+                "label_name": "",
+                "label_value": "",
+                "value": 279,
+                "case_id": "RR74-ROLLBACK-PENDING",
+                "observed_at": "2026-08-20T02:57:28.148Z"
+              },
+              {
+                "metric_name": "steer_release_readiness_outcome_total",
+                "label_name": "outcome",
+                "label_value": "READY",
+                "value": 1,
+                "case_id": "RR74-ROLLBACK-PENDING",
+                "observed_at": "2026-08-20T02:57:31.377Z"
+              },
+              {
+                "metric_name": "steer_release_readiness_latency_ms",
+                "label_name": "",
+                "label_value": "",
+                "value": 271,
+                "case_id": "RR74-ROLLBACK-PENDING",
+                "observed_at": "2026-08-20T02:57:31.473Z"
+              },
+              {
+                "metric_name": "steer_release_readiness_outcome_total",
+                "label_name": "outcome",
+                "label_value": "READY",
+                "value": 1,
+                "case_id": "RR74-ROLLBACK-PENDING",
+                "observed_at": "2026-08-20T02:57:32.720Z"
+              },
+              {
+                "metric_name": "steer_release_readiness_latency_ms",
+                "label_name": "",
+                "label_value": "",
+                "value": 283,
+                "case_id": "RR74-ROLLBACK-PENDING",
+                "observed_at": "2026-08-20T02:57:32.812Z"
+              }
+            ]
+          },
+          "projection_sha256": "1c7d82e5ee9a7f9243fb47b3a9a9a102a955fa17367b34af36c84228989e82a4"
+        }
+      }
+    },
+    "latency_ms": [
+      1154.75,
+      911.8,
+      2095.77,
+      1946.52,
+      922.96,
+      901.82,
+      1533.97,
+      1276.02,
+      755.42
+    ],
+    "pass": true
+  }
+}
