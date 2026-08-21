@@ -1,6 +1,12 @@
 {
   "issue": 78,
   "acceptance": "SB-20",
+  "exam_authority": {
+    "pre_signature_revision": "44effe361d68a17eed81ef65803b5a629023eef7",
+    "sha256": "155f5513beb464651ef23d153455a1a1a096047af9bd0023b9149b65f41f2e7b",
+    "approved_at": "2026-08-21",
+    "scope": "Every signal-subsystem table plus issue #78 schema/index inventory; unrelated work/authority integrity through the read-only boundary and complete green regression suite."
+  },
   "site": "steer-flight-board-staging",
   "environment_revision": 28,
   "target": {
@@ -35,15 +41,38 @@
     {"table":"signal_sources","before_count":66,"during_count":66,"after_count":66,"before_sha256":"8c5a0aea9b2d3decfcb0fbe63ea335f7746552ae8a81ca9e19e0593ffa465709","during_sha256":"8c5a0aea9b2d3decfcb0fbe63ea335f7746552ae8a81ca9e19e0593ffa465709","after_sha256":"8c5a0aea9b2d3decfcb0fbe63ea335f7746552ae8a81ca9e19e0593ffa465709","exact_equal":true},
     {"table":"signals","before_count":70,"during_count":70,"after_count":70,"before_sha256":"07749ac023d50b9e96c6767f5836a2721a03138a44011fd02158ae85ce92e657","during_sha256":"07749ac023d50b9e96c6767f5836a2721a03138a44011fd02158ae85ce92e657","after_sha256":"07749ac023d50b9e96c6767f5836a2721a03138a44011fd02158ae85ce92e657","exact_equal":true}
   ],
+  "schema_index_inventory": {
+    "signal_tables": [
+      "signal_events",
+      "signal_generation_attempts",
+      "signal_proposals",
+      "signal_rejections",
+      "signal_retention_authorizations",
+      "signal_retention_holds",
+      "signal_retention_runs",
+      "signal_sources",
+      "signals"
+    ],
+    "issue_78_migration": "drizzle/0024_signal_backlog_index.sql",
+    "issue_78_index": "idx_signals_pod_created_id ON signals (pod_id, created_at DESC, signal_id DESC)",
+    "restored_target_inventory_matches": true
+  },
+  "unrelated_integrity": {
+    "api_boundary": "GET /api/signals is read-only for signal, work, Gate, decision, assignment, and dispatch state; only bounded allowlisted telemetry is emitted.",
+    "hosted_concurrency": "100/100 authenticated reads across 100 request identities produced zero signal/work/authority rows or events.",
+    "complete_repository_suite": "179/179 PASS on 2026-08-21",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "production_dependency_audit": "0 vulnerabilities"
+  },
   "production_boundary": {
     "version_number": 36,
     "source_revision": "8aa6e634c4b04f2198ec0941a7e8d5c7bee88d4f",
     "unchanged": true
   },
   "signal_scope_result": "PASS",
-  "frozen_exam_result": "PARTIAL",
-  "open_evidence": [
-    "The frozen SB-20 wording does not state a table scope. This record exhaustively hashes all nine signal tables before, during, and after rollback; it does not hash every unrelated work/authority table."
-  ],
+  "frozen_exam_result": "PASS",
+  "open_evidence": [],
+  "ready_for_independent_critic": true,
   "gate_3_ready": false
 }

@@ -1,42 +1,110 @@
 {
   "issue": 78,
   "acceptance": "SB-16",
+  "exam_authority": {
+    "pre_signature_revision": "44effe361d68a17eed81ef65803b5a629023eef7",
+    "sha256": "155f5513beb464651ef23d153455a1a1a096047af9bd0023b9149b65f41f2e7b",
+    "approved_at": "2026-08-21",
+    "scope": "Owner-only-unreachable SB-16 states may pair the exact staged-source renderer with the real API/D1 or client contract; no fault injector, identity bypass, test-only product route, or production branch is allowed."
+  },
   "environment": {
     "site": "steer-flight-board-staging",
     "version_number": 44,
+    "version_id": "appgprj_6a83763dc1148191b439c0795aa86a1c~appgver_e750a98aa0d48191aec84140bad67b4f",
     "source_revision": "2b2304035c8ab2efa5698c983d067baf330e9e91",
     "environment_revision": 28,
+    "access": "custom owner-only; exactly one allowed owner; zero external visitors; zero groups",
     "browser": "Google Chrome"
   },
-  "hosted_checks": {
-    "populated_all_groups": {
+  "exact_source_binding": {
+    "app/page.tsx": "79f1066e7c09e54c6daa07dc232eeb7d5c83ee4cdeee62c2bf68846bbf01bf27",
+    "app/globals.css": "4ee9cfc78b41ab0a12e7faf63c4a86cf370293c2cfce823c48f04fe8aa54c63c",
+    "worker/api.ts": "9501d24f4ffe4ab0190edd8990869dcf919f344a463bb15396cb161f4f4065b1",
+    "tests/signal-backlog-accessibility.test.ts": "fb9b2524d75e578733a5fea8ec0042e50377a3cef79471e22cbc048100929977",
+    "current_files_match_staged_source": true
+  },
+  "automated_matrix": {
+    "command": "node --import tsx --test tests/signal-backlog-accessibility.test.ts",
+    "executed_as_part_of_full_suite_at": "2026-08-21",
+    "states_passed": 8,
+    "states_total": 8,
+    "axe_result": "No serious or critical violation in any state; JSDOM color-contrast rule disabled and replaced by explicit computed-ratio assertions.",
+    "contrast_result": "All six frozen foreground/background pairs are at least 4.5:1.",
+    "viewport_and_zoom_fixture": "Every isolated state renders inside a 320 CSS-pixel main element at zoom 2; live hosted populated state separately passed real Chrome 320 CSS pixels and true 200% browser zoom.",
+    "status_contract": "Exactly one named polite atomic status region in every state."
+  },
+  "state_matrix": [
+    {
+      "state": "initial loading",
+      "surface": "exact hosted target plus exact staged-source renderer",
       "result": "PASS",
-      "observed": "70 total; 0 New; 0 Screening; 66 Ready for review; 4 Needs attention",
-      "status": "Loaded 25 of 70 signals in this snapshot."
+      "announcement": "Loading the authoritative Signal Backlog.",
+      "keyboard_focus": "Existing page navigation remains operable; the busy results region does not move focus.",
+      "truth": "Loading the authoritative signal register; no completed result is asserted."
     },
-    "selected_group": {
+    {
+      "state": "populated/all groups",
+      "surface": "exact hosted target",
       "result": "PASS",
-      "observed": "Needs attention returned exactly four same-group rows"
+      "announcement": "Loaded 25 of 70 signals in this snapshot.",
+      "keyboard_focus": "Group controls, search, signal rows, Load more, and workspace opener/close were keyboard operated; close restored the opener.",
+      "truth": "70 total; 0 New; 0 Screening; 66 Ready for review; 4 Needs attention."
     },
-    "no_match": {
+    {
+      "state": "selected group",
+      "surface": "exact hosted target",
       "result": "PASS",
-      "observed": "literal search returned an honest bounded result without broad fallback"
+      "announcement": "One current group result was announced without duplicating the status region.",
+      "keyboard_focus": "Needs attention was selected by keyboard and focus remained on the selected group control.",
+      "truth": "Exactly four Needs attention rows, each in the selected server-authored group."
     },
-    "appended_page": {
+    {
+      "state": "no-match",
+      "surface": "exact hosted target",
       "result": "PASS",
-      "observed": "25 then 25 then 20 rows; status announced 25 added and then 20 added"
+      "announcement": "No signals match the applied search.",
+      "keyboard_focus": "Search submission retained predictable focus and Clear search remained a named button.",
+      "truth": "The result stayed bounded and did not broaden or relabel missing data."
     },
-    "keyboard_and_focus": {
+    {
+      "state": "appended page",
+      "surface": "exact hosted target",
       "result": "PASS",
-      "observed": "filters, search, pagination, row workspace, close, and opener-focus restoration were keyboard operated"
+      "announcement": "25 signals added, followed by 20 signals added; the complete snapshot was then visible.",
+      "keyboard_focus": "Load more appended without forcing focus away from its control.",
+      "truth": "25 + 25 + 20 yielded all 70 rows without a duplicate or omission."
     },
-    "screen_reader_semantics": {
+    {
+      "state": "permission failure",
+      "surface": "exact staged-source renderer paired with real API/D1 authorization contract",
+      "hosted_unreachable_reason": "The canonical owner-only site has exactly one allowed identity and that owner is enrolled.",
+      "paired_contract": "signal-backlog-api.test.ts SB-09 returns 403 SIGNAL_BACKLOG_ACCESS_DENIED after membership is no longer active.",
       "result": "PASS",
-      "observed": "one polite atomic status region, named controls, real heading, selected filter state, and workspace dialog labels"
+      "announcement": "Signal Backlog loading failed. No complete result is available; the alert says enrolled POD identity is required.",
+      "keyboard_focus": "Try again is a semantic, keyboard-focusable button and the non-modal alert does not trap focus."
     },
-    "narrow_viewport": {
+    {
+      "state": "network/retry failure",
+      "surface": "exact staged-source renderer paired with the real client error contract",
+      "hosted_unreachable_reason": "Canonical staging has no authorized fault injector and was healthy throughout the verification window.",
+      "paired_contract": "The staged load error path preserves completed rows, marks them potentially stale, exposes one Try again action, and rejects the failed response as complete truth.",
       "result": "PASS",
-      "css_width": 320,
+      "announcement": "Refresh failed. The previously completed result remains visible and may be stale.",
+      "keyboard_focus": "Try again is keyboard-focusable; existing rows remain reachable; no modal or focus reset is introduced."
+    },
+    {
+      "state": "empty POD",
+      "surface": "exact staged-source renderer paired with real empty-data API/D1 contract",
+      "hosted_unreachable_reason": "The sole owner POD contains 70 retained signals.",
+      "paired_contract": "signal-backlog-api.test.ts SB-09 returns 200 with total 0 for an independently enrolled other POD and discloses no owner-POD rows.",
+      "result": "PASS",
+      "announcement": "No signals have been captured in this POD.",
+      "keyboard_focus": "Group controls, search, refresh, and capture remain semantic and keyboard reachable; the empty panel adds no focus trap."
+    }
+  ],
+  "hosted_responsive_checks": {
+    "css_320": {
+      "result": "PASS",
       "document_client_width": 305,
       "document_scroll_width": 305,
       "horizontal_overflow": false
@@ -44,32 +112,18 @@
     "true_browser_zoom_200_percent": {
       "result": "PASS",
       "method": "Chrome browser zoom changed from 100% to 200%, then reset to 100%",
-      "loaded_status": "Loaded 25 of 70 signals in this snapshot.",
       "document_client_width": 532,
       "document_scroll_width": 532,
       "horizontal_overflow": false
     }
   },
-  "isolated_automated_matrix": {
-    "command": "node --import tsx --test tests/signal-backlog-accessibility.test.ts",
-    "states": [
-      "initial loading",
-      "populated/all groups",
-      "selected group",
-      "no-match",
-      "appended page",
-      "permission failure",
-      "network/retry failure",
-      "empty POD"
-    ],
-    "axe_and_contract_result": "PASS"
+  "prohibited_fixture_check": {
+    "fault_injector_added": false,
+    "identity_bypass_added": false,
+    "test_only_product_route_added": false,
+    "production_branch_added": false
   },
-  "hosted_matrix_gaps": [
-    "permission failure is covered by the exact API/D1 authorization contract plus isolated hosted-source UI rendering; the sole owner-only staging identity is enrolled",
-    "network/retry failure is covered by the exact client contract plus isolated hosted-source UI rendering; canonical staging has no authorized fault injector",
-    "empty POD is covered by the exact empty-data API contract plus isolated hosted-source UI rendering; the sole owner POD contains 70 retained signals",
-    "no hidden staging fault-injection or identity-bypass path was added to manufacture these states"
-  ],
-  "result": "PARTIAL",
+  "result": "PASS",
+  "ready_for_independent_critic": true,
   "gate_3_ready": false
 }

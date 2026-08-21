@@ -6,7 +6,7 @@
 
 **Guardrails in force:** CORE-01..11, SEC-01..05, PRIV-01..03, A11Y-01..03, REL-01..04, LEGAL-01..02, DES-01..02, SRC-01..04, REV-01..02, HUM-01..02, DATA-01..02, EXT-01
 
-**Status:** Gate 2 evidence-contract amendment pending — original Gate 2 and the approved SB-19 amendment remain recorded below
+**Status:** Gate 2 evidence-contract amendment approved — final evidence reconciliation and independent Critic review authorized
 
 **Amendment boundary:** This revision changes only how SB-16 proves states that cannot naturally exist for the sole enrolled owner on canonical owner-only staging and clarifies SB-20's rollback hash scope. It does not change the delivery boundary, API, persistence, product UI, accessibility behavior, performance, concurrency, signal data-integrity requirement, staging-only authority, or any production prohibition. It does not add a fault injector, identity bypass, test-only product route, or production code path.
 
@@ -188,3 +188,9 @@ GATE 2 EVIDENCE: Product Lead/solo operator approval in the governed Codex task,
 GATE 2 AMENDMENT: APPROVED — 2026-08-20 — idrissenayat
 
 The approved amendment is bound to pre-signature Exam revision `47c8ee5b1b34cc5462d8bcb5731a0c4dade3f6c1` and Exam SHA-256 `03b2263d928fecb73bf2ddcf9aba5b3818ec2b77205f36fe6883a97671c6e453`. It is limited to SB-19 and replaces a blanket all-repository green requirement with a signal-scoped regression boundary and a closed exception predicate for independently proven, separately governed predecessor failures. All other original Gate 2 controls remain unchanged. Authorized scope is the remaining owner-only staging verification. This does not authorize merge, production deployment, Release, closure, or Gate 3.
+
+---
+
+GATE 2 EVIDENCE-CONTRACT AMENDMENT: APPROVED — 2026-08-21 — idrissenayat
+
+The approved amendment is bound to pre-signature Exam revision `44effe361d68a17eed81ef65803b5a629023eef7` and Exam SHA-256 `155f5513beb464651ef23d153455a1a1a096047af9bd0023b9149b65f41f2e7b`. It is limited to SB-16 evidence for owner-only-unreachable states and SB-20 signal-subsystem rollback scope. Authorized scope is final evidence reconciliation and independent Critic review. This does not authorize merge, production deployment, Release, closure, or Gate 3.

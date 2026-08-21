@@ -1,6 +1,7 @@
 # Issue #78 staging verification
 
-Date: 2026-08-20  
+Initial verification: 2026-08-20
+Final reconciliation: 2026-08-21
 Environment: canonical owner-only staging  
 Exact staged source: `2b2304035c8ab2efa5698c983d067baf330e9e91`  
 Sites version: 44  
@@ -12,7 +13,9 @@ The dedicated Signal Backlog implementation is working on canonical staging. It 
 
 The signal workflow is green on canonical owner-only staging. Complete repository testing is 179/179, so the amended SB-19 exception is not invoked. Exact before/during/after SHA-256 projections match for all nine issue #70 signal tables across a second pre-#78 rollback and exact-target restore.
 
-This packet is not Gate 3 ready under the frozen Exam wording. SB-16 requires three states to be exercised on the hosted owner-only environment even though that environment has one enrolled owner, 70 retained signals, and no authorized fault injector. SB-20 does not state a table scope, while the completed rollback proof is exhaustive for the signal subsystem rather than every unrelated work/authority table. Those two evidence-contract mismatches require a narrow governed amendment; no hidden staging backdoor was added to manufacture them.
+The Product Lead approved the final evidence-contract amendment against pre-signature Exam revision `44effe361d68a17eed81ef65803b5a629023eef7`, SHA-256 `155f5513beb464651ef23d153455a1a1a096047af9bd0023b9149b65f41f2e7b`. SB-16 now permits exact staged-source rendering paired with the real API/D1 or client contract only for a state proven unreachable for the sole enrolled owner. SB-20 is explicitly signal-scoped. The reconciled packet satisfies both boundaries without adding a fault injector, identity bypass, test-only product route, or production branch.
+
+This evidence packet is ready for independent Critic review. It does not itself authorize Gate 3, merge, production deployment, Release, or closure.
 
 ## Verified behavior
 
@@ -45,10 +48,11 @@ This packet is not Gate 3 ready under the frozen Exam wording. SB-16 requires th
 - Gitleaks: pass.
 - Semgrep: 0 findings across 286 tracked files.
 - Complete repository suite: 179/179 pass, including the issue #76 retention-ordering regression.
+- Final 2026-08-21 rerun: build and 179/179 tests pass; typecheck pass; lint pass; production dependency audit reports 0 vulnerabilities.
+- Sites reconciliation: staging remains private version 44/source `2b2304035c8ab2efa5698c983d067baf330e9e91`; production remains version 36/source `8aa6e634c4b04f2198ec0941a7e8d5c7bee88d4f`.
 
-## Remaining exact closures
+## Remaining governance step
 
-1. Amend SB-16 so real hosted states are exercised where naturally reachable, while permission failure, network/retry failure, and empty POD may be proven by the exact API/D1 authorization and empty-data contracts plus agent-operated isolated UI rendering. The amendment must prohibit a hidden staging fault-injection path.
-2. Amend SB-20 to bind rollback hashes to every signal-subsystem table, schema, and index plus semantic no-side-effect regression coverage for unrelated work/authority data. The completed rollback already satisfies that signal-scoped boundary.
+Run an independent Critic against the frozen Brief, approved original and amended Exam authorities, exact staged source, and this reconciled evidence target. A Critic PASS is required before the Product Lead may consider Gate 3.
 
-No PR, merge, production deployment, Release, closure, Gate 3, or Critic review was performed.
+No PR, merge, production deployment, Release, closure, or Gate 3 was performed.
