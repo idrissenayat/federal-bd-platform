@@ -122,6 +122,25 @@ const forecast = {
   acceptedBy: "member-a", acceptedAt: "2026-08-14T15:00:00.000Z", updatedAt: "2026-08-14T15:00:00.000Z", changeReason: "Initial forecast", advisory: null, acceptanceState: "no proposal", deliveryOwnerId: "member-a",
 };
 
+function freshDispatchForecast() {
+  const acceptedAt = new Date().toISOString();
+  const acceptedAtMs = Date.parse(acceptedAt);
+  const afterHours = (hours: number) => new Date(acceptedAtMs + hours * 60 * 60 * 1_000).toISOString();
+  return {
+    acceptedAt,
+    currentForecast: {
+      ...forecast,
+      acceptedAt,
+      updatedAt: acceptedAt,
+      earliestCompletion: afterHours(24),
+      likelyCompletion: afterHours(28),
+      latestCompletion: afterHours(52),
+      nextMilestoneAt: afterHours(2),
+      phaseExitAt: afterHours(28),
+    },
+  };
+}
+
 function completedActual(cycleMinutes: number) {
   return {
     humanRoleTotals: [], agentTelemetry: [], durationFacts: { agentExecutionMinutes: 5, queueMinutes: 2, blockedMinutes: 0, gateWaitMinutes: 1, cycleMinutes },
@@ -213,8 +232,7 @@ async function reviewPacket(targetInput?: Awaited<ReturnType<typeof reviewTarget
 }
 
 function prepareDispatchAuthorizationSeed(db: D1Database, itemId: number, revision = "a".repeat(40)) {
-  const acceptedAt = new Date().toISOString();
-  const currentForecast = { ...forecast, acceptedAt, updatedAt: acceptedAt, earliestCompletion: "2026-08-20T14:00:00.000Z", likelyCompletion: "2026-08-20T18:00:00.000Z", latestCompletion: "2026-08-21T18:00:00.000Z", nextMilestoneAt: "2026-08-19T16:00:00.000Z", phaseExitAt: "2026-08-20T18:00:00.000Z" };
+  const { acceptedAt, currentForecast } = freshDispatchForecast();
   db.sqlite.prepare(`UPDATE members SET agent_key_id = 'agent-a-key', agent_key_version = 1,
     agent_public_key = ?, agent_public_key_fingerprint = ? WHERE id = 'agent-a'`).run("e".repeat(64), "a".repeat(64));
   db.sqlite.prepare(`INSERT INTO workspace_routing
@@ -656,8 +674,7 @@ test("FAIL-04 fences every frozen post-receipt binding invalidation before send"
 test("successful dispatch creates one immutable receipt, outbox identity, and QUEUED event across replay", async () => {
   const { db, itemId } = await setup();
   const revision = "b".repeat(40);
-  const acceptedAt = new Date().toISOString();
-  const currentForecast = { ...forecast, acceptedAt, updatedAt: acceptedAt, earliestCompletion: "2026-08-20T14:00:00.000Z", likelyCompletion: "2026-08-20T18:00:00.000Z", latestCompletion: "2026-08-21T18:00:00.000Z", nextMilestoneAt: "2026-08-19T16:00:00.000Z", phaseExitAt: "2026-08-20T18:00:00.000Z" };
+  const { acceptedAt, currentForecast } = freshDispatchForecast();
   db.sqlite.prepare(`UPDATE members SET agent_key_id = 'agent-a-key', agent_key_version = 1,
     agent_public_key = ?, agent_public_key_fingerprint = ? WHERE id = 'agent-a'`).run("e".repeat(64), "a".repeat(64));
   db.sqlite.prepare(`INSERT INTO workspace_routing
@@ -805,8 +822,7 @@ test("REC-03 uncertain send reconciles a discovered relay delivery before acknow
 test("REC-04 route invalidation fences the old intent and explicit reauthorization creates one same-lineage successor", async () => {
   const { db, itemId } = await setup();
   const revision = "d".repeat(40);
-  const acceptedAt = new Date().toISOString();
-  const currentForecast = { ...forecast, acceptedAt, updatedAt: acceptedAt, earliestCompletion: "2026-08-20T14:00:00.000Z", likelyCompletion: "2026-08-20T18:00:00.000Z", latestCompletion: "2026-08-21T18:00:00.000Z", nextMilestoneAt: "2026-08-19T16:00:00.000Z", phaseExitAt: "2026-08-20T18:00:00.000Z" };
+  const { acceptedAt, currentForecast } = freshDispatchForecast();
   const relaySecret = new Uint8Array(32); relaySecret[31] = 17;
   const relayPublicKey = hex(schnorr.getPublicKey(relaySecret));
   db.sqlite.prepare(`UPDATE members SET agent_key_id = 'agent-a-key', agent_key_version = 1,
@@ -1017,8 +1033,7 @@ test("REC-04 permits one same-lineage successor for every remaining frozen bindi
 test("changed authorization objective closes the old unsent intent and starts a new lineage", async () => {
   const { db, itemId } = await setup();
   const revision = "f".repeat(40);
-  const acceptedAt = new Date().toISOString();
-  const currentForecast = { ...forecast, acceptedAt, updatedAt: acceptedAt, earliestCompletion: "2026-08-20T14:00:00.000Z", likelyCompletion: "2026-08-20T18:00:00.000Z", latestCompletion: "2026-08-21T18:00:00.000Z", nextMilestoneAt: "2026-08-19T16:00:00.000Z", phaseExitAt: "2026-08-20T18:00:00.000Z" };
+  const { acceptedAt, currentForecast } = freshDispatchForecast();
   db.sqlite.prepare(`UPDATE members SET agent_key_id = 'agent-a-key', agent_key_version = 1,
     agent_public_key = ?, agent_public_key_fingerprint = ? WHERE id = 'agent-a'`).run("e".repeat(64), "a".repeat(64));
   db.sqlite.prepare(`INSERT INTO workspace_routing
@@ -1062,8 +1077,7 @@ test("changed authorization objective closes the old unsent intent and starts a 
 test("service fencing, verified relay delivery, signed agent acknowledgement, and agent read form one idempotent lineage", async () => {
   const { db, itemId } = await setup();
   const revision = "c".repeat(40);
-  const acceptedAt = new Date().toISOString();
-  const currentForecast = { ...forecast, acceptedAt, updatedAt: acceptedAt, earliestCompletion: "2026-08-20T14:00:00.000Z", likelyCompletion: "2026-08-20T18:00:00.000Z", latestCompletion: "2026-08-21T18:00:00.000Z", nextMilestoneAt: "2026-08-19T16:00:00.000Z", phaseExitAt: "2026-08-20T18:00:00.000Z" };
+  const { acceptedAt, currentForecast } = freshDispatchForecast();
   const agentSecret = new Uint8Array(32); agentSecret[31] = 11;
   const relaySecret = new Uint8Array(32); relaySecret[31] = 13;
   const agentPublicKey = hex(schnorr.getPublicKey(agentSecret));
